@@ -6,10 +6,10 @@ namespace Loto\Business\LoteriasCaixa;
 use Loto\Util\Web;
 
 /**
- * Manipulação de dados de loteria: Quina
+ * Manipulação de dados de loteria: LotoMania
  * @package Loto\LoteriasCaixa
  */
-class LoteriaQuina extends LoteriaBase
+class LoteriaLotoMania extends LoteriaBase
 {
 
     /**
@@ -25,12 +25,12 @@ class LoteriaQuina extends LoteriaBase
     /**
      * @var string Valor da chave no JSON: Resultado
      */
-    protected $jsonKeyResult = "resultado";
+    protected $jsonKeyResult = "deResultado";
 
     /**
      * @var string Valor da chave no JSON: Data
      */
-    protected $jsonKeyDate = "dataStr";
+    protected $jsonKeyDate = "dtApuracaoStr";
 
     /**
      * Retorna a url para retorno dos dados do sorteio atual.
@@ -38,6 +38,6 @@ class LoteriaQuina extends LoteriaBase
      */
     protected function getUrl(): string
     {
-        return "http://loterias.caixa.gov.br/wps/portal/loterias/landing/quina/!ut/p/a1/jc69DoIwAATgZ_EJepS2wFgoaUswsojYxXQyTfgbjM9vNS4Oordd8l1yxJGBuNnfw9XfwjL78dmduIikhYFGA0tzSFZ3tG_6FCmP4BxBpaVhWQuA5RRWlUZlxR6w4r89vkTi1_5E3CfRXcUhD6osEAHA32Dr4gtsfFin44Bgdw9WWSwj/dl5/d5/L2dBISEvZ0FBIS9nQSEh/pw/Z7_61L0H0G0J0VSC0AC4GLFAD20G6/res/id=buscaResultado/c=cacheLevelPage/=/?timestampAjax=1569781545196&concurso=" . $this->getId();
+        return "http://loterias.caixa.gov.br/wps/portal/loterias/landing/lotomania/!ut/p/a1/04_Sj9CPykssy0xPLMnMz0vMAfGjzOLNDH0MPAzcDbz8vTxNDRy9_Y2NQ13CDA38jYEKIoEKnN0dPUzMfQwMDEwsjAw8XZw8XMwtfQ0MPM2I02-AAzgaENIfrh-FqsQ9wBmoxN_FydLAGAgNTKEK8DkRrACPGwpyQyMMMj0VAajYsZo!/dl5/d5/L2dBISEvZ0FBIS9nQSEh/pw/Z7_61L0H0G0JGJVA0AKLR5T3K00V0/res/id=buscaResultado/c=cacheLevelPage/=/?timestampAjax=1569781560136&concurso=" . $this->getId();
     }
 }

@@ -19,9 +19,12 @@ class Loteria
      * @throws \Exception
      */
     public static function factory(string $name): ILoteria {
-        switch (strtolower(trim($name))) {
-            case "megasena": return new LoteriaMegaSena();
-            case "quina": return new LoteriaQuina();
+        $files = scandir(dirname(__FILE__));
+        foreach ($files as $file) {
+            if (strtolower($file) === strtolower("Loteria$name.php")) {
+                $className = __NAMESPACE__ . '\\' . substr($file, 0, -4);
+                return new $className;
+            }
         }
         throw new \Exception("Not found: $name");
     }

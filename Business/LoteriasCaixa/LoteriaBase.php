@@ -3,6 +3,7 @@
 
 namespace Loto\Business\LoteriasCaixa;
 
+use Loto\Util\Execution;
 use Loto\Util\Web;
 
 /**
@@ -18,24 +19,34 @@ abstract class LoteriaBase implements ILoteria
     protected abstract function getUrl(): string;
 
     /**
-     * @var string Valor da chave no JSON para o sorteio anterior.
+     * @var string Valor da chave no JSON: Sorteio anterior
      */
-    protected $jsonKeyPrevious = "concursoAnterior";
+    protected $jsonKeyPrevious = "jsonKeyPrevious";
 
     /**
-     * @var string Valor da chave no JSON para o próximo sorteio.
+     * @var string Valor da chave no JSON: Próximo sorteio
      */
-    protected $jsonKeyNext = "proximoConcurso";
+    protected $jsonKeyNext = "jsonKeyNext";
+
+    /**
+     * @var string Valor da chave no JSON: Resultado
+     */
+    protected $jsonKeyResult = "jsonKeyResult";
+
+    /**
+     * @var string Valor da chave no JSON: Data
+     */
+    protected $jsonKeyDate = "jsonKeyDate";
 
     /**
      * @var int Identificador do sorteio atual.
      */
-    private $id = 1;
+    protected $id = 1;
 
     /**
      * @var array Dados do sorteio atual.
      */
-    private $results = [];
+    protected $results = [];
 
     /**
      * Retorna o identificador do sorteio.
@@ -52,7 +63,18 @@ abstract class LoteriaBase implements ILoteria
      */
     public function getResults(): array
     {
-        return $this->results;
+        $result = explode('-', $this->results[strtolower($this->jsonKeyResult)]);
+        $result = array_map("trim", $result);
+        return $result;
+    }
+
+    /**
+     * Retorna a data do sorteio.
+     * @return string Resultados.
+     */
+    public function getDate(): string
+    {
+        return $this->results[strtolower($this->jsonKeyDate)];
     }
 
     /**
@@ -73,8 +95,8 @@ abstract class LoteriaBase implements ILoteria
      */
     public function nextId(): ILoteria
     {
-        if (isset($this->results[$this->jsonKeyNext])) {
-            $this->id = (int)$this->results[$this->jsonKeyNext];
+        if (isset($this->results[strtolower($this->jsonKeyNext)])) {
+            $this->id = (int)$this->results[strtolower($this->jsonKeyNext)];
         } else {
             $this->id++;
         }
@@ -87,8 +109,8 @@ abstract class LoteriaBase implements ILoteria
      */
     public function previousId(): ILoteria
     {
-        if (isset($this->results[$this->jsonKeyPrevious])) {
-            $this->id = (int)$this->results[$this->jsonKeyPrevious];
+        if (isset($this->results[strtolower($this->jsonKeyPrevious)])) {
+            $this->id = (int)$this->results[strtolower($this->jsonKeyPrevious)];
         } else {
             $this->id--;
             if ($this->id < 1) $this->id = 1;
@@ -104,6 +126,18 @@ abstract class LoteriaBase implements ILoteria
     {
         $html = Web::loadHtml($this->getUrl());
         $this->results = json_decode($html, true);
+        $this->results = array_change_key_case($this->results);
+        return $this;
+    }
+
+    /**
+     * Escreve os dados do sorteio atual
+     * @return ILoteria Auto retorno.
+     */
+    public function write(): ILoteria {
+        echo $this->getDate() . ' | ';
+        echo implode('-', $this->getResults());
+        echo Execution::newline();
         return $this;
     }
 }

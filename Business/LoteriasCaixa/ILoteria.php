@@ -46,4 +46,10 @@ interface ILoteria
      * @return ILoteria Auto retorno.
      */
     function load(): ILoteria;
+
+    /**
+     * Escreve os dados do sorteio atual
+     * @return ILoteria Auto retorno.
+     */
+    function write(): ILoteria;
 }
