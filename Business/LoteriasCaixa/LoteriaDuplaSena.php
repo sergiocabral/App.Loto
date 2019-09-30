@@ -3,9 +3,6 @@
 
 namespace Loto\Business\LoteriasCaixa;
 
-use Loto\Util\Execution;
-use Loto\Util\Web;
-
 /**
  * Manipulação de dados de loteria: DuplaSena
  * @package Loto\LoteriasCaixa
@@ -96,7 +93,7 @@ class LoteriaDuplaSena extends Loteria
                 if (!empty($formatted)) $text .= ' | ' . $formatted;
             }
 
-            $text .= Execution::newline();
+            $text .= PHP_EOL;
 
             $text .= str_repeat(' ', $this->paddingId) . ' | ';
             $text .= str_repeat(' ', strlen($date)) . ' | ';
@@ -107,8 +104,8 @@ class LoteriaDuplaSena extends Loteria
                 if (!empty($formatted)) $text .= ' | ' . $formatted;
             }
 
-            $text .= Execution::newline();
-            $text .= Execution::newline();
+            $text .= PHP_EOL;
+            $text .= str_repeat('-', (strlen($text) - strlen(PHP_EOL) * 2) / 2) . PHP_EOL;
         }
 
         return $text;

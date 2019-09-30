@@ -2,6 +2,10 @@
 
 namespace Loto\Util;
 
+/**
+ * Utilitários para contexto web.
+ * @package Loto\Util
+ */
 class Web
 {
 

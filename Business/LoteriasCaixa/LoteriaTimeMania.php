@@ -3,8 +3,6 @@
 
 namespace Loto\Business\LoteriasCaixa;
 
-use Loto\Util\Web;
-
 /**
  * Manipulação de dados de loteria: TimeMania
  * @package Loto\LoteriasCaixa

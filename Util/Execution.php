@@ -41,12 +41,4 @@ class Execution
         $arguments = self::arguments();
         return isset($arguments[$index]) ? $arguments[$index] : "";
     }
-
-    /**
-     * Retorna o valor de nova linha.
-     * @return string Valor.
-     */
-    public static function newline(): string {
-        return self::isWeb() ? "<br />" . PHP_EOL : PHP_EOL;
-    }
 }

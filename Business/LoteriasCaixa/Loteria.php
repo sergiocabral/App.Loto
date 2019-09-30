@@ -3,7 +3,8 @@
 
 namespace Loto\Business\LoteriasCaixa;
 
-use Loto\Util\Execution;
+use Exception;
+use Loto\Util\File;
 use Loto\Util\Web;
 
 /**
@@ -18,7 +19,6 @@ abstract class Loteria implements ILoteria
      * Cria uma instância do manipulador de uma loteria.
      * @param string $name Nome da loteria.
      * @return ILoteria Manipulador da loteria indicada.
-     * @throws \Exception
      */
     public static function factory(string $name): ?ILoteria
     {
@@ -92,12 +92,44 @@ abstract class Loteria implements ILoteria
     protected $results = [];
 
     /**
+     * Retorna o nome do sorteio.
+     * @return string Valor.
+     */
+    public function getName(): string {
+        $name = get_class($this);
+        $name = preg_replace('/^.*Loteria/i', '', $name);
+        return $name;
+    }
+
+    /**
      * Retorna o identificador do sorteio.
      * @return int Valor.
      */
     public function getId(): int
     {
         return $this->id;
+    }
+
+    /**
+     * Retorna o último Id de sorteio no arquivo.
+     * @return int Valor.
+     */
+    public function getIdFromFile(): int {
+        $file = $this->getFile();
+        if (file_exists($file)) {
+            $firstLine = fgets(fopen($file, 'r'));
+            preg_match('/^\d*/', $firstLine, $match);
+            if (count($match)) return $match[0] + 1;
+        }
+        return 1;
+    }
+
+    /**
+     * Retorna o caminho do arquivo com os dados gravados.
+     * @return string Valor.
+     */
+    public function getFile(): string {
+        return './results.' . $this->getName() . '.txt';
     }
 
     /**
@@ -178,7 +210,7 @@ abstract class Loteria implements ILoteria
             if (is_array($this->results)) $this->results = array_change_key_case($this->results);
             else $this->results = [];
         }
-        catch (\Exception $exception) {
+        catch (Exception $exception) {
             $this->results = [];
         }
         return $this;
@@ -204,7 +236,8 @@ abstract class Loteria implements ILoteria
                 if (!empty($formatted)) $text .= ' | ' . $formatted;
             }
 
-            $text .= Execution::newline();
+            $text .= PHP_EOL;
+            $text .= str_repeat('-', (strlen($text) - strlen(PHP_EOL))) . PHP_EOL;
         }
 
         return $text;
@@ -217,6 +250,16 @@ abstract class Loteria implements ILoteria
      */
     public function write(bool $extend = false): ILoteria {
         echo $this->getText($extend);
+        return $this;
+    }
+
+    /**
+     * Escreve os dados do sorteio atual no arquivo.
+     * @return ILoteria Auto retorno.
+     */
+    public function writeToFile(): ILoteria {
+        $line = $this->getText(true);
+        File::prepend($line, $this->getFile());
         return $this;
     }
 

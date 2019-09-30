@@ -29,6 +29,7 @@ spl_autoload_register(function ($class) {
 
     // Se o arquivo existe faz o carregamento.
     if (file_exists($file)) {
+        /** @noinspection PhpIncludeInspection */
         require $file;
     }
 });

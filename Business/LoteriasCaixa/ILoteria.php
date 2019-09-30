@@ -11,10 +11,28 @@ interface ILoteria
 {
 
     /**
+     * Retorna o nome do sorteio.
+     * @return string Valor.
+     */
+    function getName(): string;
+
+    /**
      * Retorna o identificador do sorteio.
      * @return int Valor.
      */
     function getId(): int;
+
+    /**
+     * Retorna o último Id de sorteio no arquivo.
+     * @return int Valor.
+     */
+    function getIdFromFile(): int;
+
+    /**
+     * Retorna o caminho do arquivo com os dados gravados.
+     * @return string Valor.
+     */
+    function getFile(): string;
 
     /**
      * Retorna os resultados do sorteio.
@@ -53,6 +71,12 @@ interface ILoteria
      * @return ILoteria Auto retorno.
      */
     function write(bool $extend = false): ILoteria;
+
+    /**
+     * Escreve os dados do sorteio atual no arquivo.
+     * @return ILoteria Auto retorno.
+     */
+    function writeToFile(): ILoteria;
 
     /**
      * Dados do sorteio como texto.
