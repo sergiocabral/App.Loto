@@ -1,3 +1,4 @@
+/*noinspection CssUnknownTarget*/
 @import url('https://fonts.googleapis.com/css?family=B612+Mono|Noto+Sans+SC|Russo+One&display=swap');
 
 * {
@@ -56,7 +57,7 @@ ul li a {
     text-shadow: 2px 2px 1px rgba(255, 255, 255, 0.1);
     border: 2px solid #3E86A0;
     border-left-width: 10px;
-    border-radius: 0px;
+    border-radius: 0;
     padding: 10px 21px 10px 12px;
     display: inline-block;
     font-family: "Lucida Console", Monaco, monospace;

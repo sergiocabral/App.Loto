@@ -204,15 +204,17 @@ abstract class Loteria implements ILoteria
      */
     public function load(): ILoteria
     {
-        try {
-            $html = Web::loadHtml($this->getUrl());
-            $this->results = json_decode($html, true);
-            if (is_array($this->results)) $this->results = array_change_key_case($this->results);
-            else $this->results = [];
-        }
-        catch (Exception $exception) {
-            $this->results = [];
-        }
+        $attempts = 5;
+        do {
+            try {
+                $html = Web::loadHtml($this->getUrl());
+                $this->results = json_decode($html, true);
+                if (is_array($this->results)) $this->results = array_change_key_case($this->results);
+                else $this->results = [];
+            } catch (Exception $exception) {
+                $this->results = [];
+            }
+        } while (!count($this->results) && $attempts-- > 0);
         return $this;
     }
 
