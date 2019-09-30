@@ -33,7 +33,7 @@ class LoteriaLotoMania extends Loteria
     /**
      * @var int Total de números possíveis nos sorteios.
      */
-    protected $countNumbers = 100;
+    protected $countNumbers = 99;
 
     /**
      * Retorna a url para retorno dos dados do sorteio atual.

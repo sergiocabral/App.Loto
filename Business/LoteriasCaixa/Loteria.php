@@ -259,7 +259,7 @@ abstract class Loteria implements ILoteria
      */
     public function writeToFile(): ILoteria {
         $line = $this->getText(true);
-        File::prepend($line, $this->getFile());
+        if (!File::prepend($line, $this->getFile())) die('Cannot write in file. Check privileges in operational system.');
         return $this;
     }
 
@@ -270,8 +270,10 @@ abstract class Loteria implements ILoteria
      */
     protected function format(array $results): string {
         $length = strlen($this->countNumbers - 1);
+        $max = max($results);
+        $max = $max > $this->countNumbers ? $max : $this->countNumbers;
         $formatted = '';
-        for ($i = 0; $i < $this->countNumbers; $i++) {
+        for ($i = 0; $i <= $max; $i++) {
             $formatted .= ' ' . (in_array($i, $results) ? str_pad($i, $length, '0', STR_PAD_LEFT) : str_repeat(' ', $length));
         }
         return substr($formatted, 1);

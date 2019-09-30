@@ -11,19 +11,24 @@ use Loto\Util\Execution;
  */
 class Main
 {
-
     /*
      * Construtor.
      * Ponto de entrada na execução do projeto.
      */
     public function __construct()
     {
+        $title = "Loterias da Caixa";
+        if (Execution::isWeb()) echo "<html><head><title>$title</title><link rel='stylesheet' type='text/css' href='/style.css'></head><body><h1><a href='/'>$title</a></h1>";
+        else echo $title . PHP_EOL . PHP_EOL;
+
         $loteria = Loteria::factory(Execution::argument(1));
         if ($loteria != null) {
             $this->run($loteria);
         } else {
             $this->help();
         }
+
+        if (Execution::isWeb()) echo "</body></html>";
     }
 
     /**
@@ -32,20 +37,12 @@ class Main
     private function help(): void {
         if (Execution::isWeb()) {
             ?>
-            <html>
-            <head>
-                <title>Loterias da Caixa</title>
-            </head>
-            <body>
-                <h1>Loterias da Caixa</h1>
-                <h2>Use uma das opções:</h2>
-                <ul>
-                    <?php foreach (Loteria::available() as $name): ?>
-                        <li><h3><a href="?<?php echo $name;?>"><?php echo $name;?></a></h3></li>
-                    <?php endforeach; ?>
-                </ul>
-            </body>
-            </html>
+            <h2>Use uma das opções:</h2>
+            <ul>
+                <?php foreach (Loteria::available() as $name): ?>
+                    <li><h3><a href="?<?php echo $name;?>"><?php echo $name;?></a></h3></li>
+                <?php endforeach; ?>
+            </ul>
             <?php
         } else {
             echo 'Use uma das opções como argumento:' . PHP_EOL;
@@ -58,11 +55,15 @@ class Main
      * @param ILoteria $loteria Instância a ser processada.
      */
     private function run(ILoteria $loteria): void {
-        if (Execution::isWeb()) header("Content-Type: text/plain");
         $id = Execution::argument(2);
+
+        $title = 'Loteria: ' . $loteria->getName();
+        if (Execution::isWeb()) echo "<h2>$title</h2><pre>";
+        else echo $title . PHP_EOL . PHP_EOL;
+
         if (!empty($id)) {
             if (is_numeric($id) && $id > 0) {
-                echo 'Consultando sorteio ' . ((int)$id) . ' da ' . $loteria->getName() . '...' . PHP_EOL;
+                echo 'Consultando sorteio ' . ((int)$id) . '...' . PHP_EOL;
                 echo PHP_EOL;
                 $loteria->setId($id)->load()->write();
                 if (!count($loteria->getResults())) {
@@ -72,12 +73,11 @@ class Main
                 echo "O sorteio deve ser numérico e maior que zero." . PHP_EOL;
             }
         } else {
-            echo $loteria->getName() . PHP_EOL;
-            echo PHP_EOL;
-
             if (Execution::isWeb()) $this->runAsWebPage($loteria);
             else $this->runAsScript($loteria);
         }
+
+        if (Execution::isWeb()) echo "</pre>";
     }
 
     /**
@@ -103,6 +103,24 @@ class Main
      * @param ILoteria $loteria Instância a ser processada.
      */
     private function runAsWebPage(ILoteria $loteria): void {
+        $batch = 30;
+        $loteria->setId($loteria->getIdFromFile())->load();
+        if (count($loteria->getResults())) {
+            header("Refresh: 0");
 
+            echo "Coletando resultados..." . PHP_EOL;
+            echo PHP_EOL;
+
+            while (count($loteria->getResults()) && $batch > 0) {
+                $loteria->writeToFile()->nextId()->load();
+                $batch--;
+            }
+        } else {
+            echo "Todos os resultados exibidos." . PHP_EOL;
+            echo PHP_EOL;
+        }
+
+        $file = $loteria->getFile();
+        if (file_exists($file)) echo file_get_contents($file);
     }
 }

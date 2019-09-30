@@ -14,9 +14,11 @@ class File
      * Adiciona um texto no começo do arquivo.
      * @param string $text Texto.
      * @param string $path Arquivo.
+     * @return bool Indica sucesso com true.
      */
-    public static function prepend(string $text, string $path) {
+    public static function prepend(string $text, string $path): bool {
         if (!file_exists($path)) file_put_contents($path, '');
+        if (!file_exists($path)) return false;
 
         $context = stream_context_create();
         $file = fopen($path, 'r', 0, $context);
@@ -28,5 +30,7 @@ class File
         fclose($file);
         unlink($path);
         rename($pathTemp, $path);
+
+        return true;
     }
 }
