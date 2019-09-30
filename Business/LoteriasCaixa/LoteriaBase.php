@@ -73,7 +73,7 @@ abstract class LoteriaBase implements ILoteria
      */
     public function getResults(): array
     {
-        $result = explode('-', isset($this->results[strtolower($this->jsonKeyResult)]) ? $this->results[strtolower($this->jsonKeyResult)] : []);
+        $result = isset($this->results[strtolower($this->jsonKeyResult)]) ? explode('-', $this->results[strtolower($this->jsonKeyResult)]) : [];
         $result = array_map("trim", $result);
         return $result;
     }
@@ -84,7 +84,7 @@ abstract class LoteriaBase implements ILoteria
      */
     public function getDate(): string
     {
-        return isset($this->results[strtolower($this->jsonKeyDate)]) ? $this->results[strtolower($this->jsonKeyDate)] : "";
+        return isset($this->results[strtolower($this->jsonKeyDate)]) ? $this->results[strtolower($this->jsonKeyDate)] : '';
     }
 
     /**
@@ -106,7 +106,9 @@ abstract class LoteriaBase implements ILoteria
     public function nextId(): ILoteria
     {
         if (isset($this->results[strtolower($this->jsonKeyNext)])) {
-            $this->id = (int)$this->results[strtolower($this->jsonKeyNext)];
+            $id = (int)$this->results[strtolower($this->jsonKeyNext)];
+            if ($id == $this->id) $id++;
+            $this->id = $id;
         } else {
             $this->id++;
         }
@@ -120,7 +122,9 @@ abstract class LoteriaBase implements ILoteria
     public function previousId(): ILoteria
     {
         if (isset($this->results[strtolower($this->jsonKeyPrevious)])) {
-            $this->id = (int)$this->results[strtolower($this->jsonKeyPrevious)];
+            $id = (int)$this->results[strtolower($this->jsonKeyPrevious)];
+            if ($id == $this->id) $id--;
+            $this->id = $id;
         } else {
             $this->id--;
             if ($this->id < 1) $this->id = 1;
@@ -137,7 +141,8 @@ abstract class LoteriaBase implements ILoteria
         try {
             $html = Web::loadHtml($this->getUrl());
             $this->results = json_decode($html, true);
-            $this->results = array_change_key_case($this->results);
+            if (is_array($this->results)) $this->results = array_change_key_case($this->results);
+            else $this->results = [];
         }
         catch (\Exception $exception) {
             $this->results = [];

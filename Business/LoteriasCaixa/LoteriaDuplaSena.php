@@ -58,8 +58,8 @@ class LoteriaDuplaSena extends LoteriaBase
      */
     public function getResults(): array
     {
-        $result1 = explode('-', $this->results[strtolower($this->jsonKeyResult1)]);
-        $result2 = explode('-', $this->results[strtolower($this->jsonKeyResult2)]);
+        $result1 = isset($this->results[strtolower($this->jsonKeyResult1)]) ? explode('-', $this->results[strtolower($this->jsonKeyResult1)]) : [];
+        $result2 = isset($this->results[strtolower($this->jsonKeyResult2)]) ? explode('-', $this->results[strtolower($this->jsonKeyResult2)]) : [];
         $result = array_merge($result1, $result2);
         $result = array_map("trim", $result);
         return $result;
