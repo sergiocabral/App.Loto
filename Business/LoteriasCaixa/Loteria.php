@@ -45,6 +45,7 @@ abstract class Loteria implements ILoteria
         }
         return $options;
     }
+
     /**
      * Retorna a url para retorno dos dados do sorteio atual.
      * @return string Url.
@@ -214,7 +215,7 @@ abstract class Loteria implements ILoteria
             } catch (Exception $exception) {
                 $this->results = [];
             }
-        } while (!count($this->results) && $attempts-- > 0);
+        } while (!count($this->results) && --$attempts > 0);
         return $this;
     }
 
