@@ -58,26 +58,33 @@ class Main
         $id = Execution::argument(2);
 
         $title = 'Loteria: ' . $loteria->getName();
-        if (Execution::isWeb()) echo "<h2>$title</h2><pre>";
+        if (Execution::isWeb()) echo "<h2>$title</h2>";
         else echo $title . PHP_EOL . PHP_EOL;
 
         if (!empty($id)) {
             if (is_numeric($id) && $id > 0) {
-                echo 'Consultando sorteio ' . ((int)$id) . '...' . PHP_EOL;
-                echo PHP_EOL;
-                $loteria->setId($id)->load()->write();
+                $title = 'Consulta do sorteio ' . ((int)$id) . ':';
+                if (Execution::isWeb()) echo "<div class='label loaded'>$title</div>";
+                else echo $title . PHP_EOL . PHP_EOL;
+
+                $title = $loteria->setId($id)->load()->getText();
+                if (Execution::isWeb()) echo "<pre>$title</pre>";
+                else echo $title;
+
                 if (!count($loteria->getResults())) {
-                    echo "Sem resultados." . PHP_EOL;
+                    $title = "Sem resultados.";
+                    if (Execution::isWeb()) echo "<div class='label error'>$title</div>";
+                    else echo $title . PHP_EOL;
                 }
             } else {
-                echo "O sorteio deve ser numérico e maior que zero." . PHP_EOL;
+                $title = "O sorteio deve ser numérico e maior que zero.";
+                if (Execution::isWeb()) echo "<div class='label error'>$title</div>";
+                else echo $title . PHP_EOL;
             }
         } else {
             if (Execution::isWeb()) $this->runAsWebPage($loteria);
             else $this->runAsScript($loteria);
         }
-
-        if (Execution::isWeb()) echo "</pre>";
     }
 
     /**
@@ -103,24 +110,24 @@ class Main
      * @param ILoteria $loteria Instância a ser processada.
      */
     private function runAsWebPage(ILoteria $loteria): void {
-        $batch = 30;
+        $batch = 10;
         $loteria->setId($loteria->getIdFromFile())->load();
         if (count($loteria->getResults())) {
             header("Refresh: 0");
 
-            echo "Coletando resultados..." . PHP_EOL;
-            echo PHP_EOL;
+            echo "<div class='label loading'>Coletando resultados...</div>";
 
             while (count($loteria->getResults()) && $batch > 0) {
                 $loteria->writeToFile()->nextId()->load();
                 $batch--;
             }
         } else {
-            echo "Todos os resultados exibidos." . PHP_EOL;
-            echo PHP_EOL;
+            echo "<div class='label loaded'>Todos os resultados foram carregados.</div>";
         }
 
         $file = $loteria->getFile();
-        if (file_exists($file)) echo file_get_contents($file);
+        if (file_exists($file)) {
+            echo '<pre>' . file_get_contents($file) . '</pre>';
+        }
     }
 }

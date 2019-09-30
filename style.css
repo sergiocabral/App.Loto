@@ -1,4 +1,104 @@
+@import url('https://fonts.googleapis.com/css?family=B612+Mono|Noto+Sans+SC|Russo+One&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+}
+
 html, body {
-    background: white;
-    color: black;
+    background-color: #3C3F41;
+    color: #87939A;
+    font-family: 'Noto Sans SC', sans-serif;
+}
+
+body {
+    margin: 30px;
+}
+
+a {
+    text-decoration: none;
+}
+
+h1 {
+    margin-bottom: 10px;
+}
+
+h1 a {
+    font-family: 'Russo One', sans-serif;
+    color: #A5C261;
+    font-weight: normal;
+    text-shadow: 2px 2px 1px rgba(255, 255, 255, 0.2);
+    font-size: 32px;
+    cursor: pointer;
+}
+
+h1 a:hover {
+    display: inline-block;
+    animation: wiggle 1s;
+}
+
+h2 {
+    margin: 10px 20px;
+    text-shadow: 2px 2px 1px rgba(255, 255, 255, 0.1);
+}
+
+ul {
+    margin: 15px 22px;
+}
+
+ul li {
+    list-style-type: none;
+    margin: 10px 0;
+}
+
+ul li a {
+    color: #e0e0e0;
+    text-shadow: 2px 2px 1px rgba(255, 255, 255, 0.1);
+    border: 2px solid #3E86A0;
+    border-left-width: 10px;
+    border-radius: 0px;
+    padding: 10px 21px 10px 12px;
+    display: inline-block;
+    font-family: "Lucida Console", Monaco, monospace;
+    font-size: 14px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    box-shadow: inset 0 0 0 0 #3E86A0;
+    transition: ease-out box-shadow 0.4s;
+}
+
+ul li a:hover {
+    box-shadow: inset 400px 0 0 0 #3E86A0;
+}
+
+div.label {
+    margin: 0 40px;
+    opacity: 0.8;
+    display: block;
+}
+
+div.loaded {
+    color: #5C96BA;
+}
+
+div.loading {
+    color: #CBBE55;
+}
+
+div.error {
+    color: #B74843;
+}
+
+pre {
+    color: #e0e0e0;
+    font-family: 'B612 Mono', monospace;
+    margin: 10px 40px;
+}
+
+@keyframes wiggle {
+    0% { transform: rotate(0deg); }
+    5% { transform: rotate(1deg); }
+    15% { transform: rotate(-1deg); }
+    20% { transform: rotate(0deg); }
+    100% { transform: rotate(0deg); }
 }
