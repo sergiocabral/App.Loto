@@ -23,7 +23,7 @@ class Execution
      */
     public static function arguments(): array {
         if (self::isWeb()) {
-            $arguments = array_filter(explode('/', $_SERVER['REQUEST_URI']), function ($value) { return $value === ""; });
+            $arguments = array_filter(explode('/', $_SERVER['QUERY_STRING']), function ($value) { return $value !== ""; });
         } else {
             global $argv;
             $arguments = $argv;

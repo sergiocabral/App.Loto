@@ -20,8 +20,33 @@ class Main
     {
         $loteria = Loteria::factory(Execution::argument(1));
         if ($loteria != null) {
-            if (Execution::isWeb()) $this->runAsWebPage($loteria);
-            else $this->runAsScript($loteria);
+            $this->run($loteria);
+        } else {
+            $this->help();
+        }
+    }
+
+    /**
+     * Texto de ajuda.
+     */
+    private function help(): void {
+        if (Execution::isWeb()) {
+            ?>
+            <html>
+            <head>
+                <title>Loterias da Caixa</title>
+            </head>
+            <body>
+                <h1>Loterias da Caixa</h1>
+                <h2>Use uma das opções:</h2>
+                <ul>
+                    <?php foreach (Loteria::available() as $name): ?>
+                        <li><h3><a href="?<?php echo $name;?>"><?php echo $name;?></a></h3></li>
+                    <?php endforeach; ?>
+                </ul>
+            </body>
+            </html>
+            <?php
         } else {
             echo 'Use uma das opções como argumento:' . PHP_EOL;
             foreach (Loteria::available() as $name) echo " - $name" . PHP_EOL;
@@ -29,10 +54,11 @@ class Main
     }
 
     /**
-     * Execução como: script por linha de comando.
+     * Execução do script.
      * @param ILoteria $loteria Instância a ser processada.
      */
-    private function runAsScript(ILoteria $loteria): void {
+    private function run(ILoteria $loteria): void {
+        if (Execution::isWeb()) header("Content-Type: text/plain");
         $id = Execution::argument(2);
         if (!empty($id)) {
             if (is_numeric($id) && $id > 0) {
@@ -49,18 +75,27 @@ class Main
             echo $loteria->getName() . PHP_EOL;
             echo PHP_EOL;
 
-            $loteria->setId($loteria->getIdFromFile())->load();
-            if (count($loteria->getResults())) {
-                while (count($loteria->getResults())) {
-                    $loteria->writeToFile()->write()->nextId()->load();
-                }
-                echo PHP_EOL;
-            }
+            if (Execution::isWeb()) $this->runAsWebPage($loteria);
+            else $this->runAsScript($loteria);
+        }
+    }
 
-            echo "Todos os resultados foram carregados para o arquivo: " . PHP_EOL;
-            echo realpath($loteria->getFile()) . PHP_EOL;
+    /**
+     * Execução como: script por linha de comando.
+     * @param ILoteria $loteria Instância a ser processada.
+     */
+    private function runAsScript(ILoteria $loteria): void {
+        $loteria->setId($loteria->getIdFromFile())->load();
+        if (count($loteria->getResults())) {
+            while (count($loteria->getResults())) {
+                $loteria->writeToFile()->write()->nextId()->load();
+            }
             echo PHP_EOL;
         }
+
+        echo "Todos os resultados foram carregados para o arquivo: " . PHP_EOL;
+        echo realpath($loteria->getFile()) . PHP_EOL;
+        echo PHP_EOL;
     }
 
     /**
