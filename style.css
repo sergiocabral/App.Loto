@@ -65,11 +65,11 @@ ul li a {
     letter-spacing: 1px;
     cursor: pointer;
     box-shadow: inset 0 0 0 0 #3E86A0;
-    transition: ease-out box-shadow 0.4s;
+    transition: ease-out background-color 0.4s;
 }
 
 ul li a:hover {
-    box-shadow: inset 400px 0 0 0 #3E86A0;
+    background-color: #3E86A0;
 }
 
 div.label {
