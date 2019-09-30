@@ -77,9 +77,10 @@ class LoteriaDuplaSena extends Loteria
 
     /**
      * Dados do sorteio como texto.
+     * @param bool $extend Opcional. Quando true exibe resultados formatados.
      * @return string Valor.
      */
-    public function getText(): string {
+    public function getText(bool $extend = false): string {
         $text = "";
         $results = $this->getResultsGroups();
 
@@ -90,8 +91,10 @@ class LoteriaDuplaSena extends Loteria
             $text .= $date . ' | ';
 
             $text .= implode(' ', $results[0]);
-            $formatted = $this->format($results[0]);
-            if (!empty($formatted)) $text .= ' | ' . $formatted;
+            if ($extend) {
+                $formatted = $this->format($results[0]);
+                if (!empty($formatted)) $text .= ' | ' . $formatted;
+            }
 
             $text .= Execution::newline();
 
@@ -99,8 +102,10 @@ class LoteriaDuplaSena extends Loteria
             $text .= str_repeat(' ', strlen($date)) . ' | ';
 
             $text .= implode(' ', $results[1]);
-            $formatted = $this->format($results[1]);
-            if (!empty($formatted)) $text .= ' | ' . $formatted;
+            if ($extend) {
+                $formatted = $this->format($results[1]);
+                if (!empty($formatted)) $text .= ' | ' . $formatted;
+            }
 
             $text .= Execution::newline();
             $text .= Execution::newline();

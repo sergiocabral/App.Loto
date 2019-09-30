@@ -49,13 +49,15 @@ interface ILoteria
 
     /**
      * Escreve os dados do sorteio atual
+     * @param bool $extend Opcional. Quando true exibe resultados formatados.
      * @return ILoteria Auto retorno.
      */
-    function write(): ILoteria;
+    function write(bool $extend = false): ILoteria;
 
     /**
      * Dados do sorteio como texto.
+     * @param bool $extend Opcional. Quando true exibe resultados formatados.
      * @return string Valor.
      */
-    function getText(): string;
+    function getText(bool $extend = false): string;
 }

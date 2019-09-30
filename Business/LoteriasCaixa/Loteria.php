@@ -186,9 +186,10 @@ abstract class Loteria implements ILoteria
 
     /**
      * Dados do sorteio como texto.
+     * @param bool $extend Opcional. Quando true exibe resultados formatados.
      * @return string Valor.
      */
-    public function getText(): string {
+    public function getText(bool $extend = false): string {
         $text = "";
 
         $results = $this->getResults();
@@ -198,8 +199,10 @@ abstract class Loteria implements ILoteria
             $text .= $this->getDate() . ' | ';
             $text .= implode(' ', $results);
 
-            $formatted = $this->format($results);
-            if (!empty($formatted)) $text .= ' | ' . $formatted;
+            if ($extend) {
+                $formatted = $this->format($results);
+                if (!empty($formatted)) $text .= ' | ' . $formatted;
+            }
 
             $text .= Execution::newline();
         }
@@ -209,10 +212,11 @@ abstract class Loteria implements ILoteria
 
     /**
      * Escreve os dados do sorteio atual
+     * @param bool $extend Opcional. Quando true exibe resultados formatados.
      * @return ILoteria Auto retorno.
      */
-    public function write(): ILoteria {
-        echo $this->getText();
+    public function write(bool $extend = false): ILoteria {
+        echo $this->getText($extend);
         return $this;
     }
 
