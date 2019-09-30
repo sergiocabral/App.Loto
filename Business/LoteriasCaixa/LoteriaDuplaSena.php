@@ -39,6 +39,11 @@ class LoteriaDuplaSena extends LoteriaBase
     protected $jsonKeyDate = "dataStr";
 
     /**
+     * @var int Total de números possíveis nos sorteios.
+     */
+    protected $countNumbers = 50;
+
+    /**
      * Retorna a url para retorno dos dados do sorteio atual.
      * @return string Url.
      */
@@ -67,7 +72,7 @@ class LoteriaDuplaSena extends LoteriaBase
     public function getResultsGroups(): array
     {
         $result = $this->getResults();
-        return [array_slice($result, 0, 6), array_slice($result, 6, 6)];
+        return count($result) ? [array_slice($result, 0, 6), array_slice($result, 6, 6)] : [];
     }
 
     /**
@@ -76,13 +81,29 @@ class LoteriaDuplaSena extends LoteriaBase
      */
     public function write(): ILoteria {
         $results = $this->getResultsGroups();
-        $date = $this->getDate();
-        echo $date . ' | ';
-        echo implode('-', $results[0]);
-        echo Execution::newline();
-        echo str_repeat(' ', strlen($date)) . ' | ';
-        echo implode('-', $results[1]);
-        echo Execution::newline();
+
+        if (count($results)) {
+            $date = $this->getDate();
+
+            echo str_pad($this->id, $this->paddingId, '0', STR_PAD_LEFT) . ' | ';
+            echo $date . ' | ';
+
+            echo implode('-', $results[0]);
+            $formatted = $this->format($results[0]);
+            if (!empty($formatted)) echo ' | ' . $formatted;
+
+            echo Execution::newline();
+
+            echo str_repeat(' ', $this->paddingId) . ' | ';
+            echo str_repeat(' ', strlen($date)) . ' | ';
+
+            echo implode('-', $results[1]);
+            $formatted = $this->format($results[1]);
+            if (!empty($formatted)) echo ' | ' . $formatted;
+
+            echo Execution::newline();
+        }
+
         return $this;
     }
 }

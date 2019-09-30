@@ -33,6 +33,11 @@ class LoteriaLotoFacil extends LoteriaBase
     protected $jsonKeyDate = "dt_apuracaoStr";
 
     /**
+     * @var int Total de números possíveis nos sorteios.
+     */
+    protected $countNumbers = 25;
+
+    /**
      * Retorna a url para retorno dos dados do sorteio atual.
      * @return string Url.
      */

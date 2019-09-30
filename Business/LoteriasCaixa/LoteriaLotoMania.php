@@ -33,6 +33,11 @@ class LoteriaLotoMania extends LoteriaBase
     protected $jsonKeyDate = "dtApuracaoStr";
 
     /**
+     * @var int Total de números possíveis nos sorteios.
+     */
+    protected $countNumbers = 100;
+
+    /**
      * Retorna a url para retorno dos dados do sorteio atual.
      * @return string Url.
      */

@@ -33,6 +33,11 @@ class LoteriaQuina extends LoteriaBase
     protected $jsonKeyDate = "dataStr";
 
     /**
+     * @var int Total de números possíveis nos sorteios.
+     */
+    protected $countNumbers = 80;
+
+    /**
      * Retorna a url para retorno dos dados do sorteio atual.
      * @return string Url.
      */

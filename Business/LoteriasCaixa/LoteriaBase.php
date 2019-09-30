@@ -39,6 +39,16 @@ abstract class LoteriaBase implements ILoteria
     protected $jsonKeyDate = "jsonKeyDate";
 
     /**
+     * @var int Total de números possíveis nos sorteios.
+     */
+    protected $countNumbers = 0;
+
+    /**
+     * @var int Largura do identificador do sorteio.
+     */
+    protected $paddingId = 5;
+
+    /**
      * @var int Identificador do sorteio atual.
      */
     protected $id = 1;
@@ -63,7 +73,7 @@ abstract class LoteriaBase implements ILoteria
      */
     public function getResults(): array
     {
-        $result = explode('-', $this->results[strtolower($this->jsonKeyResult)]);
+        $result = explode('-', isset($this->results[strtolower($this->jsonKeyResult)]) ? $this->results[strtolower($this->jsonKeyResult)] : []);
         $result = array_map("trim", $result);
         return $result;
     }
@@ -74,7 +84,7 @@ abstract class LoteriaBase implements ILoteria
      */
     public function getDate(): string
     {
-        return $this->results[strtolower($this->jsonKeyDate)];
+        return isset($this->results[strtolower($this->jsonKeyDate)]) ? $this->results[strtolower($this->jsonKeyDate)] : "";
     }
 
     /**
@@ -124,9 +134,14 @@ abstract class LoteriaBase implements ILoteria
      */
     public function load(): ILoteria
     {
-        $html = Web::loadHtml($this->getUrl());
-        $this->results = json_decode($html, true);
-        $this->results = array_change_key_case($this->results);
+        try {
+            $html = Web::loadHtml($this->getUrl());
+            $this->results = json_decode($html, true);
+            $this->results = array_change_key_case($this->results);
+        }
+        catch (\Exception $exception) {
+            $this->results = [];
+        }
         return $this;
     }
 
@@ -135,9 +150,33 @@ abstract class LoteriaBase implements ILoteria
      * @return ILoteria Auto retorno.
      */
     public function write(): ILoteria {
-        echo $this->getDate() . ' | ';
-        echo implode('-', $this->getResults());
-        echo Execution::newline();
+        $results = $this->getResults();
+
+        if (count($results)) {
+            echo str_pad($this->id, $this->paddingId, '0', STR_PAD_LEFT) . ' | ';
+            echo $this->getDate() . ' | ';
+            echo implode('-', $results);
+
+            $formatted = $this->format($results);
+            if (!empty($formatted)) echo ' | ' . $formatted;
+
+            echo Execution::newline();
+        }
+
         return $this;
+    }
+
+    /**
+     * Formata a exibição dos resultados.
+     * @param array $results Resultados.
+     * @return string Resultados formatado.
+     */
+    protected function format(array $results): string {
+        $length = strlen($this->countNumbers - 1);
+        $formatted = '';
+        for ($i = 0; $i < $this->countNumbers; $i++) {
+            $formatted .= ' ' . (in_array($i, $results) ? str_pad($i, $length, '0', STR_PAD_LEFT) : str_repeat(' ', $length));
+        }
+        return substr($formatted, 1);
     }
 }
