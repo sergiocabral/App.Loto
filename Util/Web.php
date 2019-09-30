@@ -22,9 +22,8 @@ class Web
         $timeout = 120;
 
         $cookie_file =
-            isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] :
-                isset($_SERVER['COMPUTERNAME']) ? $_SERVER['COMPUTERNAME'] :
-                    "";
+            !empty($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] :
+                (!empty($_SERVER['COMPUTERNAME']) ? $_SERVER['COMPUTERNAME'] : "");
         $cookie_file = realpath($cookieDir) . '/' . $cookiePrefix . md5($cookie_file) . $cookieSuffix;
 
         $ch = curl_init($url);
