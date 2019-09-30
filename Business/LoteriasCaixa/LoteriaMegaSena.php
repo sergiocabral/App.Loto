@@ -9,7 +9,7 @@ use Loto\Util\Web;
  * Manipulação de dados de loteria: MegaSena
  * @package Loto\LoteriasCaixa
  */
-class LoteriaMegaSena extends LoteriaBase
+class LoteriaMegaSena extends Loteria
 {
 
     /**

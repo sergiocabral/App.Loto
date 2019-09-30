@@ -52,4 +52,10 @@ interface ILoteria
      * @return ILoteria Auto retorno.
      */
     function write(): ILoteria;
+
+    /**
+     * Dados do sorteio como texto.
+     * @return string Valor.
+     */
+    function getText(): string;
 }

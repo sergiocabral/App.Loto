@@ -9,7 +9,7 @@ use Loto\Util\Web;
  * Manipulação de dados de loteria: Quina
  * @package Loto\LoteriasCaixa
  */
-class LoteriaQuina extends LoteriaBase
+class LoteriaQuina extends Loteria
 {
 
     /**

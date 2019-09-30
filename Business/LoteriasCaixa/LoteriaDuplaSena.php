@@ -10,7 +10,7 @@ use Loto\Util\Web;
  * Manipulação de dados de loteria: DuplaSena
  * @package Loto\LoteriasCaixa
  */
-class LoteriaDuplaSena extends LoteriaBase
+class LoteriaDuplaSena extends Loteria
 {
 
     /**
@@ -76,34 +76,36 @@ class LoteriaDuplaSena extends LoteriaBase
     }
 
     /**
-     * Escreve os dados do sorteio atual
-     * @return ILoteria Auto retorno.
+     * Dados do sorteio como texto.
+     * @return string Valor.
      */
-    public function write(): ILoteria {
+    public function getText(): string {
+        $text = "";
         $results = $this->getResultsGroups();
 
         if (count($results)) {
             $date = $this->getDate();
 
-            echo str_pad($this->id, $this->paddingId, '0', STR_PAD_LEFT) . ' | ';
-            echo $date . ' | ';
+            $text .= str_pad($this->id, $this->paddingId, '0', STR_PAD_LEFT) . ' | ';
+            $text .= $date . ' | ';
 
-            echo implode('-', $results[0]);
+            $text .= implode(' ', $results[0]);
             $formatted = $this->format($results[0]);
-            if (!empty($formatted)) echo ' | ' . $formatted;
+            if (!empty($formatted)) $text .= ' | ' . $formatted;
 
-            echo Execution::newline();
+            $text .= Execution::newline();
 
-            echo str_repeat(' ', $this->paddingId) . ' | ';
-            echo str_repeat(' ', strlen($date)) . ' | ';
+            $text .= str_repeat(' ', $this->paddingId) . ' | ';
+            $text .= str_repeat(' ', strlen($date)) . ' | ';
 
-            echo implode('-', $results[1]);
+            $text .= implode(' ', $results[1]);
             $formatted = $this->format($results[1]);
-            if (!empty($formatted)) echo ' | ' . $formatted;
+            if (!empty($formatted)) $text .= ' | ' . $formatted;
 
-            echo Execution::newline();
+            $text .= Execution::newline();
+            $text .= Execution::newline();
         }
 
-        return $this;
+        return $text;
     }
 }

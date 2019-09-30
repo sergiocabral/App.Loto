@@ -18,12 +18,29 @@ class Main
      */
     public function __construct()
     {
-        $loteria = Loteria::factory("DuplaSena");
+        $loteria = Loteria::factory(Execution::argument(1));
+        if ($loteria != null) {
+            if (Execution::isWeb()) $this->runAsWebPage($loteria);
+            else $this->runAsScript($loteria);
+        } else {
+            echo 'Use uma das opções como argumento:' . Execution::newline();
+            foreach (Loteria::available() as $name) echo " - $name" . Execution::newline();
+        }
+    }
 
-        $loteria->setId(1990)->load()->write();
-        $loteria->nextId()->load()->write();
-        $loteria->nextId()->load()->write();
-        $loteria->nextId()->load()->write();
-        $loteria->nextId()->load()->write();
+    /**
+     * Execução como: script por linha de comando.
+     * @param ILoteria $loteria Instância a ser processada.
+     */
+    private function runAsScript(ILoteria $loteria): void {
+        $loteria->load()->write();
+    }
+
+    /**
+     * Execução como: página web
+     * @param ILoteria $loteria Instância a ser processada.
+     */
+    private function runAsWebPage(ILoteria $loteria): void {
+
     }
 }
