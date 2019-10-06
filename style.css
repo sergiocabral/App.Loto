@@ -13,6 +13,7 @@ html, body {
 }
 
 body {
+    padding-top: 160px;
 }
 
 a {
@@ -114,6 +115,7 @@ div.label {
 pre {
     color: #e0e0e0;
     font-family: 'B612 Mono', monospace;
+    padding: 0 25px 25px 25px;
 }
 
 @keyframes wiggle {
