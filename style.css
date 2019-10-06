@@ -4,6 +4,7 @@
 * {
     margin: 0;
     padding: 0;
+    cursor: default;
 }
 
 html, body {
@@ -18,6 +19,7 @@ body {
 
 a {
     text-decoration: none;
+    cursor: pointer;
 }
 
 h1 a {
@@ -26,7 +28,6 @@ h1 a {
     font-weight: normal;
     text-shadow: 2px 2px 1px rgba(255, 255, 255, 0.2);
     font-size: 32px;
-    cursor: pointer;
 }
 
 h1 a:hover {
@@ -59,7 +60,6 @@ ul li a {
     font-family: "Lucida Console", Monaco, monospace;
     font-size: 14px;
     letter-spacing: 1px;
-    cursor: pointer;
     box-shadow: inset 0 0 0 0 #3E86A0;
     transition: ease-out background-color 0.4s;
 }
