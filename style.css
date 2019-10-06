@@ -39,7 +39,8 @@ h2 {
 }
 
 ul {
-    margin: 15px 22px;
+    padding: 0 25px 25px 25px;
+    margin-top: -50px;
 }
 
 ul li {
