@@ -23,7 +23,8 @@ class Execution
      */
     public static function arguments(): array {
         if (self::isWeb()) {
-            $arguments = array_filter(explode('/', $_SERVER['QUERY_STRING']), function ($value) { return $value !== ""; });
+            $querystring = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : "";
+            $arguments = array_filter(explode('/', $querystring), function ($value) { return $value !== ""; });
             array_unshift($arguments, $_SERVER["SCRIPT_FILENAME"]);
         } else {
             global $argv;
