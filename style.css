@@ -35,6 +35,12 @@ h1 a:hover {
     animation: wiggle 1s;
 }
 
+h1 em {
+    font-size: 15px;
+    margin-left: 10px;
+    opacity: 0.5;
+}
+
 h2 {
     text-shadow: 2px 2px 1px rgba(255, 255, 255, 0.1);
 }
