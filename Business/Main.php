@@ -18,7 +18,7 @@ class Main
     public function __construct()
     {
         $title = "Loterias da Caixa";
-        if (Execution::isWeb()) echo "<html lang='pt-BR'><head><title>$title</title><meta name='viewport' content='width=device-width'><link rel='stylesheet' type='text/css' href='/style.css'></head><body><h1><a href='/'>$title</a></h1>";
+        if (Execution::isWeb()) echo "<html lang='pt-BR'><head><title>$title</title><meta name='viewport' content='width=device-width'><link rel='stylesheet' type='text/css' href='{$this->getBasePath()}/style.css'></head><body><h1><a href='{$this->getBasePath()}'>$title</a></h1>";
         else echo $title . PHP_EOL . PHP_EOL;
 
         $loteria = Loteria::factory(Execution::argument(1));
@@ -129,5 +129,10 @@ class Main
         if (file_exists($file)) {
             echo '<pre>' . file_get_contents($file) . '</pre>';
         }
+    }
+
+    private function getBasePath(): string {
+        if (Execution::isWeb()) return strtok($_SERVER["REQUEST_URI"], '?');
+        else getcwd();
     }
 }
