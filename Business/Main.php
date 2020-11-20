@@ -132,7 +132,7 @@ class Main
     }
 
     private function getBasePath(): string {
-        if (Execution::isWeb()) return strtok($_SERVER["REQUEST_URI"], '?');
-        else getcwd();
+        $basePath = Execution::isWeb() ? strtok($_SERVER["REQUEST_URI"], '?') : getcwd();
+        return rtrim($basePath, "/\\");
     }
 }
