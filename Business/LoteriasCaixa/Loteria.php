@@ -139,10 +139,11 @@ abstract class Loteria implements ILoteria
      */
     public function getResults(): array
     {
-        $result = $this->results[strtolower($this->jsonKeyResult)];
-        if (!isset($result)) {
+        if (!isset($this->results[strtolower($this->jsonKeyResult)])) {
             return [];
         }
+
+        $result = $this->results[strtolower($this->jsonKeyResult)];
 
         if (!is_array($result)) {
             $result = explode('-', $result);
