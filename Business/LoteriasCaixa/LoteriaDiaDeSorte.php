@@ -11,26 +11,6 @@ class LoteriaDiaDeSorte extends Loteria
 {
 
     /**
-     * @var string Valor da chave no JSON: Sorteio anterior
-     */
-    protected $jsonKeyPrevious = "concursoAnterior";
-
-    /**
-     * @var string Valor da chave no JSON: Próximo sorteio
-     */
-    protected $jsonKeyNext = "proximoConcurso";
-
-    /**
-     * @var string Valor da chave no JSON: Resultado
-     */
-    protected $jsonKeyResult = "de_RESULTADO";
-
-    /**
-     * @var string Valor da chave no JSON: Data
-     */
-    protected $jsonKeyDate = "dt_APURACAOStr";
-
-    /**
      * @var int Total de números possíveis nos sorteios.
      */
     protected $countNumbers = 31;

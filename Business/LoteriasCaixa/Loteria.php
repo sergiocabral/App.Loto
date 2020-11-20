@@ -55,22 +55,22 @@ abstract class Loteria implements ILoteria
     /**
      * @var string Valor da chave no JSON: Sorteio anterior
      */
-    protected $jsonKeyPrevious = "jsonKeyPrevious";
+    protected $jsonKeyPrevious = "numeroConcursoAnterior";
 
     /**
      * @var string Valor da chave no JSON: Próximo sorteio
      */
-    protected $jsonKeyNext = "jsonKeyNext";
+    protected $jsonKeyNext = "numeroConcursoProximo";
 
     /**
      * @var string Valor da chave no JSON: Resultado
      */
-    protected $jsonKeyResult = "jsonKeyResult";
+    protected $jsonKeyResult = "dezenasSorteadasOrdemSorteio";
 
     /**
      * @var string Valor da chave no JSON: Data
      */
-    protected $jsonKeyDate = "jsonKeyDate";
+    protected $jsonKeyDate = "dataApuracao";
 
     /**
      * @var int Total de números possíveis nos sorteios.
@@ -139,9 +139,25 @@ abstract class Loteria implements ILoteria
      */
     public function getResults(): array
     {
-        $result = isset($this->results[strtolower($this->jsonKeyResult)]) ? explode('-', $this->results[strtolower($this->jsonKeyResult)]) : [];
+        $result = $this->results[strtolower($this->jsonKeyResult)];
+        if (!isset($result)) {
+            return [];
+        }
+
+        if (!is_array($result)) {
+            $result = explode('-', $result);
+        }
+
         $result = array_map("trim", $result);
+
+        $result = array_map("intval", $result);
+
         sort($result);
+
+        $result = array_map(function ($item) {
+            return str_pad($item, 2, "0", \STR_PAD_LEFT);
+        }, $result);
+
         return $result;
     }
 

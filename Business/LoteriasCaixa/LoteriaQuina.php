@@ -11,26 +11,6 @@ class LoteriaQuina extends Loteria
 {
 
     /**
-     * @var string Valor da chave no JSON: Sorteio anterior
-     */
-    protected $jsonKeyPrevious = "concursoAnterior";
-
-    /**
-     * @var string Valor da chave no JSON: Próximo sorteio
-     */
-    protected $jsonKeyNext = "proximoConcurso";
-
-    /**
-     * @var string Valor da chave no JSON: Resultado
-     */
-    protected $jsonKeyResult = "resultado";
-
-    /**
-     * @var string Valor da chave no JSON: Data
-     */
-    protected $jsonKeyDate = "dataStr";
-
-    /**
      * @var int Total de números possíveis nos sorteios.
      */
     protected $countNumbers = 80;
