@@ -153,11 +153,12 @@ abstract class Loteria implements ILoteria
 
         $result = array_map("intval", $result);
 
-        sort($result);
-
         $result = array_map(function ($item) {
+            $item = $item == 100 ? 0 : $item;
             return str_pad($item, 2, "0", \STR_PAD_LEFT);
         }, $result);
+
+        sort($result);
 
         return $result;
     }
