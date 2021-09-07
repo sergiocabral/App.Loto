@@ -20,7 +20,7 @@ class Main
         $title = "Loterias da Caixa";
         $version = str_replace("#BUILD#", "x", file_get_contents("VERSION"));
 
-        if (Execution::isWeb()) echo "<html lang='pt-BR'><head><title>$title</title><meta name='viewport' content='width=device-width'><link rel='stylesheet' type='text/css' href='{$this->getBasePath()}/style.css'></head><body><h1><a href='{$this->getBasePath()}'>$title</a><em>$version</em></h1>";
+        if (Execution::isWeb()) echo "<html lang='pt-BR'><head><title>$title</title><meta name='viewport' content='width=device-width'><link rel='stylesheet' type='text/css' href='{$this->getBasePath()}/style.css'></head><body><h1><a href='{$this->getBasePath()}/'>$title</a><em>$version</em></h1>";
         else echo $title . " " . $version . PHP_EOL . PHP_EOL;
 
         $loteria = Loteria::factory(Execution::argument(1));
