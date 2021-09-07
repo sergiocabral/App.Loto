@@ -34,8 +34,8 @@ jobs:
           # FTP password
           password: 2eFFuVG9sI
           # Force SSL encryption
-          forceSsl: true # optional, default is false
+          forceSsl: true
           # Local directory
-          localDir: . # optional, default is .
+          localDir: .
           # Remote directory
-          remoteDir: /htdocs # optional, default is .
+          remoteDir: /htdocs
