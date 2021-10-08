@@ -2,7 +2,7 @@
 
 Este script coleta dados (web scraper) do site Loterias da Caixa, em http://loterias.caixa.gov.br.
 
-A execução pode ser via **linha de comando** ou **página de internet** (https://sergiocabral.com/sorteios/
+A execução pode ser via **linha de comando** ou **página de internet** (https://sorteios.sergiocabral.com/
 ).
 
 Em ambos os casos deve receber como parâmetro o nome da loteria. Se não for informado será exibida uma lista com as opções disponíveis.
