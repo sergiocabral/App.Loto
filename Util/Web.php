@@ -40,6 +40,8 @@ class Web
         curl_setopt($ch, CURLOPT_MAXREDIRS, 10 );
         curl_setopt($ch, CURLOPT_USERAGENT, $useragent);
         curl_setopt($ch, CURLOPT_REFERER, 'https://www.google.com/');
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         $content = curl_exec($ch);
 
         if (empty($content) && curl_errno($ch)) {
