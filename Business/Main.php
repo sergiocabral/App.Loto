@@ -115,9 +115,8 @@ class Main
         $batch = 10;
         $loteria->setId($loteria->getIdFromFile())->load();
         if (count($loteria->getResults())) {
-            header("Refresh: 0");
-
             echo "<div class='label loading'>Coletando resultados...</div>";
+            echo "<script>setTimeout(() => window.location.reload(), 1000);</script>";
 
             while (count($loteria->getResults()) && $batch > 0) {
                 $loteria->writeToFile()->nextId()->load();
