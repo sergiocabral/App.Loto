@@ -71,6 +71,13 @@ type NumberTrend = {
   intensity: number;
 };
 
+type NumberTrendGroup = {
+  hits: number;
+  items: NumberTrend[];
+  visibleItems: NumberTrend[];
+  hiddenCount: number;
+};
+
 type AnalysisData = {
   selectedDraws: Draw[];
   stats: NumberTrend[];
@@ -103,6 +110,9 @@ const DUPLA_SENA_SCOPE_OPTIONS: Array<{ value: DuplaSenaAnalysisScope; label: st
   { value: "first", label: "1º sorteio" },
   { value: "second", label: "2º sorteio" },
 ];
+
+const LEAST_GROUP_LIMIT = 4;
+const LEAST_GROUP_VISIBLE_NUMBERS = 24;
 
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
@@ -235,6 +245,39 @@ function getAnalysisViewLabel(view: AnalysisView): string {
   return ANALYSIS_VIEW_OPTIONS.find((option) => option.value === view)?.label ?? "Análise";
 }
 
+function formatHitsLabel(hitCount: number): string {
+  return `${hitCount} ${hitCount === 1 ? "vez" : "vezes"}`;
+}
+
+function formatNumberCount(count: number): string {
+  return `${count} ${count === 1 ? "número" : "números"}`;
+}
+
+function getAnalysisFilterText(data: AnalysisData): string {
+  const periodText = data.periodLabel.toLowerCase();
+
+  if (data.scopeLabel === "Todos os sorteios") {
+    return periodText;
+  }
+
+  return `${periodText} no ${data.scopeLabel.toLowerCase()}`;
+}
+
+function getAnalysisDescription(view: AnalysisView, data: AnalysisData): string {
+  const filterText = getAnalysisFilterText(data);
+
+  switch (view) {
+    case "least":
+      return `Considerando ${filterText}, agrupa os números pela menor quantidade de aparições.`;
+    case "delayed":
+      return `Considerando ${filterText}, mostra há quantos concursos cada número não aparece.`;
+    case "map":
+      return `Considerando ${filterText}, cores mais fortes indicam números que apareceram mais.`;
+    default:
+      return `Considerando ${filterText}, destaca os números que mais apareceram.`;
+  }
+}
+
 function getAnalysisPeriodLabel(period: AnalysisPeriod, drawCount: number): string {
   if (period === "all") {
     return `${drawCount} concursos`;
@@ -274,6 +317,28 @@ function buildNumberRange(lottery: LotteryDefinition): string[] {
   }
 
   return Array.from({ length: lottery.countNumbers }, (_, index) => String(index + 1).padStart(2, "0"));
+}
+
+function buildLeastTrendGroups(stats: NumberTrend[]): NumberTrendGroup[] {
+  const byHits = new Map<number, NumberTrend[]>();
+
+  for (const item of stats) {
+    byHits.set(item.hits, [...(byHits.get(item.hits) ?? []), item]);
+  }
+
+  return Array.from(byHits.entries())
+    .sort(([leftHits], [rightHits]) => leftHits - rightHits)
+    .slice(0, LEAST_GROUP_LIMIT)
+    .map(([hits, items]) => {
+      const sortedItems = [...items].sort((left, right) => left.value - right.value);
+
+      return {
+        hits,
+        items: sortedItems,
+        visibleItems: sortedItems.slice(0, LEAST_GROUP_VISIBLE_NUMBERS),
+        hiddenCount: Math.max(0, sortedItems.length - LEAST_GROUP_VISIBLE_NUMBERS),
+      };
+    });
 }
 
 function buildAnalysisData(
@@ -734,7 +799,20 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
       <section className="hero-card">
         <div>
           <span className="eyebrow">Luckygames</span>
-          <h1>Resultados das Loterias da Caixa.</h1>
+          <h1>Resultados das Loterias da Caixa, grátis e fácil.</h1>
+          <p className="hero-copy">
+            Consulte sorteios e estatísticas simples. Os números vêm da fonte pública das Loterias da Caixa; o Luckygames apenas facilita a consulta.
+          </p>
+          <div className="donation-callout">
+            <strong>Ganhou ou o serviço ajudou?</strong>
+            <span>
+              Apoie com um donativo por <a href="mailto:contato@luckygames.tips">contato@luckygames.tips</a> ou cartão em{" "}
+              <a href="https://idontneedit.org" rel="noreferrer" target="_blank">
+                idontneedit.org
+              </a>
+              .
+            </span>
+          </div>
         </div>
       </section>
 
@@ -791,7 +869,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
             <div className="sync-panel-header">
               <div>
                 <span className="eyebrow">Sincronização</span>
-                <strong>{drawCount ? "Buscar próximos" : "Montar base"}</strong>
+                <strong>Resultados</strong>
               </div>
               <button
                 className="sync-button"
@@ -804,7 +882,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
             </div>
             <div className="sync-progress-grid">
               <div>
-                <span>Atual</span>
+                <span>Concurso</span>
                 <strong>{syncInfo.currentDrawNumber ?? "--"}</strong>
               </div>
               <div>
@@ -866,6 +944,18 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
           ) : null}
           {status !== "loading" && status !== "error" && draws.length > 0 ? (
             <>
+              {rawText ? (
+                <details className="raw-output raw-output-top">
+                  <summary>Visão crua dos resultados</summary>
+                  <div className="raw-output-actions">
+                    <span>Texto simples gerado a partir dos resultados salvos.</span>
+                    <a className="legacy-link" href={legacyHref} rel="noreferrer" target="_blank">
+                      Abrir em nova aba
+                    </a>
+                  </div>
+                  <pre>{rawText}</pre>
+                </details>
+              ) : null}
               <DrawSpotlight draw={selectedDraw ?? draws[0]} />
               <AnalysisPanel
                 activeView={analysisView}
@@ -878,18 +968,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
                 scope={duplaSenaAnalysisScope}
               />
               <DrawList draws={visibleDraws} onSelect={setSelectedDraw} selectedDrawNumber={selectedDraw?.drawNumber ?? null} />
-              {rawText ? (
-                <details className="raw-output">
-                  <summary>Ver formato texto legado</summary>
-                  <div className="raw-output-actions">
-                    <span>Texto gerado com os resultados salvos.</span>
-                    <a className="legacy-link" href={legacyHref} rel="noreferrer" target="_blank">
-                      Abrir em nova aba
-                    </a>
-                  </div>
-                  <pre>{rawText}</pre>
-                </details>
-              ) : null}
             </>
           ) : null}
         </section>
@@ -961,47 +1039,38 @@ function AnalysisPanel({
   scope: DuplaSenaAnalysisScope;
 }) {
   return (
-    <section className="analysis-panel" aria-label="Análise rápida dos resultados">
-      <div className="analysis-header">
+    <details className="analysis-panel" open>
+      <summary className="analysis-summary">
         <div>
           <span className="eyebrow">Análise rápida</span>
-          <h3>{getAnalysisViewLabel(activeView)}</h3>
+          <strong>{data ? getAnalysisDescription(activeView, data) : "Carregue resultados para ver a análise."}</strong>
         </div>
-        <span>{data ? `${data.periodLabel} · ${data.scopeLabel}` : "Sem dados"}</span>
-      </div>
+        <span className="analysis-summary-chip">{data ? `${getAnalysisViewLabel(activeView)} · ${data.periodLabel}` : "Abrir"}</span>
+      </summary>
 
-      <details className="analysis-options">
-        <summary>
-          <span>Ajustar análise</span>
-          <strong>{getAnalysisViewLabel(activeView)}</strong>
-        </summary>
-
-        <div className="analysis-controls" aria-label="Filtros da análise">
-          <div className="control-group">
-            <span>Período</span>
-            <div className="segmented-control compact" aria-label="Período analisado">
-              {ANALYSIS_PERIOD_OPTIONS.map((option) => (
-                <button
-                  className={period === option.value ? "active" : ""}
-                  key={String(option.value)}
-                  onClick={() => onPeriodChange(option.value)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+      <div className="analysis-body" aria-label="Análise rápida dos resultados">
+        {data ? (
+          <div className="analysis-current-filter">
+            <span>{getAnalysisViewLabel(activeView)}</span>
+            <strong>{data.scopeLabel === "Todos os sorteios" ? data.periodLabel : `${data.periodLabel} · ${data.scopeLabel}`}</strong>
           </div>
+        ) : null}
 
-          {isDuplaSena ? (
+        <details className="analysis-options">
+          <summary>
+            <span>Ajustar análise</span>
+            <strong>{getAnalysisViewLabel(activeView)}</strong>
+          </summary>
+
+          <div className="analysis-controls" aria-label="Filtros da análise">
             <div className="control-group">
-              <span>Sorteio</span>
-              <div className="segmented-control compact" aria-label="Sorteio da Dupla Sena">
-                {DUPLA_SENA_SCOPE_OPTIONS.map((option) => (
+              <span>Período</span>
+              <div className="segmented-control compact" aria-label="Período analisado">
+                {ANALYSIS_PERIOD_OPTIONS.map((option) => (
                   <button
-                    className={scope === option.value ? "active" : ""}
-                    key={option.value}
-                    onClick={() => onScopeChange(option.value)}
+                    className={period === option.value ? "active" : ""}
+                    key={String(option.value)}
+                    onClick={() => onPeriodChange(option.value)}
                     type="button"
                   >
                     {option.label}
@@ -1009,28 +1078,46 @@ function AnalysisPanel({
                 ))}
               </div>
             </div>
-          ) : null}
 
-          <div className="control-group">
-            <span>Ver</span>
-            <div className="segmented-control view-selector" aria-label="Tipo de análise">
-              {ANALYSIS_VIEW_OPTIONS.map((option) => (
-                <button
-                  className={activeView === option.value ? "active" : ""}
-                  key={option.value}
-                  onClick={() => onViewChange(option.value)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
+            {isDuplaSena ? (
+              <div className="control-group">
+                <span>Sorteio</span>
+                <div className="segmented-control compact" aria-label="Sorteio da Dupla Sena">
+                  {DUPLA_SENA_SCOPE_OPTIONS.map((option) => (
+                    <button
+                      className={scope === option.value ? "active" : ""}
+                      key={option.value}
+                      onClick={() => onScopeChange(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="control-group">
+              <span>Ver</span>
+              <div className="segmented-control view-selector" aria-label="Tipo de análise">
+                {ANALYSIS_VIEW_OPTIONS.map((option) => (
+                  <button
+                    className={activeView === option.value ? "active" : ""}
+                    key={option.value}
+                    onClick={() => onViewChange(option.value)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      </details>
+        </details>
 
-      {data ? <AnalysisContent data={data} view={activeView} /> : <div className="analysis-empty">Carregue resultados para ver a análise.</div>}
-    </section>
+        {data ? <AnalysisContent data={data} view={activeView} /> : <div className="analysis-empty">Carregue resultados para ver a análise.</div>}
+      </div>
+    </details>
   );
 }
 
@@ -1039,7 +1126,11 @@ function AnalysisContent({ data, view }: { data: AnalysisData; view: AnalysisVie
     return <NumberHeatMap stats={data.stats} />;
   }
 
-  const items = view === "most" ? data.most : view === "least" ? data.least : data.delayed;
+  if (view === "least") {
+    return <LeastTrendGroups groups={buildLeastTrendGroups(data.stats)} />;
+  }
+
+  const items = view === "most" ? data.most : data.delayed;
   const label = view === "delayed" ? "concursos sem sair" : "vezes";
   const getValue = (item: NumberTrend) => (view === "delayed" ? item.overdue : item.hits);
 
@@ -1057,6 +1148,27 @@ function AnalysisContent({ data, view }: { data: AnalysisData; view: AnalysisVie
             </div>
           </div>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function LeastTrendGroups({ groups }: { groups: NumberTrendGroup[] }) {
+  return (
+    <div className="least-groups">
+      {groups.map((group) => (
+        <article className="least-group" key={`least-${group.hits}`}>
+          <div className="least-group-header">
+            <strong>{formatHitsLabel(group.hits)}</strong>
+            <span>{formatNumberCount(group.items.length)}</span>
+          </div>
+          <div className="least-number-cloud">
+            {group.visibleItems.map((item) => (
+              <span key={`least-${group.hits}-${item.number}`}>{item.number}</span>
+            ))}
+            {group.hiddenCount ? <small>+{group.hiddenCount}</small> : null}
+          </div>
+        </article>
       ))}
     </div>
   );
