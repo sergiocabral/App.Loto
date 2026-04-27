@@ -1,14 +1,9 @@
-import Link from "next/link";
-import { getAppVersion } from "@/lib/render";
+import type { ReactNode } from "react";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <>
-      <h1>
-        <Link href="/">Loterias da Caixa</Link>
-        <em>{getAppVersion()}</em>
-      </h1>
-      {children}
-    </>
+    <div className="app-shell">
+      <main className="app-main">{children}</main>
+    </div>
   );
 }

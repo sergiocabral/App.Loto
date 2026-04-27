@@ -5,7 +5,7 @@ export function normalizeNumbers(value: string[] | string | undefined): string[]
     return [];
   }
 
-  const rawNumbers = Array.isArray(value) ? value : value.split("-");
+  const rawNumbers = Array.isArray(value) ? value : value.split(/[\s-]+/);
 
   return rawNumbers
     .map((item) => Number.parseInt(String(item).trim(), 10))

@@ -4,6 +4,8 @@ export type CaixaLotteryResponse = {
   numeroConcursoProximo?: number;
   dataApuracao?: string;
   dezenasSorteadasOrdemSorteio?: string[] | string;
+  listaDezenas?: string[];
+  listaDezenasSegundoSorteio?: string[];
 };
 
 export type Draw = {
@@ -11,6 +13,7 @@ export type Draw = {
   drawNumber: number;
   date: string;
   numbers: string[];
+  numberGroups?: string[][];
   previousDrawNumber: number | null;
   nextDrawNumber: number | null;
   raw: CaixaLotteryResponse;

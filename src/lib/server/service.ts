@@ -2,85 +2,389 @@ import { getLottery } from "@/data/lotteries";
 import { fetchDrawFromCaixa } from "@/lib/server/caixa";
 import {
   getDraw,
-  getNextDrawNumberFromStorage,
+  getNextMissingDrawNumber,
   listDraws,
   saveDraw,
   type StoredDraw,
 } from "@/lib/server/repository";
 
+const SERVICE_LOG_PREFIX = "[app-loto-next][service]";
+
+function logService(message: string, details?: Record<string, unknown>): void {
+  if (details) {
+    console.info(SERVICE_LOG_PREFIX, message, details);
+    return;
+  }
+
+  console.info(SERVICE_LOG_PREFIX, message);
+}
+
+function warnService(message: string, details?: Record<string, unknown>): void {
+  if (details) {
+    console.warn(SERVICE_LOG_PREFIX, message, details);
+    return;
+  }
+
+  console.warn(SERVICE_LOG_PREFIX, message);
+}
+
+function errorService(message: string, error: unknown, details?: Record<string, unknown>): void {
+  console.error(SERVICE_LOG_PREFIX, message, {
+    ...details,
+    error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error,
+  });
+}
+
+function elapsedMs(startedAt: number): number {
+  return Date.now() - startedAt;
+}
+
 export type CollectResult = {
   draws: StoredDraw[];
   hasMore: boolean;
-  nextDrawNumber: number;
+  nextDrawNumber: number | null;
 };
 
-export async function getOrFetchDraw(lotterySlug: string, drawNumber: number): Promise<StoredDraw | null> {
-  const lottery = getLottery(lotterySlug);
+export type CaixaSyncStopReason =
+  | "batch_completed"
+  | "not_found_limit"
+  | "api_returned_previous_draw"
+  | "api_returned_different_draw"
+  | "unknown_lottery"
+  | "error";
 
-  if (!lottery) {
-    return null;
+export type CaixaSyncResult = {
+  draws: StoredDraw[];
+  savedDraws: StoredDraw[];
+  attemptedDrawNumbers: number[];
+  skippedDrawNumbers: number[];
+  currentDrawNumber: number | null;
+  nextDrawNumber: number | null;
+  hasMore: boolean;
+  totalStoredDraws: number;
+  newestDrawNumber: number | null;
+  oldestDrawNumber: number | null;
+  consecutiveMisses: number;
+  batchSize: number;
+  stopReason: CaixaSyncStopReason;
+  error?: string;
+};
+
+const DEFAULT_CAIXA_SYNC_BATCH_SIZE = 5;
+const MAX_CAIXA_SYNC_BATCH_SIZE = 25;
+const MAX_CONSECUTIVE_NOT_FOUND = 3;
+
+function normalizeBatchSize(value: number | undefined): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_CAIXA_SYNC_BATCH_SIZE;
   }
 
-  const cached = await getDraw(lottery.slug, drawNumber);
-
-  if (cached) {
-    return cached;
-  }
-
-  const fetched = await fetchDrawFromCaixa(lottery.slug, drawNumber);
-
-  if (!fetched) {
-    return null;
-  }
-
-  return saveDraw(fetched);
+  return Math.min(MAX_CAIXA_SYNC_BATCH_SIZE, Math.max(1, Math.floor(value ?? DEFAULT_CAIXA_SYNC_BATCH_SIZE)));
 }
 
-export async function collectMissingDraws(lotterySlug: string, batchSize = 10): Promise<CollectResult> {
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Erro desconhecido ao consultar a Caixa.";
+}
+
+export async function getStoredDraw(lotterySlug: string, drawNumber: number): Promise<StoredDraw | null> {
+  const startedAt = Date.now();
+  logService("getStoredDraw:start", { lotterySlug, drawNumber });
+
   const lottery = getLottery(lotterySlug);
 
   if (!lottery) {
+    warnService("getStoredDraw:unknown-lottery", { lotterySlug, drawNumber, elapsedMs: elapsedMs(startedAt) });
+    return null;
+  }
+
+  const draw = await getDraw(lottery.slug, drawNumber);
+  logService("getStoredDraw:done", {
+    lottery: lottery.slug,
+    drawNumber,
+    found: Boolean(draw),
+    elapsedMs: elapsedMs(startedAt),
+  });
+
+  return draw;
+}
+
+export async function fetchAndStoreDrawFromCaixa(lotterySlug: string, drawNumber: number): Promise<StoredDraw | null> {
+  const startedAt = Date.now();
+  logService("fetchAndStoreDrawFromCaixa:start", { lotterySlug, drawNumber });
+
+  const lottery = getLottery(lotterySlug);
+
+  if (!lottery) {
+    warnService("fetchAndStoreDrawFromCaixa:unknown-lottery", {
+      lotterySlug,
+      drawNumber,
+      elapsedMs: elapsedMs(startedAt),
+    });
+    return null;
+  }
+
+  try {
+    const fetchedDraw = await fetchDrawFromCaixa(lottery.slug, drawNumber);
+
+    if (!fetchedDraw) {
+      logService("fetchAndStoreDrawFromCaixa:not-found", {
+        lottery: lottery.slug,
+        drawNumber,
+        elapsedMs: elapsedMs(startedAt),
+      });
+      return null;
+    }
+
+    const storedDraw = await saveDraw(fetchedDraw);
+    logService("fetchAndStoreDrawFromCaixa:saved", {
+      lottery: lottery.slug,
+      drawNumber,
+      groups: storedDraw.numberGroups?.length ?? 0,
+      numbers: storedDraw.numbers.length,
+      elapsedMs: elapsedMs(startedAt),
+    });
+
+    return storedDraw;
+  } catch (error) {
+    errorService("fetchAndStoreDrawFromCaixa:error", error, {
+      lottery: lottery.slug,
+      drawNumber,
+      elapsedMs: elapsedMs(startedAt),
+    });
+    throw error;
+  }
+}
+
+export async function syncMissingDrawsFromCaixa(
+  lotterySlug: string,
+  options: { batchSize?: number; startAt?: number } = {},
+): Promise<CaixaSyncResult> {
+  const startedAt = Date.now();
+  const batchSize = normalizeBatchSize(options.batchSize);
+  logService("syncMissingDrawsFromCaixa:start", { lotterySlug, batchSize, startAt: options.startAt ?? 1 });
+
+  const lottery = getLottery(lotterySlug);
+
+  if (!lottery) {
+    warnService("syncMissingDrawsFromCaixa:unknown-lottery", { lotterySlug, elapsedMs: elapsedMs(startedAt) });
+
     return {
       draws: [],
+      savedDraws: [],
+      attemptedDrawNumbers: [],
+      skippedDrawNumbers: [],
+      currentDrawNumber: null,
+      nextDrawNumber: null,
       hasMore: false,
-      nextDrawNumber: 1,
+      totalStoredDraws: 0,
+      newestDrawNumber: null,
+      oldestDrawNumber: null,
+      consecutiveMisses: 0,
+      batchSize,
+      stopReason: "unknown_lottery",
+      error: `Unknown lottery: ${lotterySlug}`,
     };
   }
 
-  let nextDrawNumber = await getNextDrawNumberFromStorage(lottery.slug);
-  const draws: StoredDraw[] = [];
+  const savedDraws: StoredDraw[] = [];
+  const attemptedDrawNumbers: number[] = [];
+  const skippedDrawNumbers: number[] = [];
+  const startAt = Math.max(1, Math.floor(options.startAt ?? 1));
+  let currentDrawNumber: number | null = null;
+  let nextDrawNumber: number | null = await getNextMissingDrawNumber(lottery.slug, startAt);
+  let consecutiveMisses = 0;
+  let stopReason: CaixaSyncStopReason = "batch_completed";
+  let errorMessage: string | undefined;
 
-  for (let remaining = batchSize; remaining > 0; remaining -= 1) {
-    const fetched = await fetchDrawFromCaixa(lottery.slug, nextDrawNumber);
+  for (let index = 0; index < batchSize && nextDrawNumber; index += 1) {
+    currentDrawNumber = nextDrawNumber;
+    attemptedDrawNumbers.push(currentDrawNumber);
 
-    if (!fetched) {
-      return {
-        draws,
-        hasMore: false,
-        nextDrawNumber,
-      };
+    logService("syncMissingDrawsFromCaixa:attempt", {
+      lottery: lottery.slug,
+      currentDrawNumber,
+      batchIndex: index + 1,
+      batchSize,
+    });
+
+    try {
+      const fetchedDraw = await fetchDrawFromCaixa(lottery.slug, currentDrawNumber);
+
+      if (!fetchedDraw) {
+        consecutiveMisses += 1;
+        skippedDrawNumbers.push(currentDrawNumber);
+        warnService("syncMissingDrawsFromCaixa:not-found", {
+          lottery: lottery.slug,
+          currentDrawNumber,
+          consecutiveMisses,
+          maxConsecutiveMisses: MAX_CONSECUTIVE_NOT_FOUND,
+        });
+
+        if (consecutiveMisses >= MAX_CONSECUTIVE_NOT_FOUND) {
+          stopReason = "not_found_limit";
+          nextDrawNumber = null;
+          break;
+        }
+
+        nextDrawNumber = await getNextMissingDrawNumber(lottery.slug, currentDrawNumber + 1);
+        continue;
+      }
+
+      if (fetchedDraw.drawNumber < currentDrawNumber) {
+        stopReason = "api_returned_previous_draw";
+        nextDrawNumber = null;
+        logService("syncMissingDrawsFromCaixa:reached-api-end", {
+          lottery: lottery.slug,
+          requestedDrawNumber: currentDrawNumber,
+          responseDrawNumber: fetchedDraw.drawNumber,
+          newestKnownDraw: fetchedDraw.drawNumber,
+        });
+        break;
+      }
+
+      if (fetchedDraw.drawNumber !== currentDrawNumber) {
+        stopReason = "api_returned_different_draw";
+        nextDrawNumber = null;
+        skippedDrawNumbers.push(currentDrawNumber);
+        warnService("syncMissingDrawsFromCaixa:different-draw", {
+          lottery: lottery.slug,
+          requestedDrawNumber: currentDrawNumber,
+          responseDrawNumber: fetchedDraw.drawNumber,
+        });
+        break;
+      }
+
+      const storedDraw = await saveDraw(fetchedDraw);
+      savedDraws.push(storedDraw);
+      consecutiveMisses = 0;
+
+      const apiNextDrawNumber = fetchedDraw.nextDrawNumber ?? null;
+      const sequentialNextDrawNumber = currentDrawNumber + 1;
+      const nextSearchStart = apiNextDrawNumber === sequentialNextDrawNumber ? apiNextDrawNumber : sequentialNextDrawNumber;
+
+      if (apiNextDrawNumber && apiNextDrawNumber !== sequentialNextDrawNumber) {
+        logService("syncMissingDrawsFromCaixa:api-next-ignored", {
+          lottery: lottery.slug,
+          currentDrawNumber,
+          apiNextDrawNumber,
+          sequentialNextDrawNumber,
+        });
+      }
+
+      nextDrawNumber = await getNextMissingDrawNumber(lottery.slug, nextSearchStart);
+
+      logService("syncMissingDrawsFromCaixa:saved", {
+        lottery: lottery.slug,
+        drawNumber: storedDraw.drawNumber,
+        savedInBatch: savedDraws.length,
+        apiNextDrawNumber,
+        nextSearchStart,
+        nextMissingDrawNumber: nextDrawNumber,
+        elapsedMs: elapsedMs(startedAt),
+      });
+    } catch (error) {
+      stopReason = "error";
+      errorMessage = getErrorMessage(error);
+      nextDrawNumber = currentDrawNumber;
+      errorService("syncMissingDrawsFromCaixa:error", error, {
+        lottery: lottery.slug,
+        currentDrawNumber,
+        savedInBatch: savedDraws.length,
+        elapsedMs: elapsedMs(startedAt),
+      });
+      break;
     }
-
-    const stored = await saveDraw(fetched);
-    draws.push(stored);
-    nextDrawNumber = fetched.nextDrawNumber && fetched.nextDrawNumber !== fetched.drawNumber
-      ? fetched.nextDrawNumber
-      : fetched.drawNumber + 1;
   }
+
+  const draws = await listDraws(lottery.slug);
+  const hasMore = stopReason === "batch_completed" && attemptedDrawNumbers.length === batchSize && Boolean(nextDrawNumber);
+
+  logService("syncMissingDrawsFromCaixa:done", {
+    lottery: lottery.slug,
+    savedInBatch: savedDraws.length,
+    attemptedInBatch: attemptedDrawNumbers.length,
+    skippedInBatch: skippedDrawNumbers.length,
+    currentDrawNumber,
+    nextDrawNumber,
+    hasMore,
+    stopReason,
+    totalStoredDraws: draws.length,
+    newestDrawNumber: draws[0]?.drawNumber ?? null,
+    oldestDrawNumber: draws.at(-1)?.drawNumber ?? null,
+    elapsedMs: elapsedMs(startedAt),
+  });
 
   return {
     draws,
-    hasMore: true,
+    savedDraws,
+    attemptedDrawNumbers,
+    skippedDrawNumbers,
+    currentDrawNumber,
+    nextDrawNumber,
+    hasMore,
+    totalStoredDraws: draws.length,
+    newestDrawNumber: draws[0]?.drawNumber ?? null,
+    oldestDrawNumber: draws.at(-1)?.drawNumber ?? null,
+    consecutiveMisses,
+    batchSize,
+    stopReason,
+    ...(errorMessage ? { error: errorMessage } : {}),
+  };
+}
+
+export async function collectMissingDraws(lotterySlug: string): Promise<CollectResult> {
+  const startedAt = Date.now();
+  logService("collectMissingDraws:start-database-only", { lotterySlug });
+
+  const lottery = getLottery(lotterySlug);
+
+  if (!lottery) {
+    warnService("collectMissingDraws:unknown-lottery", { lotterySlug, elapsedMs: elapsedMs(startedAt) });
+
+    return {
+      draws: [],
+      hasMore: false,
+      nextDrawNumber: null,
+    };
+  }
+
+  const draws = await listDraws(lottery.slug);
+  const nextDrawNumber = draws[0]?.drawNumber ? draws[0].drawNumber + 1 : null;
+
+  logService("collectMissingDraws:done-database-only", {
+    lottery: lottery.slug,
+    storedDraws: draws.length,
+    newestDrawNumber: draws[0]?.drawNumber ?? null,
+    nextDrawNumber,
+    hasMore: false,
+    elapsedMs: elapsedMs(startedAt),
+  });
+
+  return {
+    draws,
+    hasMore: false,
     nextDrawNumber,
   };
 }
 
 export async function loadLotteryHistory(lotterySlug: string): Promise<StoredDraw[]> {
+  const startedAt = Date.now();
+  logService("loadLotteryHistory:start-database-only", { lotterySlug });
+
   const lottery = getLottery(lotterySlug);
 
   if (!lottery) {
+    warnService("loadLotteryHistory:unknown-lottery", { lotterySlug, elapsedMs: elapsedMs(startedAt) });
     return [];
   }
 
-  return listDraws(lottery.slug);
+  const history = await listDraws(lottery.slug);
+  logService("loadLotteryHistory:done-database-only", {
+    lottery: lottery.slug,
+    storedDraws: history.length,
+    newestDrawNumber: history[0]?.drawNumber ?? null,
+    elapsedMs: elapsedMs(startedAt),
+  });
+
+  return history;
 }
