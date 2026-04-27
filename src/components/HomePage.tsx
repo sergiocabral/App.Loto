@@ -58,6 +58,51 @@ type LoadedLotteryData = {
 };
 
 type FetchMode = "database" | "caixa";
+type AnalysisPeriod = 10 | 25 | 50 | 100 | "all";
+type AnalysisView = "most" | "least" | "delayed" | "map";
+type DuplaSenaAnalysisScope = "all" | "first" | "second";
+
+type NumberTrend = {
+  number: string;
+  value: number;
+  hits: number;
+  overdue: number;
+  lastDrawNumber: number | null;
+  intensity: number;
+};
+
+type AnalysisData = {
+  selectedDraws: Draw[];
+  stats: NumberTrend[];
+  most: NumberTrend[];
+  least: NumberTrend[];
+  delayed: NumberTrend[];
+  maxHits: number;
+  drawCount: number;
+  periodLabel: string;
+  scopeLabel: string;
+};
+
+const ANALYSIS_PERIOD_OPTIONS: Array<{ value: AnalysisPeriod; label: string }> = [
+  { value: 10, label: "10" },
+  { value: 25, label: "25" },
+  { value: 50, label: "50" },
+  { value: 100, label: "100" },
+  { value: "all", label: "Todos" },
+];
+
+const ANALYSIS_VIEW_OPTIONS: Array<{ value: AnalysisView; label: string }> = [
+  { value: "most", label: "Mais sorteados" },
+  { value: "least", label: "Menos sorteados" },
+  { value: "delayed", label: "Atrasados" },
+  { value: "map", label: "Mapa" },
+];
+
+const DUPLA_SENA_SCOPE_OPTIONS: Array<{ value: DuplaSenaAnalysisScope; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "first", label: "1º sorteio" },
+  { value: "second", label: "2º sorteio" },
+];
 
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
@@ -186,6 +231,119 @@ function formatSyncStopReason(reason: string | null): string {
   }
 }
 
+function getAnalysisViewLabel(view: AnalysisView): string {
+  return ANALYSIS_VIEW_OPTIONS.find((option) => option.value === view)?.label ?? "Análise";
+}
+
+function getAnalysisPeriodLabel(period: AnalysisPeriod, drawCount: number): string {
+  if (period === "all") {
+    return `${drawCount} concursos`;
+  }
+
+  return `Últimos ${Math.min(period, drawCount)} concursos`;
+}
+
+function getAnalysisScopeLabel(scope: DuplaSenaAnalysisScope): string {
+  switch (scope) {
+    case "first":
+      return "1º sorteio";
+    case "second":
+      return "2º sorteio";
+    default:
+      return "Todos os sorteios";
+  }
+}
+
+function getNumbersForAnalysis(draw: Draw, scope: DuplaSenaAnalysisScope): string[] {
+  const groups = getDisplayGroups(draw);
+
+  if (scope === "first") {
+    return groups[0] ?? [];
+  }
+
+  if (scope === "second") {
+    return groups[1] ?? [];
+  }
+
+  return groups.flat();
+}
+
+function buildNumberRange(lottery: LotteryDefinition): string[] {
+  if (lottery.slug === "LotoMania") {
+    return Array.from({ length: 100 }, (_, index) => String(index).padStart(2, "0"));
+  }
+
+  return Array.from({ length: lottery.countNumbers }, (_, index) => String(index + 1).padStart(2, "0"));
+}
+
+function buildAnalysisData(
+  draws: Draw[],
+  lottery: LotteryDefinition | null,
+  period: AnalysisPeriod,
+  scope: DuplaSenaAnalysisScope,
+): AnalysisData | null {
+  if (!lottery || !draws.length) {
+    return null;
+  }
+
+  const selectedDraws = (period === "all" ? draws : draws.slice(0, period)).filter((draw) => getNumbersForAnalysis(draw, scope).length > 0);
+
+  if (!selectedDraws.length) {
+    return null;
+  }
+
+  const hits = new Map<string, number>();
+  const lastSeen = new Map<string, number>();
+  const overdueByNumber = new Map<string, number>();
+
+  selectedDraws.forEach((draw, drawIndex) => {
+    const uniqueNumbers = new Set(getNumbersForAnalysis(draw, scope));
+
+    for (const number of uniqueNumbers) {
+      hits.set(number, (hits.get(number) ?? 0) + 1);
+
+      if (!lastSeen.has(number)) {
+        lastSeen.set(number, draw.drawNumber);
+        overdueByNumber.set(number, drawIndex);
+      }
+    }
+  });
+
+  const numbers = buildNumberRange(lottery);
+  const maxHits = Math.max(...numbers.map((number) => hits.get(number) ?? 0), 0);
+  const stats = numbers.map((number) => {
+    const numberHits = hits.get(number) ?? 0;
+    const lastDrawNumber = lastSeen.get(number) ?? null;
+    const overdue = overdueByNumber.get(number) ?? selectedDraws.length;
+
+    return {
+      number,
+      value: Number.parseInt(number, 10),
+      hits: numberHits,
+      overdue,
+      lastDrawNumber,
+      intensity: maxHits ? numberHits / maxHits : 0,
+    };
+  });
+
+  const byNumber = (left: NumberTrend, right: NumberTrend) => left.value - right.value;
+  const most = [...stats].sort((left, right) => right.hits - left.hits || byNumber(left, right)).slice(0, 12);
+  const least = [...stats].sort((left, right) => left.hits - right.hits || byNumber(left, right)).slice(0, 12);
+  const delayed = [...stats].sort((left, right) => right.overdue - left.overdue || left.hits - right.hits || byNumber(left, right)).slice(0, 12);
+
+  return {
+    selectedDraws,
+    stats,
+    most,
+    least,
+    delayed,
+    maxHits,
+    drawCount: selectedDraws.length,
+    periodLabel: getAnalysisPeriodLabel(period, selectedDraws.length),
+    scopeLabel: getAnalysisScopeLabel(scope),
+  };
+}
+
 async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Promise<LoadedLotteryData> {
   const cacheKey = getDataCacheKey(lotterySlug, drawNumber);
   const cachedData = loadedDataCache.get(cacheKey);
@@ -277,6 +435,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     initialLottery ? "Carregando resultados..." : "Escolha uma loteria.",
   );
   const [fetchMode, setFetchMode] = useState<FetchMode>("database");
+  const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(25);
+  const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
+  const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
@@ -291,6 +452,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const canSyncFromCaixa = Boolean(selectedLottery && status !== "loading" && (isSyncing || !activeDrawNumber.trim()));
 
   const visibleDraws = useMemo(() => draws.slice(0, 20), [draws]);
+  const analysisData = useMemo(
+    () => buildAnalysisData(draws, selectedLottery, analysisPeriod, selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"),
+    [analysisPeriod, draws, duplaSenaAnalysisScope, selectedLottery],
+  );
   const legacyHref = useMemo(() => {
     if (!selectedLottery) {
       return "#";
@@ -702,6 +867,16 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
           {status !== "loading" && status !== "error" && draws.length > 0 ? (
             <>
               <DrawSpotlight draw={selectedDraw ?? draws[0]} />
+              <AnalysisPanel
+                activeView={analysisView}
+                data={analysisData}
+                isDuplaSena={selectedLottery?.slug === "DuplaSena"}
+                onPeriodChange={setAnalysisPeriod}
+                onScopeChange={setDuplaSenaAnalysisScope}
+                onViewChange={setAnalysisView}
+                period={analysisPeriod}
+                scope={duplaSenaAnalysisScope}
+              />
               <DrawList draws={visibleDraws} onSelect={setSelectedDraw} selectedDrawNumber={selectedDraw?.drawNumber ?? null} />
               {rawText ? (
                 <details className="raw-output">
@@ -762,6 +937,148 @@ function ErrorState({ message }: { message: string }) {
     <div className="error-state">
       <strong>Falha ao carregar</strong>
       <p>{message}</p>
+    </div>
+  );
+}
+
+function AnalysisPanel({
+  activeView,
+  data,
+  isDuplaSena,
+  onPeriodChange,
+  onScopeChange,
+  onViewChange,
+  period,
+  scope,
+}: {
+  activeView: AnalysisView;
+  data: AnalysisData | null;
+  isDuplaSena: boolean;
+  onPeriodChange: (period: AnalysisPeriod) => void;
+  onScopeChange: (scope: DuplaSenaAnalysisScope) => void;
+  onViewChange: (view: AnalysisView) => void;
+  period: AnalysisPeriod;
+  scope: DuplaSenaAnalysisScope;
+}) {
+  return (
+    <section className="analysis-panel" aria-label="Análise rápida dos resultados">
+      <div className="analysis-header">
+        <div>
+          <span className="eyebrow">Análise rápida</span>
+          <h3>{getAnalysisViewLabel(activeView)}</h3>
+        </div>
+        <span>{data ? `${data.periodLabel} · ${data.scopeLabel}` : "Sem dados"}</span>
+      </div>
+
+      <details className="analysis-options">
+        <summary>
+          <span>Ajustar análise</span>
+          <strong>{getAnalysisViewLabel(activeView)}</strong>
+        </summary>
+
+        <div className="analysis-controls" aria-label="Filtros da análise">
+          <div className="control-group">
+            <span>Período</span>
+            <div className="segmented-control compact" aria-label="Período analisado">
+              {ANALYSIS_PERIOD_OPTIONS.map((option) => (
+                <button
+                  className={period === option.value ? "active" : ""}
+                  key={String(option.value)}
+                  onClick={() => onPeriodChange(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isDuplaSena ? (
+            <div className="control-group">
+              <span>Sorteio</span>
+              <div className="segmented-control compact" aria-label="Sorteio da Dupla Sena">
+                {DUPLA_SENA_SCOPE_OPTIONS.map((option) => (
+                  <button
+                    className={scope === option.value ? "active" : ""}
+                    key={option.value}
+                    onClick={() => onScopeChange(option.value)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="control-group">
+            <span>Ver</span>
+            <div className="segmented-control view-selector" aria-label="Tipo de análise">
+              {ANALYSIS_VIEW_OPTIONS.map((option) => (
+                <button
+                  className={activeView === option.value ? "active" : ""}
+                  key={option.value}
+                  onClick={() => onViewChange(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </details>
+
+      {data ? <AnalysisContent data={data} view={activeView} /> : <div className="analysis-empty">Carregue resultados para ver a análise.</div>}
+    </section>
+  );
+}
+
+function AnalysisContent({ data, view }: { data: AnalysisData; view: AnalysisView }) {
+  if (view === "map") {
+    return <NumberHeatMap stats={data.stats} />;
+  }
+
+  const items = view === "most" ? data.most : view === "least" ? data.least : data.delayed;
+  const label = view === "delayed" ? "concursos sem sair" : "vezes";
+  const getValue = (item: NumberTrend) => (view === "delayed" ? item.overdue : item.hits);
+
+  return (
+    <div className="trend-list">
+      {items.map((item) => (
+        <div className="trend-row" key={`${view}-${item.number}`}>
+          <span className="trend-number">{item.number}</span>
+          <div>
+            <strong>
+              {getValue(item)} {label}
+            </strong>
+            <div className="trend-bar" aria-hidden="true">
+              <span style={{ width: `${Math.max(8, item.intensity * 100)}%` }} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NumberHeatMap({ stats }: { stats: NumberTrend[] }) {
+  return (
+    <div className="number-heat-map">
+      {stats.map((item) => (
+        <div
+          className="heat-number"
+          key={`map-${item.number}`}
+          style={{
+            backgroundColor: `rgba(56, 189, 248, ${0.08 + item.intensity * 0.5})`,
+            borderColor: item.hits ? `rgba(125, 211, 252, ${0.25 + item.intensity * 0.5})` : "rgba(148, 163, 184, 0.16)",
+          }}
+          title={`${item.number}: ${item.hits} vez(es), atraso ${item.overdue}`}
+        >
+          <strong>{item.number}</strong>
+          <small>{item.hits}x</small>
+        </div>
+      ))}
     </div>
   );
 }
