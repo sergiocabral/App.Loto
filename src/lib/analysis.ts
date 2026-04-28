@@ -209,9 +209,13 @@ export function getSuggestionSize(lottery: LotteryDefinition): number {
   return lottery.groups?.[0] ?? lottery.numbersPerDraw;
 }
 
+export function getSuggestionVariantKey(lottery: LotteryDefinition, view: AnalysisView, data: AnalysisData): string {
+  return [lottery.slug, view, data.periodLabel, data.scopeLabel, data.drawCount].join("|");
+}
+
 export function buildSuggestionKey(lottery: LotteryDefinition, view: AnalysisView, data: AnalysisData): string {
   const fingerprint = data.stats.map((item) => `${item.number}:${item.hits}:${item.overdue}`).join(",");
-  return [lottery.slug, view, data.periodLabel, data.scopeLabel, data.drawCount, fingerprint].join("|");
+  return [getSuggestionVariantKey(lottery, view, data), fingerprint].join("|");
 }
 
 export function getAnalysisWeight(item: NumberTrend, view: AnalysisView, data: AnalysisData): number {
@@ -226,8 +230,6 @@ export function getAnalysisWeight(item: NumberTrend, view: AnalysisView, data: A
       return coldScore * 0.78 + overdueScore * 0.18 + 0.04;
     case "delayed":
       return overdueScore * 0.78 + coldScore * 0.16 + 0.06;
-    case "map":
-      return hotScore * 0.46 + overdueScore * 0.34 + coldScore * 0.14 + 0.06;
     default:
       return hotScore * 0.78 + overdueScore * 0.14 + 0.08;
   }
@@ -245,7 +247,7 @@ export function shuffleItems<T>(items: T[], random: () => number = Math.random):
 }
 
 export function buildSuggestionGroups(view: AnalysisView, data: AnalysisData): NumberTrendGroup[] {
-  if (view === "most") {
+  if (view === "most" || view === "map") {
     return buildTrendGroups(data.stats, (item) => item.hits, "desc");
   }
 
@@ -299,7 +301,7 @@ export function getSuggestionDescription(view: AnalysisView, data: AnalysisData)
     case "delayed":
       return `Sugestão embaralhada priorizando números há mais tempo sem aparecer em ${filterText}.`;
     case "map":
-      return `Sugestão embaralhada equilibrando frequência e atraso em ${filterText}.`;
+      return `Sugestão priorizando os números mais quentes do mapa em ${filterText}.`;
     default:
       return `Sugestão embaralhada priorizando números mais frequentes em ${filterText}.`;
   }

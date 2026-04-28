@@ -20,7 +20,10 @@ import {
   getAnalysisViewLabel,
   getDisplayGroups,
   getSuggestionDescription,
+  getSuggestionSize,
+  getSuggestionVariantKey,
   parseNumberFilter,
+  sortNumbersForDisplay,
   type AnalysisData,
   type AnalysisDrawRange,
   type AnalysisPeriod,
@@ -102,6 +105,7 @@ type SuggestedGame = {
   lotterySlug: string;
   numbers: string[];
   sourceLabel: string;
+  variantIndex: number;
 };
 
 type Remark42Theme = "dark" | "light";
@@ -286,8 +290,45 @@ function buildUniqueLuckySuggestion(
   view: AnalysisView,
   data: AnalysisData,
   existingKeys: Set<string>,
+  variantIndex: number,
 ): string[] | null {
   const maxAttempts = 80;
+  const size = getSuggestionSize(lottery);
+
+  if (view === "map") {
+    const hotNumbers = data.stats
+      .filter((item) => item.hits > 0)
+      .sort((left, right) => right.hits - left.hits || left.overdue - right.overdue || left.value - right.value);
+    const pool = hotNumbers.length >= size ? hotNumbers : [...hotNumbers, ...data.stats.filter((item) => item.hits === 0)];
+    const topWindowSize = Math.min(pool.length, Math.max(size, Math.ceil(size * 1.7)));
+    const topWindow = pool.slice(0, topWindowSize);
+
+    if (!topWindow.length) {
+      return null;
+    }
+
+    const stableHotNumbers = sortNumbersForDisplay(pool.slice(0, size).map((item) => item.number));
+
+    if (variantIndex === 1 || !existingKeys.has(getCombinationKey(stableHotNumbers))) {
+      return stableHotNumbers;
+    }
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const offset = (variantIndex + attempt) % topWindow.length;
+      const selected = topWindow
+        .filter((_, index) => index !== offset)
+        .slice(0, size)
+        .map((item) => item.number);
+      const numbers = sortNumbersForDisplay(selected);
+      const combinationKey = getCombinationKey(numbers);
+
+      if (numbers.length === size && !existingKeys.has(combinationKey)) {
+        return numbers;
+      }
+    }
+
+    return null;
+  }
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const numbers = buildLuckySuggestion(lottery, view, data);
@@ -381,7 +422,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     [analysisData, analysisView, selectedLottery],
   );
   const visibleSuggestedGames = useMemo(
-    () => suggestedGames.filter((game) => selectedLottery && game.lotterySlug === selectedLottery.slug),
+    () =>
+      suggestedGames
+        .filter((game) => selectedLottery && game.lotterySlug === selectedLottery.slug)
+        .sort((left, right) => right.variantIndex - left.variantIndex),
     [selectedLottery, suggestedGames],
   );
 
@@ -720,12 +764,13 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
       return;
     }
 
-    const existingKeys = new Set(
-      suggestedGames
-        .filter((game) => game.lotterySlug === selectedLottery.slug)
-        .map((game) => game.combinationKey),
+    const suggestionVariantKey = getSuggestionVariantKey(selectedLottery, analysisView, analysisData);
+    const existingGamesForContext = suggestedGames.filter(
+      (game) => game.lotterySlug === selectedLottery.slug && game.filterKey === suggestionVariantKey,
     );
-    const numbers = buildUniqueLuckySuggestion(selectedLottery, analysisView, analysisData, existingKeys);
+    const existingKeys = new Set(existingGamesForContext.map((game) => game.combinationKey));
+    const variantIndex = existingGamesForContext.length + 1;
+    const numbers = buildUniqueLuckySuggestion(selectedLottery, analysisView, analysisData, existingKeys, variantIndex);
 
     if (!numbers) {
       setStatusMessage("Não encontrei uma nova combinação diferente para este filtro.");
@@ -735,10 +780,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setSuggestedGames((current) => [
       {
         combinationKey: getCombinationKey(numbers),
-        filterKey: suggestionKey,
+        filterKey: suggestionVariantKey,
         lotterySlug: selectedLottery.slug,
         numbers,
         sourceLabel: getSuggestionSourceLabel(analysisView, analysisData),
+        variantIndex,
       },
       ...current,
     ]);
@@ -1428,7 +1474,7 @@ function SuggestionPanel({
             </div>
           ))
         ) : (
-          <em>Toque em “Estou com sorte” para gerar sugestões únicas.</em>
+          <em>{activeView === "map" ? "Toque em “Estou com sorte” para usar os números mais quentes do mapa." : "Toque em “Estou com sorte” para gerar sugestões únicas."}</em>
         )}
       </div>
     </article>
