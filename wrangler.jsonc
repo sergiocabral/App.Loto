@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "main": ".open-next/worker.js",
+  "main": "worker.ts",
   "name": "app-loto",
   "compatibility_date": "2026-04-28",
   "compatibility_flags": [
@@ -13,7 +13,7 @@
   },
   "vars": {
     "NEXT_RUNTIME_PROVIDER": "cloudflare",
-    "OFFICIAL_SITE_URL": "https://luckygames.tips/",
+    "OFFICIAL_DOMAIN_NAME": "luckygames.tips",
     "POSTGRES_HOST": "postgresql.cabral.dev",
     "POSTGRES_PORT": "5432",
     "POSTGRES_USER": "luckygames",

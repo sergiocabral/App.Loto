@@ -136,6 +136,7 @@ O `wrangler.jsonc` usa `keep_vars: true`, então variáveis e secrets configurad
 | `POSTGRES_POOL_MAX_USES` | Opcional | Recomendado `1` | Quantidade máxima de usos por conexão. Em Workers, usar `1`. |
 | `HYPERDRIVE_CONNECTION_STRING` | Opcional | Opcional | Connection string quando usar Cloudflare Hyperdrive sem binding. |
 | `NEXT_RUNTIME_PROVIDER` | Opcional | `cloudflare` | Marca o runtime Cloudflare para ajustes seguros de pool. |
+| `OFFICIAL_DOMAIN_NAME` | Opcional | Recomendada | Domínio canônico sem protocolo, por exemplo `luckygames.tips`. Quando vazio, não redireciona domínios alternativos. Não use URL completa com `https://`, caminho ou porta. |
 | `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | Opcional | Opcional em build time | URL pública do script Umami usado para analytics. |
 | `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | Opcional | Opcional em build time | Identificador do site no Umami. |
 | `NEXT_PUBLIC_REMARK42_HOST` | Opcional | Opcional em build time | Host público do Remark42. Padrão usado no app: `https://comments.cabral.dev`. |
@@ -169,6 +170,7 @@ POSTGRES_POOL_MAX_USES=
 
 HYPERDRIVE_CONNECTION_STRING=
 NEXT_RUNTIME_PROVIDER=
+OFFICIAL_DOMAIN_NAME=luckygames.tips
 
 NEXT_PUBLIC_UMAMI_SCRIPT_URL=https://umami.cabral.dev/script.js
 NEXT_PUBLIC_UMAMI_WEBSITE_ID=ea4bd301-7337-44bd-9ec9-746074f3f4de
@@ -250,6 +252,7 @@ POSTGRES_STATEMENT_TIMEOUT_MS
 POSTGRES_POOL_MAX
 POSTGRES_POOL_MAX_USES
 NEXT_RUNTIME_PROVIDER
+OFFICIAL_DOMAIN_NAME
 ```
 
 Se preferir gerenciar esses valores pelo painel da Cloudflare, mantenha os nomes exatamente iguais. O `keep_vars: true` preserva as variáveis e secrets do painel durante o deploy.
