@@ -8,6 +8,7 @@ import type { Draw } from "@/lib/types";
 type ChatRole = "assistant" | "user";
 
 type ChatMessage = {
+  contextKey?: string;
   id: string;
   role: ChatRole;
   content: string;
@@ -43,6 +44,11 @@ type ChatApiPayload = {
   error?: string;
 };
 
+type ChatError = {
+  contextKey: string;
+  message: string;
+};
+
 type ResultsChatPanelProps = {
   activeDrawNumber: string;
   analysisData: AnalysisData | null;
@@ -56,17 +62,21 @@ type ResultsChatPanelProps = {
 type ResultsChatPanelSessionProps = ResultsChatPanelProps & {
   analysisSummary: ChatAnalysisSummary | null;
   contextDraws: ChatContextDraw[];
+  contextKey: string;
   contextLabel: string;
   introMessage: string;
+  isOpen: boolean;
   lotteryName: string;
+  onOpenChange: (isOpen: boolean) => void;
 };
 
 const CHAT_CONTEXT_DRAW_LIMIT = 120;
 const CHAT_HISTORY_LIMIT = 12;
 
-function createMessage(role: ChatRole, content: string): ChatMessage {
+function createMessage(role: ChatRole, content: string, contextKey?: string): ChatMessage {
   return {
     content,
+    contextKey,
     id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     role,
   };
@@ -334,6 +344,7 @@ export function ResultsChatPanel({
   const contextDraws = useMemo(() => draws.slice(0, CHAT_CONTEXT_DRAW_LIMIT).map(toContextDraw), [draws]);
   const contextLabel = useMemo(() => buildContextLabel(analysisData), [analysisData]);
   const analysisSummary = useMemo(() => buildAnalysisSummary(analysisData, analysisViewLabel), [analysisData, analysisViewLabel]);
+  const [isOpen, setIsOpen] = useState(false);
   const contextKey = useMemo(
     () => buildContextKey(lottery, draws, numberFilter, activeDrawNumber, contextLabel, analysisViewLabel),
     [activeDrawNumber, analysisViewLabel, contextLabel, draws, lottery, numberFilter],
@@ -350,14 +361,16 @@ export function ResultsChatPanel({
       analysisSummary={analysisSummary}
       analysisViewLabel={analysisViewLabel}
       contextDraws={contextDraws}
+      contextKey={contextKey}
       contextLabel={contextLabel}
       draws={draws}
       introMessage={introMessage}
       isLoading={isLoading}
-      key={contextKey}
+      isOpen={isOpen}
       lottery={lottery}
       lotteryName={lotteryName}
       numberFilter={numberFilter}
+      onOpenChange={setIsOpen}
     />
   );
 }
@@ -366,13 +379,16 @@ function ResultsChatPanelSession({
   activeDrawNumber,
   analysisSummary,
   contextDraws,
+  contextKey,
   contextLabel,
   draws,
   introMessage,
   isLoading,
+  isOpen,
   lottery,
   lotteryName,
   numberFilter,
+  onOpenChange,
 }: ResultsChatPanelSessionProps) {
   const contextDrawCount = analysisSummary?.drawCount ?? draws.length;
   const canChat = contextDrawCount > 0 && !isLoading;
@@ -384,10 +400,10 @@ function ResultsChatPanelSession({
     numberFilter,
     activeDrawNumber,
   );
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [createMessage("assistant", introMessage)]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [createMessage("assistant", introMessage, contextKey)]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<ChatError | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -403,8 +419,14 @@ function ResultsChatPanelSession({
       return;
     }
 
-    const userMessage = createMessage("user", question);
+    const requestContextKey = contextKey;
+    const userMessage = createMessage("user", question, requestContextKey);
     const nextMessages = [...messages, userMessage];
+    const apiMessages = nextMessages
+      .filter((message) => message.contextKey === requestContextKey)
+      .slice(-CHAT_HISTORY_LIMIT)
+      .map((message) => ({ content: message.content, role: message.role }));
+
     setMessages(nextMessages);
     setInput("");
     setChatError(null);
@@ -424,9 +446,7 @@ function ResultsChatPanelSession({
             totalFilteredDraws: contextDrawCount,
             visibleDraws: contextDraws,
           },
-          messages: nextMessages
-            .slice(-CHAT_HISTORY_LIMIT)
-            .map((message) => ({ content: message.content, role: message.role })),
+          messages: apiMessages,
         }),
         cache: "no-store",
         headers: {
@@ -442,14 +462,14 @@ function ResultsChatPanelSession({
 
       setMessages((current) => [
         ...current,
-        createMessage("assistant", payload.reply || "Não recebi uma resposta do Chat GPT agora."),
+        createMessage("assistant", payload.reply || "Não recebi uma resposta do Chat GPT agora.", requestContextKey),
       ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não consegui conversar com o Chat GPT agora.";
-      setChatError(message);
+      setChatError({ contextKey: requestContextKey, message });
       setMessages((current) => [
         ...current,
-        createMessage("assistant", "Não consegui responder agora. Tente novamente em instantes ou ajuste o filtro de resultados."),
+        createMessage("assistant", "Não consegui responder agora. Tente novamente em instantes ou ajuste o filtro de resultados.", requestContextKey),
       ]);
     } finally {
       setIsSending(false);
@@ -465,7 +485,7 @@ function ResultsChatPanelSession({
   }
 
   return (
-    <details className="results-chat-panel">
+    <details className="results-chat-panel" onToggle={(event) => onOpenChange(event.currentTarget.open)} open={isOpen}>
       <summary className="results-chat-summary">
         <strong>Chat GPT</strong>
       </summary>
@@ -517,7 +537,7 @@ function ResultsChatPanelSession({
           </button>
         </div>
 
-        {chatError ? <p className="chat-error">{chatError}</p> : null}
+        {chatError?.contextKey === contextKey ? <p className="chat-error">{chatError.message}</p> : null}
 
         <form className="chat-input-form" onSubmit={sendMessage}>
           <textarea
