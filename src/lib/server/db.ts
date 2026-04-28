@@ -89,8 +89,19 @@ function getPostgresConfig(): PostgresConfig {
     };
   }
 
-  if (!host || !user || !password || !database) {
-    throw new Error("Missing PostgreSQL configuration. Check POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DATABASE.");
+  const missingFields = Object.entries({
+    POSTGRES_HOST: host,
+    POSTGRES_USER: user,
+    POSTGRES_PASSWORD: password,
+    POSTGRES_DATABASE: database,
+  })
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+
+  if (missingFields.length > 0) {
+    throw new Error(
+      `Missing PostgreSQL configuration: ${missingFields.join(", ")}. Check POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DATABASE.`,
+    );
   }
 
   return {
