@@ -102,6 +102,44 @@ type SuggestedGame = {
   sourceLabel: string;
 };
 
+type Remark42Theme = "dark" | "light";
+
+type Remark42Config = {
+  host: string;
+  site_id: string;
+  components?: string[];
+  theme: Remark42Theme;
+  locale?: string;
+  no_footer?: boolean;
+  page_title?: string;
+  url?: string;
+};
+
+type Remark42Instance = {
+  changeTheme?: (theme: Remark42Theme) => void;
+  destroy: () => void;
+};
+
+type Remark42Api = {
+  changeTheme?: (theme: Remark42Theme) => void;
+  createInstance?: (config: Remark42Config) => Remark42Instance;
+  destroy?: () => void;
+};
+
+declare global {
+  interface Window {
+    REMARK42?: Remark42Api;
+    remark_config?: Remark42Config;
+  }
+}
+
+const REMARK42_HOST = (process.env.NEXT_PUBLIC_REMARK42_HOST || "https://comments.cabral.dev").replace(/\/+$/, "");
+const REMARK42_SITE_ID = process.env.NEXT_PUBLIC_REMARK42_SITE_ID || "global";
+const REMARK42_LOCALE = process.env.NEXT_PUBLIC_REMARK42_LOCALE || "bp";
+const REMARK42_NO_FOOTER = process.env.NEXT_PUBLIC_REMARK42_NO_FOOTER !== "false";
+const REMARK42_ROOT_ID = "remark42";
+const REMARK42_SCRIPT_ID = "remark42-embed-script";
+
 
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
@@ -276,6 +314,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const [numberFilter, setNumberFilter] = useState<string[]>([]);
   const [visibleDrawState, setVisibleDrawState] = useState({ key: "", limit: DRAW_LIST_PAGE_SIZE });
   const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(25);
+  const [customAnalysisDrawCount, setCustomAnalysisDrawCount] = useState<number | null>(null);
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
   const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
@@ -289,6 +328,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const isSyncing = syncInfo.running;
   const latestDraw = draws[0] ?? selectedDraw;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
+  const availableAnalysisDrawCount = Math.max(1, drawCount);
+  const effectiveCustomAnalysisDrawCount = Math.min(
+    Math.max(customAnalysisDrawCount ?? availableAnalysisDrawCount, 1),
+    availableAnalysisDrawCount,
+  );
   const canSyncFromCaixa = Boolean(selectedLottery && status !== "loading" && (isSyncing || !activeDrawNumber.trim()));
   const canClearLookupFilter = Boolean(drawNumberInput.trim() || activeDrawNumber.trim() || numberFilter.length);
 
@@ -299,8 +343,15 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const visibleDraws = useMemo(() => filteredDraws.slice(0, visibleDrawLimit), [filteredDraws, visibleDrawLimit]);
   const hasMoreDraws = visibleDrawLimit < filteredDraws.length;
   const analysisData = useMemo(
-    () => buildAnalysisData(draws, selectedLottery, analysisPeriod, selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"),
-    [analysisPeriod, draws, duplaSenaAnalysisScope, selectedLottery],
+    () =>
+      buildAnalysisData(
+        draws,
+        selectedLottery,
+        analysisPeriod,
+        selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all",
+        analysisPeriod === "all" ? effectiveCustomAnalysisDrawCount : undefined,
+      ),
+    [analysisPeriod, draws, duplaSenaAnalysisScope, effectiveCustomAnalysisDrawCount, selectedLottery],
   );
   const legacyHref = useMemo(() => {
     if (!selectedLottery) {
@@ -390,6 +441,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setStatusMessage("Preparando...");
     setLookupMode("numbers");
     setNumberFilter([]);
+    setCustomAnalysisDrawCount(null);
     setSyncInfo(INITIAL_SYNC_INFO);
     updateLegacyUrl(lottery.slug);
   }
@@ -616,6 +668,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setAnalysisPeriod(period);
   }
 
+  function changeCustomAnalysisDrawCount(count: number) {
+    const normalizedCount = Number.isFinite(count) ? Math.round(count) : availableAnalysisDrawCount;
+    setCustomAnalysisDrawCount(Math.min(Math.max(normalizedCount, 1), availableAnalysisDrawCount));
+  }
+
   function changeAnalysisView(view: AnalysisView) {
     setAnalysisView(view);
   }
@@ -679,6 +736,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setNumberFilter([]);
     setVisibleDrawState({ key: "", limit: DRAW_LIST_PAGE_SIZE });
     setAnalysisPeriod(25);
+    setCustomAnalysisDrawCount(null);
     setAnalysisView("most");
     setDuplaSenaAnalysisScope("all");
     setSyncInfo(INITIAL_SYNC_INFO);
@@ -827,8 +885,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
               />
               <AnalysisPanel
                 activeView={analysisView}
+                availableDrawCount={availableAnalysisDrawCount}
+                customDrawCount={effectiveCustomAnalysisDrawCount}
                 data={analysisData}
                 isDuplaSena={selectedLottery?.slug === "DuplaSena"}
+                onCustomDrawCountChange={changeCustomAnalysisDrawCount}
                 onPeriodChange={changeAnalysisPeriod}
                 onScopeChange={changeDuplaSenaAnalysisScope}
                 onViewChange={changeAnalysisView}
@@ -858,6 +919,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
         </section>
       )}
     </div>
+    <Remark42Comments />
     <footer className="super-footer" aria-label="Apoie o Luckygames">
       <div className="donation-callout donation-callout-bottom">
         <span>
@@ -870,6 +932,89 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
       </div>
     </footer>
   </>
+  );
+}
+
+function Remark42Comments() {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const instanceRef = useRef<Remark42Instance | null>(null);
+
+  useEffect(() => {
+    if (!REMARK42_HOST || !REMARK42_SITE_ID) {
+      return;
+    }
+
+    let cancelled = false;
+    const config: Remark42Config = {
+      components: ["embed"],
+      host: REMARK42_HOST,
+      locale: REMARK42_LOCALE,
+      no_footer: REMARK42_NO_FOOTER,
+      page_title: "Luckygames — bate-papo",
+      site_id: REMARK42_SITE_ID,
+      theme: "dark",
+      url: new URL("/", window.location.origin).toString(),
+    };
+
+    function destroyCurrentInstance() {
+      if (instanceRef.current) {
+        instanceRef.current.destroy();
+        instanceRef.current = null;
+        return;
+      }
+
+      window.REMARK42?.destroy?.();
+    }
+
+    function mountRemark42() {
+      if (cancelled || !rootRef.current || !window.REMARK42?.createInstance) {
+        return;
+      }
+
+      destroyCurrentInstance();
+      rootRef.current.innerHTML = "";
+      window.remark_config = config;
+      instanceRef.current = window.REMARK42.createInstance(config);
+      window.REMARK42.changeTheme?.("dark");
+    }
+
+    window.remark_config = config;
+
+    if (window.REMARK42?.createInstance) {
+      mountRemark42();
+    } else {
+      window.addEventListener("REMARK42::ready", mountRemark42, { once: true });
+
+      if (!document.getElementById(REMARK42_SCRIPT_ID)) {
+        const script = document.createElement("script");
+        script.async = true;
+        script.defer = true;
+        script.id = REMARK42_SCRIPT_ID;
+        script.src = `${config.host}/web/embed.js`;
+        document.head.appendChild(script);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("REMARK42::ready", mountRemark42);
+      destroyCurrentInstance();
+    };
+  }, []);
+
+  return (
+    <section className="comments-section" aria-labelledby="comments-title">
+      <div className="comments-heading">
+        <span className="eyebrow">Comunidade</span>
+        <h2 id="comments-title">Bate-papo dos jogadores</h2>
+        <p>Uma área livre para trocar ideias, palpites e experiências com outros usuários do Luckygames.</p>
+      </div>
+      <div className="remark42-frame">
+        <div className="remark42-root" id={REMARK42_ROOT_ID} ref={rootRef}>
+          Carregando bate-papo...
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -927,8 +1072,11 @@ function FilterEmptyState({ numbers }: { numbers: string[] }) {
 
 function AnalysisPanel({
   activeView,
+  availableDrawCount,
+  customDrawCount,
   data,
   isDuplaSena,
+  onCustomDrawCountChange,
   onPeriodChange,
   onScopeChange,
   onViewChange,
@@ -936,8 +1084,11 @@ function AnalysisPanel({
   scope,
 }: {
   activeView: AnalysisView;
+  availableDrawCount: number;
+  customDrawCount: number;
   data: AnalysisData | null;
   isDuplaSena: boolean;
+  onCustomDrawCountChange: (count: number) => void;
   onPeriodChange: (period: AnalysisPeriod) => void;
   onScopeChange: (scope: DuplaSenaAnalysisScope) => void;
   onViewChange: (view: AnalysisView) => void;
@@ -975,6 +1126,24 @@ function AnalysisPanel({
                   </button>
                 ))}
               </div>
+              {period === "all" ? (
+                <div className="period-slider-card">
+                  <div className="period-slider-meta">
+                    <span>Quantidade de sorteios</span>
+                    <strong>{customDrawCount} de {availableDrawCount} concursos</strong>
+                  </div>
+                  <input
+                    aria-label="Quantidade de sorteios analisados"
+                    className="period-slider"
+                    max={availableDrawCount}
+                    min={1}
+                    onChange={(event) => onCustomDrawCountChange(Number.parseInt(event.target.value, 10))}
+                    type="range"
+                    value={customDrawCount}
+                  />
+                  <p>Arraste para escolher qualquer quantidade dentro do histórico carregado.</p>
+                </div>
+              ) : null}
             </div>
 
             {isDuplaSena ? (
@@ -1161,18 +1330,35 @@ function DrawList({
 }) {
   return (
     <div className="draw-list">
-      {draws.map((draw) => (
-        <button
-          className={`draw-row ${selectedDrawNumber === draw.drawNumber ? "active" : ""}`}
-          key={`${draw.lottery}-${draw.drawNumber}`}
-          onClick={() => onSelect(draw)}
-          type="button"
-        >
-          <span>#{draw.drawNumber}</span>
-          <strong>{formatDrawNumbers(draw)}</strong>
-          <small>{draw.date}</small>
-        </button>
-      ))}
+      {draws.map((draw) => {
+        const groups = getDisplayGroups(draw);
+
+        return (
+          <button
+            className={`draw-row ${selectedDrawNumber === draw.drawNumber ? "active" : ""}`}
+            key={`${draw.lottery}-${draw.drawNumber}`}
+            onClick={() => onSelect(draw)}
+            type="button"
+          >
+            <span className="draw-row-number">#{draw.drawNumber}</span>
+            <strong className="draw-row-groups" aria-label={formatDrawNumbers(draw)}>
+              {groups.map((group, groupIndex) => (
+                <span className="draw-number-group" key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}`}>
+                  {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
+                  <span className="draw-group-values">
+                    {group.map((number) => (
+                      <span className="draw-number-pill" key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}>
+                        {number}
+                      </span>
+                    ))}
+                  </span>
+                </span>
+              ))}
+            </strong>
+            <small className="draw-row-date">{draw.date}</small>
+          </button>
+        );
+      })}
       {hasMore ? (
         <button className="load-more-draws" onClick={onLoadMore} type="button">
           <span>Ver mais resultados</span>

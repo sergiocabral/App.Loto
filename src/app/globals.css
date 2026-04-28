@@ -31,7 +31,35 @@
 
 html {
   min-height: 100%;
+  scrollbar-color: rgba(56, 189, 248, 0.5) rgba(15, 23, 42, 0.9);
   scroll-behavior: smooth;
+}
+
+@media (pointer: fine) {
+  * {
+    scrollbar-color: rgba(56, 189, 248, 0.5) rgba(15, 23, 42, 0.58);
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.58);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(56, 189, 248, 0.72), rgba(167, 139, 250, 0.72));
+    border: 2px solid rgba(15, 23, 42, 0.72);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(125, 211, 252, 0.92), rgba(196, 181, 253, 0.92));
+  }
 }
 
 body {
@@ -109,7 +137,8 @@ input:disabled {
 
 .hero-card,
 .control-panel,
-.results-panel {
+.results-panel,
+.comments-section {
   backdrop-filter: blur(20px);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -227,6 +256,64 @@ input:disabled {
 
 .super-footer {
   margin: 16px 0 0;
+}
+
+.comments-section {
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 16px;
+  margin: 16px 0 0;
+  overflow: hidden;
+  padding: 18px;
+  position: relative;
+}
+
+.comments-section::before {
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.18), transparent 68%);
+  content: '';
+  height: 260px;
+  position: absolute;
+  right: -90px;
+  top: -140px;
+  width: 260px;
+}
+
+.comments-section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.comments-heading {
+  max-width: 780px;
+}
+
+.comments-heading h2 {
+  font-size: clamp(24px, 4vw, 34px);
+  letter-spacing: -0.05em;
+}
+
+.comments-heading p {
+  color: var(--muted-strong);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 8px;
+}
+
+.remark42-frame {
+  background: rgba(2, 6, 23, 0.36);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 22px;
+  overflow: hidden;
+  padding: 14px;
+}
+
+.remark42-root {
+  color: var(--muted-strong);
+  min-height: 180px;
+}
+
+.remark42-root iframe {
+  color-scheme: dark;
 }
 
 .super-footer .donation-callout {
@@ -740,26 +827,67 @@ button {
   border-color: var(--border-strong);
 }
 
-.draw-row span,
-.draw-row strong,
-.draw-row small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.draw-row-number,
+.draw-row-groups,
+.draw-row-date {
+  min-width: 0;
 }
 
-.draw-row span {
+.draw-row-number {
   color: var(--primary);
   font-family: 'JetBrains Mono', monospace;
   font-weight: 800;
 }
 
-.draw-row strong {
+.draw-row-groups {
+  display: grid;
   font-family: 'JetBrains Mono', monospace;
   font-size: 14px;
+  gap: 8px;
 }
 
-.draw-row small {
+.draw-number-group {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.draw-group-label {
+  background: rgba(56, 189, 248, 0.13);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 999px;
+  color: var(--primary);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 5px 7px;
+}
+
+.draw-group-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.draw-number-pill {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 28px;
+  min-width: 32px;
+  padding: 0 8px;
+}
+
+.draw-row-date {
   color: var(--muted);
   text-align: right;
 }
@@ -1022,6 +1150,80 @@ button {
 .segmented-control button.active {
   background: linear-gradient(135deg, rgba(56, 189, 248, 0.92), rgba(167, 139, 250, 0.9));
   color: #020617;
+}
+
+.period-slider-card {
+  background: rgba(2, 6, 23, 0.34);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.period-slider-meta {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.period-slider-meta span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.period-slider-meta strong {
+  color: var(--text);
+  font-size: 13px;
+  text-align: right;
+}
+
+.period-slider-card p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.period-slider {
+  accent-color: var(--primary);
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+}
+
+.period-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.48), rgba(167, 139, 250, 0.38));
+  border-radius: 999px;
+  height: 8px;
+}
+
+.period-slider::-webkit-slider-thumb {
+  appearance: none;
+  background: #e0f2fe;
+  border: 3px solid var(--primary-strong);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.16);
+  height: 20px;
+  margin-top: -6px;
+  width: 20px;
+}
+
+.period-slider::-moz-range-track {
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.48), rgba(167, 139, 250, 0.38));
+  border-radius: 999px;
+  height: 8px;
+}
+
+.period-slider::-moz-range-thumb {
+  background: #e0f2fe;
+  border: 3px solid var(--primary-strong);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.16);
+  height: 14px;
+  width: 14px;
 }
 
 .suggestion-card {
@@ -1421,7 +1623,8 @@ button {
   }
 
   .control-panel,
-  .results-panel {
+  .results-panel,
+  .comments-section {
     padding: 14px;
   }
 
@@ -1488,6 +1691,16 @@ button {
 
   .analysis-options summary strong {
     max-width: 54%;
+  }
+
+  .period-slider-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .period-slider-meta strong {
+    text-align: left;
   }
 
   .segmented-control.view-selector {
@@ -1571,8 +1784,23 @@ button {
     max-height: none;
   }
 
-  .draw-row small {
+  .draw-row {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .draw-row-date {
     text-align: left;
+  }
+
+  .draw-number-pill {
+    min-height: 30px;
+    min-width: 34px;
+  }
+
+  .remark42-frame {
+    border-radius: 18px;
+    padding: 10px;
   }
 
 }
@@ -1599,7 +1827,8 @@ button {
 
   .panel-heading h2,
   .results-header h2,
-  .analysis-header h3 {
+  .analysis-header h3,
+  .comments-heading h2 {
     font-size: 22px;
   }
 }

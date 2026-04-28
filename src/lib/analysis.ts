@@ -41,7 +41,7 @@ export const ANALYSIS_PERIOD_OPTIONS: Array<{ value: AnalysisPeriod; label: stri
   { value: 25, label: "25" },
   { value: 50, label: "50" },
   { value: 100, label: "100" },
-  { value: "all", label: "Todos" },
+  { value: "all", label: "Ajustar" },
 ];
 
 export const ANALYSIS_VIEW_OPTIONS: Array<{ value: AnalysisView; label: string }> = [
@@ -136,9 +136,9 @@ export function getAnalysisDescription(view: AnalysisView, data: AnalysisData): 
   }
 }
 
-export function getAnalysisPeriodLabel(period: AnalysisPeriod, drawCount: number): string {
+export function getAnalysisPeriodLabel(period: AnalysisPeriod, drawCount: number, requestedDrawCount?: number): string {
   if (period === "all") {
-    return `${drawCount} concursos`;
+    return requestedDrawCount === undefined ? `${drawCount} concursos` : `Últimos ${drawCount} concursos`;
   }
 
   return `Últimos ${Math.min(period, drawCount)} concursos`;
@@ -302,12 +302,16 @@ export function buildAnalysisData(
   lottery: LotteryDefinition | null,
   period: AnalysisPeriod,
   scope: DuplaSenaAnalysisScope,
+  requestedDrawCount?: number,
 ): AnalysisData | null {
   if (!lottery || !draws.length) {
     return null;
   }
 
-  const selectedDraws = (period === "all" ? draws : draws.slice(0, period)).filter((draw) => getNumbersForAnalysis(draw, scope).length > 0);
+  const drawLimit = period === "all" ? requestedDrawCount : period;
+  const selectedDraws = (drawLimit === undefined ? draws : draws.slice(0, Math.max(1, drawLimit))).filter(
+    (draw) => getNumbersForAnalysis(draw, scope).length > 0,
+  );
 
   if (!selectedDraws.length) {
     return null;
@@ -360,7 +364,7 @@ export function buildAnalysisData(
     delayed,
     maxHits,
     drawCount: selectedDraws.length,
-    periodLabel: getAnalysisPeriodLabel(period, selectedDraws.length),
+    periodLabel: getAnalysisPeriodLabel(period, selectedDraws.length, requestedDrawCount),
     scopeLabel: getAnalysisScopeLabel(scope),
   };
 }
