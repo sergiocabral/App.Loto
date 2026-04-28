@@ -45,9 +45,22 @@ function toPublicDraws(draws: Draw[]): PublicDraw[] {
   return draws.map(toPublicDraw);
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ lottery: string }> }) {
-  const startedAt = Date.now();
-  const { lottery: lotteryParam } = await params;
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unexpected server error";
+}
+
+function logApiError(message: string, error: unknown, details?: Record<string, unknown>): void {
+  console.error(API_LOG_PREFIX, message, {
+    ...details,
+    error: error instanceof Error ? { name: error.name, message: error.message } : error,
+  });
+}
+
+function databaseErrorResponse(error: unknown) {
+  return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
+}
+
+async function handleGet(request: Request, lotteryParam: string, startedAt: number) {
   const lottery = getLottery(lotteryParam);
   const url = new URL(request.url);
 
@@ -136,9 +149,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ lott
   });
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ lottery: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ lottery: string }> }) {
   const startedAt = Date.now();
   const { lottery: lotteryParam } = await params;
+
+  try {
+    return await handleGet(request, lotteryParam, startedAt);
+  } catch (error) {
+    logApiError("GET:error", error, { lotteryParam, elapsedMs: elapsedMs(startedAt) });
+    return databaseErrorResponse(error);
+  }
+}
+
+async function handlePost(request: Request, lotteryParam: string, startedAt: number) {
   const lottery = getLottery(lotteryParam);
 
   logApi("POST:start", { lotteryParam });
@@ -218,4 +241,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ lot
     draws: publicSync.draws,
     text: renderHistoryText(sync.draws),
   });
+}
+
+export async function POST(request: Request, { params }: { params: Promise<{ lottery: string }> }) {
+  const startedAt = Date.now();
+  const { lottery: lotteryParam } = await params;
+
+  try {
+    return await handlePost(request, lotteryParam, startedAt);
+  } catch (error) {
+    logApiError("POST:error", error, { lotteryParam, elapsedMs: elapsedMs(startedAt) });
+    return databaseErrorResponse(error);
+  }
 }

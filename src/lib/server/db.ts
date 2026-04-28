@@ -3,10 +3,16 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { config } from "dotenv";
 import { Pool, type PoolConfig } from "pg";
 
-config({ path: path.resolve(process.cwd(), ".env") });
-config({ path: path.resolve(process.cwd(), ".env.local"), override: true });
+if (process.env.NODE_ENV !== "production") {
+  config({ path: path.resolve(process.cwd(), ".env") });
+  config({ path: path.resolve(process.cwd(), ".env.local"), override: true });
+}
 
 let pool: Pool | null = null;
+
+type HyperdriveBinding = {
+  connectionString?: string;
+};
 
 type PostgresConfig = PoolConfig & {
   connectionString?: string;
@@ -17,6 +23,14 @@ function boolFromEnv(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes((value ?? "").toLowerCase());
 }
 
+function getCloudflareEnv(): Record<string, unknown> | null {
+  try {
+    return getCloudflareContext().env as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 function getEnvValue(name: string): string | undefined {
   const processValue = process.env[name];
 
@@ -24,12 +38,19 @@ function getEnvValue(name: string): string | undefined {
     return processValue;
   }
 
-  try {
-    const cloudflareValue = (getCloudflareContext().env as Record<string, unknown>)[name];
-    return typeof cloudflareValue === "string" ? cloudflareValue : undefined;
-  } catch {
-    return undefined;
+  const cloudflareValue = getCloudflareEnv()?.[name];
+  return typeof cloudflareValue === "string" ? cloudflareValue : undefined;
+}
+
+function getHyperdriveConnectionString(): string | undefined {
+  const explicitConnectionString = getEnvValue("HYPERDRIVE_CONNECTION_STRING");
+
+  if (explicitConnectionString) {
+    return explicitConnectionString;
   }
+
+  const binding = getCloudflareEnv()?.HYPERDRIVE as HyperdriveBinding | undefined;
+  return typeof binding?.connectionString === "string" ? binding.connectionString : undefined;
 }
 
 function isCloudflareRuntime(): boolean {
@@ -37,7 +58,7 @@ function isCloudflareRuntime(): boolean {
 }
 
 function getPostgresConfig(): PostgresConfig {
-  const hyperdriveConnectionString = getEnvValue("HYPERDRIVE_CONNECTION_STRING");
+  const hyperdriveConnectionString = getHyperdriveConnectionString();
   const host = getEnvValue("POSTGRES_HOST");
   const user = getEnvValue("POSTGRES_USER");
   const password = getEnvValue("POSTGRES_PASSWORD");

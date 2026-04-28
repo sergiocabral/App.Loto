@@ -10,6 +10,12 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    "NEXT_RUNTIME_PROVIDER": "cloudflare",
+    "POSTGRES_SSL": "true",
+    "POSTGRES_POOL_MAX": "1",
+    "POSTGRES_POOL_MAX_USES": "1"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
@@ -20,4 +26,11 @@
       "service": "app-loto"
     }
   ]
+  // If you use Cloudflare Hyperdrive, add this binding after creating it:
+  // "hyperdrive": [
+  //   {
+  //     "binding": "HYPERDRIVE",
+  //     "id": "<your-hyperdrive-id>"
+  //   }
+  // ]
 }

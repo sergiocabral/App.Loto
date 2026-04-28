@@ -322,6 +322,37 @@ describe("lottery route handlers", () => {
     expect(lastResponse?.status).toBe(429);
   });
 
+  it("returns a JSON error when GET service throws", async () => {
+    serviceMocks.collectMissingDraws.mockRejectedValueOnce(new Error("database unavailable"));
+    const route = await import("@/app/api/lotteries/[lottery]/route");
+
+    const response = await route.GET(new Request("http://localhost/api/lotteries/MegaSena"), {
+      params: Promise.resolve({ lottery: "MegaSena" }),
+    });
+    const payload = await readJson(response);
+
+    expect(response.status).toBe(500);
+    expect(payload.error).toBe("database unavailable");
+  });
+
+  it("returns a JSON error when POST service throws", async () => {
+    serviceMocks.syncMissingDrawsFromCaixa.mockRejectedValueOnce(new Error("database unavailable"));
+    const route = await import("@/app/api/lotteries/[lottery]/route");
+
+    const response = await route.POST(
+      new Request("http://localhost/api/lotteries/MegaSena", {
+        body: JSON.stringify({ action: "sync-caixa", batchSize: 1 }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+    const payload = await readJson(response);
+
+    expect(response.status).toBe(500);
+    expect(payload.error).toBe("database unavailable");
+  });
+
   it("uses empty body when POST JSON is invalid", async () => {
     const route = await import("@/app/api/lotteries/[lottery]/route");
 
