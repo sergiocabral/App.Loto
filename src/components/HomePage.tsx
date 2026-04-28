@@ -58,6 +58,7 @@ type LoadedLotteryData = {
 };
 
 type FetchMode = "database" | "caixa";
+type LookupMode = "draw" | "numbers";
 type AnalysisPeriod = 10 | 25 | 50 | 100 | "all";
 type AnalysisView = "most" | "least" | "delayed" | "map";
 type DuplaSenaAnalysisScope = "all" | "first" | "second";
@@ -72,10 +73,13 @@ type NumberTrend = {
 };
 
 type NumberTrendGroup = {
-  hits: number;
+  value: number;
   items: NumberTrend[];
-  visibleItems: NumberTrend[];
-  hiddenCount: number;
+};
+
+type SuggestedGame = {
+  key: string;
+  numbers: string[];
 };
 
 type AnalysisData = {
@@ -111,8 +115,6 @@ const DUPLA_SENA_SCOPE_OPTIONS: Array<{ value: DuplaSenaAnalysisScope; label: st
   { value: "second", label: "2º sorteio" },
 ];
 
-const LEAST_GROUP_LIMIT = 4;
-const LEAST_GROUP_VISIBLE_NUMBERS = 24;
 
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
@@ -196,6 +198,39 @@ function upsertLoadedDrawInCache(lotterySlug: string, loadedDraw: Draw): void {
     selectedDraw: nextDraws[0] ?? loadedDraw,
     statusMessage: `Histórico com ${nextDraws.length} concursos.`,
   });
+}
+
+function parseNumberFilter(input: string, lottery: LotteryDefinition): string[] {
+  const minimum = lottery.slug === "LotoMania" ? 0 : 1;
+  const maximum = lottery.slug === "LotoMania" ? 99 : lottery.countNumbers;
+  const numbers = new Set<string>();
+
+  for (const token of input.split(/[\s,;]+/)) {
+    const trimmed = token.trim();
+
+    if (!/^\d+$/.test(trimmed)) {
+      continue;
+    }
+
+    const value = Number.parseInt(trimmed, 10);
+
+    if (!Number.isFinite(value) || value < minimum || value > maximum) {
+      continue;
+    }
+
+    numbers.add(String(value).padStart(2, "0"));
+  }
+
+  return sortNumbersForDisplay([...numbers]);
+}
+
+function drawContainsNumbers(draw: Draw, numbers: string[]): boolean {
+  if (!numbers.length) {
+    return true;
+  }
+
+  const drawNumbers = new Set(getDisplayGroups(draw).flat());
+  return numbers.every((number) => drawNumbers.has(number));
 }
 
 function buildLegacyUrl(lotterySlug: string, drawNumber: string): string {
@@ -319,26 +354,123 @@ function buildNumberRange(lottery: LotteryDefinition): string[] {
   return Array.from({ length: lottery.countNumbers }, (_, index) => String(index + 1).padStart(2, "0"));
 }
 
-function buildLeastTrendGroups(stats: NumberTrend[]): NumberTrendGroup[] {
-  const byHits = new Map<number, NumberTrend[]>();
+function buildTrendGroups(
+  stats: NumberTrend[],
+  getValue: (item: NumberTrend) => number,
+  direction: "asc" | "desc",
+): NumberTrendGroup[] {
+  const byValue = new Map<number, NumberTrend[]>();
 
   for (const item of stats) {
-    byHits.set(item.hits, [...(byHits.get(item.hits) ?? []), item]);
+    const value = getValue(item);
+    byValue.set(value, [...(byValue.get(value) ?? []), item]);
   }
 
-  return Array.from(byHits.entries())
-    .sort(([leftHits], [rightHits]) => leftHits - rightHits)
-    .slice(0, LEAST_GROUP_LIMIT)
-    .map(([hits, items]) => {
-      const sortedItems = [...items].sort((left, right) => left.value - right.value);
+  return Array.from(byValue.entries())
+    .sort(([leftValue], [rightValue]) => (direction === "asc" ? leftValue - rightValue : rightValue - leftValue))
+    .map(([value, items]) => ({
+      value,
+      items: [...items].sort((left, right) => left.value - right.value),
+    }));
+}
 
-      return {
-        hits,
-        items: sortedItems,
-        visibleItems: sortedItems.slice(0, LEAST_GROUP_VISIBLE_NUMBERS),
-        hiddenCount: Math.max(0, sortedItems.length - LEAST_GROUP_VISIBLE_NUMBERS),
-      };
-    });
+function getSuggestionSize(lottery: LotteryDefinition): number {
+  return lottery.groups?.[0] ?? lottery.numbersPerDraw;
+}
+
+function buildSuggestionKey(lottery: LotteryDefinition, view: AnalysisView, data: AnalysisData): string {
+  const fingerprint = data.stats.map((item) => `${item.number}:${item.hits}:${item.overdue}`).join(",");
+  return [lottery.slug, view, data.periodLabel, data.scopeLabel, data.drawCount, fingerprint].join("|");
+}
+
+function getAnalysisWeight(item: NumberTrend, view: AnalysisView, data: AnalysisData): number {
+  const maxHits = Math.max(data.maxHits, 1);
+  const maxOverdue = Math.max(...data.stats.map((stat) => stat.overdue), 1);
+  const hotScore = item.hits / maxHits;
+  const coldScore = 1 - hotScore;
+  const overdueScore = item.overdue / maxOverdue;
+
+  switch (view) {
+    case "least":
+      return coldScore * 0.78 + overdueScore * 0.18 + 0.04;
+    case "delayed":
+      return overdueScore * 0.78 + coldScore * 0.16 + 0.06;
+    case "map":
+      return hotScore * 0.46 + overdueScore * 0.34 + coldScore * 0.14 + 0.06;
+    default:
+      return hotScore * 0.78 + overdueScore * 0.14 + 0.08;
+  }
+}
+
+function sortNumbersForDisplay(numbers: string[]): string[] {
+  return [...numbers].sort((left, right) => Number.parseInt(left, 10) - Number.parseInt(right, 10));
+}
+
+function shuffleItems<T>(items: T[]): T[] {
+  const shuffled = [...items];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const nextIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[nextIndex]] = [shuffled[nextIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
+function buildSuggestionGroups(view: AnalysisView, data: AnalysisData): NumberTrendGroup[] {
+  if (view === "most") {
+    return buildTrendGroups(data.stats, (item) => item.hits, "desc");
+  }
+
+  if (view === "least") {
+    return buildTrendGroups(data.stats, (item) => item.hits, "asc");
+  }
+
+  if (view === "delayed") {
+    return buildTrendGroups(data.stats, (item) => item.overdue, "desc");
+  }
+
+  return buildTrendGroups(data.stats, (item) => Math.round(getAnalysisWeight(item, view, data) * 1000), "desc");
+}
+
+function buildLuckySuggestion(lottery: LotteryDefinition, view: AnalysisView, data: AnalysisData): string[] {
+  const size = Math.min(getSuggestionSize(lottery), data.stats.length);
+  const selected: string[] = [];
+
+  for (const group of buildSuggestionGroups(view, data)) {
+    if (selected.length >= size) {
+      break;
+    }
+
+    const availableSlots = size - selected.length;
+    const shuffledGroup = shuffleItems(group.items);
+    selected.push(...shuffledGroup.slice(0, availableSlots).map((item) => item.number));
+  }
+
+  return sortNumbersForDisplay(selected);
+}
+
+function formatOverdueLabel(overdue: number): string {
+  if (overdue === 0) {
+    return "Saiu no último concurso";
+  }
+
+  return `${overdue} ${overdue === 1 ? "concurso" : "concursos"} sem sair`;
+}
+
+function getSuggestionDescription(view: AnalysisView, data: AnalysisData): string {
+  const filterText = getAnalysisFilterText(data);
+
+  switch (view) {
+    case "least":
+      return `Sugestão embaralhada priorizando números menos frequentes em ${filterText}.`;
+    case "delayed":
+      return `Sugestão embaralhada priorizando números há mais tempo sem aparecer em ${filterText}.`;
+    case "map":
+      return `Sugestão embaralhada equilibrando frequência e atraso em ${filterText}.`;
+    default:
+      return `Sugestão embaralhada priorizando números mais frequentes em ${filterText}.`;
+  }
 }
 
 function buildAnalysisData(
@@ -392,9 +524,9 @@ function buildAnalysisData(
   });
 
   const byNumber = (left: NumberTrend, right: NumberTrend) => left.value - right.value;
-  const most = [...stats].sort((left, right) => right.hits - left.hits || byNumber(left, right)).slice(0, 12);
-  const least = [...stats].sort((left, right) => left.hits - right.hits || byNumber(left, right)).slice(0, 12);
-  const delayed = [...stats].sort((left, right) => right.overdue - left.overdue || left.hits - right.hits || byNumber(left, right)).slice(0, 12);
+  const most = [...stats].sort((left, right) => right.hits - left.hits || byNumber(left, right));
+  const least = [...stats].sort((left, right) => left.hits - right.hits || byNumber(left, right));
+  const delayed = [...stats].sort((left, right) => right.overdue - left.overdue || left.hits - right.hits || byNumber(left, right));
 
   return {
     selectedDraws,
@@ -500,10 +632,13 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     initialLottery ? "Carregando resultados..." : "Escolha uma loteria.",
   );
   const [fetchMode, setFetchMode] = useState<FetchMode>("database");
+  const [lookupMode, setLookupMode] = useState<LookupMode>("draw");
+  const [numberFilter, setNumberFilter] = useState<string[]>([]);
   const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(25);
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
   const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
+  const [suggestedGame, setSuggestedGame] = useState<SuggestedGame | null>(null);
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
@@ -513,10 +648,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const numberCount = latestDraw?.numbers.length ?? selectedLottery?.numbersPerDraw ?? 0;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
   const caixaDrawNumber = drawNumberInput.trim() || activeDrawNumber.trim();
-  const canFetchFromCaixa = Boolean(selectedLottery && caixaDrawNumber && status !== "loading" && !isSyncing);
+  const canFetchFromCaixa = Boolean(selectedLottery && lookupMode === "draw" && caixaDrawNumber && status !== "loading" && !isSyncing);
   const canSyncFromCaixa = Boolean(selectedLottery && status !== "loading" && (isSyncing || !activeDrawNumber.trim()));
 
-  const visibleDraws = useMemo(() => draws.slice(0, 20), [draws]);
+  const filteredDraws = useMemo(() => draws.filter((draw) => drawContainsNumbers(draw, numberFilter)), [draws, numberFilter]);
+  const visibleDraws = useMemo(() => filteredDraws.slice(0, 20), [filteredDraws]);
   const analysisData = useMemo(
     () => buildAnalysisData(draws, selectedLottery, analysisPeriod, selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"),
     [analysisPeriod, draws, duplaSenaAnalysisScope, selectedLottery],
@@ -528,6 +664,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
 
     return buildLegacyUrl(selectedLottery.slug, activeDrawNumber.trim());
   }, [selectedLottery, activeDrawNumber]);
+  const suggestionKey = useMemo(
+    () => (selectedLottery && analysisData ? buildSuggestionKey(selectedLottery, analysisView, analysisData) : ""),
+    [analysisData, analysisView, selectedLottery],
+  );
+  const visibleSuggestionNumbers = suggestedGame?.key === suggestionKey ? suggestedGame.numbers : [];
 
   useEffect(() => {
     if (!selectedLottery || syncInfo.running) {
@@ -615,7 +756,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setStatus("loading");
     setStatusMessage("Preparando...");
     setFetchMode("database");
+    setLookupMode("draw");
+    setNumberFilter([]);
     setSyncInfo(INITIAL_SYNC_INFO);
+    setSuggestedGame(null);
     updateLegacyUrl(lottery.slug);
   }
 
@@ -627,9 +771,45 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     }
 
     const trimmed = drawNumberInput.trim();
+
+    if (lookupMode === "numbers") {
+      const parsedNumbers = parseNumberFilter(trimmed, selectedLottery);
+
+      if (!parsedNumbers.length) {
+        setNumberFilter([]);
+        setSuggestedGame(null);
+        setStatusMessage("Informe números válidos para filtrar.");
+        return;
+      }
+
+      setFetchMode("database");
+      setSuggestedGame(null);
+      setNumberFilter(parsedNumbers);
+      setSelectedDraw(null);
+      setActiveDrawNumber("");
+      updateLegacyUrl(selectedLottery.slug);
+      setStatusMessage(`Filtro aplicado: ${parsedNumbers.join(", ")}.`);
+      return;
+    }
+
+    setNumberFilter([]);
     setFetchMode("database");
+    setSuggestedGame(null);
     setActiveDrawNumber(trimmed);
     updateLegacyUrl(selectedLottery.slug, trimmed || undefined);
+  }
+
+  function changeLookupMode(mode: LookupMode) {
+    setLookupMode(mode);
+    setDrawNumberInput("");
+    setNumberFilter([]);
+    setSuggestedGame(null);
+
+    if (mode === "numbers" && selectedLottery && activeDrawNumber.trim()) {
+      setSelectedDraw(null);
+      setActiveDrawNumber("");
+      updateLegacyUrl(selectedLottery.slug);
+    }
   }
 
   function fetchActiveDrawFromCaixa() {
@@ -650,6 +830,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setDrawNumberInput(drawNumberToFetch);
     setActiveDrawNumber(drawNumberToFetch);
     setError(null);
+    setNumberFilter([]);
+    setSuggestedGame(null);
     setFetchMode("caixa");
     updateLegacyUrl(selectedLottery.slug, drawNumberToFetch);
   }
@@ -730,10 +912,12 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setFetchMode("database");
     setActiveDrawNumber("");
     setDrawNumberInput("");
+    setNumberFilter([]);
     updateLegacyUrl(lottery.slug);
     setStatus("syncing");
     setError(null);
     setStatusMessage("Sincronizando...");
+    setSuggestedGame(null);
     setSyncInfo({
       ...INITIAL_SYNC_INFO,
       running: true,
@@ -794,6 +978,32 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     }
   }
 
+  function changeAnalysisPeriod(period: AnalysisPeriod) {
+    setSuggestedGame(null);
+    setAnalysisPeriod(period);
+  }
+
+  function changeAnalysisView(view: AnalysisView) {
+    setSuggestedGame(null);
+    setAnalysisView(view);
+  }
+
+  function changeDuplaSenaAnalysisScope(scope: DuplaSenaAnalysisScope) {
+    setSuggestedGame(null);
+    setDuplaSenaAnalysisScope(scope);
+  }
+
+  function generateLuckySuggestion() {
+    if (!selectedLottery || !analysisData || !suggestionKey) {
+      return;
+    }
+
+    setSuggestedGame({
+      key: suggestionKey,
+      numbers: buildLuckySuggestion(selectedLottery, analysisView, analysisData),
+    });
+  }
+
   return (
     <div className="dashboard">
       <section className="hero-card">
@@ -843,19 +1053,27 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
           </div>
 
           <form className="lookup-form" onSubmit={submitDrawLookup}>
-            <label htmlFor="draw-number">Número do concurso</label>
+            <div className="lookup-mode-control" aria-label="Tipo de consulta">
+              <button className={lookupMode === "draw" ? "active" : ""} onClick={() => changeLookupMode("draw")} type="button">
+                Concurso
+              </button>
+              <button className={lookupMode === "numbers" ? "active" : ""} onClick={() => changeLookupMode("numbers")} type="button">
+                Números
+              </button>
+            </div>
+            <label htmlFor="draw-number">{lookupMode === "draw" ? "Número do concurso" : "Números para encontrar"}</label>
             <div className="lookup-row">
               <input
                 disabled={!selectedLottery}
                 id="draw-number"
-                inputMode="numeric"
+                inputMode={lookupMode === "draw" ? "numeric" : "text"}
                 onChange={(event) => setDrawNumberInput(event.target.value)}
-                placeholder="Ex: 3000"
+                placeholder={lookupMode === "draw" ? "Ex: 3000" : "Ex: 05 12 33"}
                 type="text"
                 value={drawNumberInput}
               />
               <button disabled={!selectedLottery || status === "loading" || isSyncing} type="submit">
-                Consultar
+                {lookupMode === "draw" ? "Consultar" : "Filtrar"}
               </button>
             </div>
             <div className="lookup-actions">
@@ -929,7 +1147,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
                 {selectedLottery
                   ? activeDrawNumber
                     ? `Concurso ${activeDrawNumber}`
-                    : `Histórico de ${formatLotteryName(selectedLottery.slug)}`
+                    : numberFilter.length
+                      ? `Concursos com ${numberFilter.join(" · ")}`
+                      : `Histórico de ${formatLotteryName(selectedLottery.slug)}`
                   : "Aguardando seleção"}
               </h2>
             </div>
@@ -946,28 +1166,42 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
             <>
               {rawText ? (
                 <details className="raw-output raw-output-top">
-                  <summary>Visão crua dos resultados</summary>
-                  <div className="raw-output-actions">
-                    <span>Texto simples gerado a partir dos resultados salvos.</span>
-                    <a className="legacy-link" href={legacyHref} rel="noreferrer" target="_blank">
+                  <summary>
+                    <span>Visão crua dos resultados</span>
+                    <a className="legacy-link" href={legacyHref} onClick={(event) => event.stopPropagation()} rel="noreferrer" target="_blank">
                       Abrir em nova aba
                     </a>
+                  </summary>
+                  <div className="raw-output-actions">
+                    <span>Visualização em texto para perceber padrões manualmente.</span>
                   </div>
-                  <pre>{rawText}</pre>
+                  <div className="raw-output-pre-wrap">
+                    <pre>{rawText}</pre>
+                  </div>
                 </details>
               ) : null}
-              <DrawSpotlight draw={selectedDraw ?? draws[0]} />
+              <SuggestionPanel
+                activeView={analysisView}
+                data={analysisData}
+                lottery={selectedLottery}
+                numbers={visibleSuggestionNumbers}
+                onLucky={generateLuckySuggestion}
+              />
               <AnalysisPanel
                 activeView={analysisView}
                 data={analysisData}
                 isDuplaSena={selectedLottery?.slug === "DuplaSena"}
-                onPeriodChange={setAnalysisPeriod}
-                onScopeChange={setDuplaSenaAnalysisScope}
-                onViewChange={setAnalysisView}
+                onPeriodChange={changeAnalysisPeriod}
+                onScopeChange={changeDuplaSenaAnalysisScope}
+                onViewChange={changeAnalysisView}
                 period={analysisPeriod}
                 scope={duplaSenaAnalysisScope}
               />
-              <DrawList draws={visibleDraws} onSelect={setSelectedDraw} selectedDrawNumber={selectedDraw?.drawNumber ?? null} />
+              {numberFilter.length && filteredDraws.length === 0 ? (
+                <FilterEmptyState numbers={numberFilter} />
+              ) : (
+                <DrawList draws={visibleDraws} onSelect={setSelectedDraw} selectedDrawNumber={selectedDraw?.drawNumber ?? null} />
+              )}
             </>
           ) : null}
         </section>
@@ -1019,6 +1253,15 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
+function FilterEmptyState({ numbers }: { numbers: string[] }) {
+  return (
+    <div className="empty-state compact">
+      <strong>Nenhum concurso encontrado</strong>
+      <p>Não há resultados carregados contendo todos estes números: {numbers.join(", ")}.</p>
+    </div>
+  );
+}
+
 function AnalysisPanel({
   activeView,
   data,
@@ -1039,23 +1282,15 @@ function AnalysisPanel({
   scope: DuplaSenaAnalysisScope;
 }) {
   return (
-    <details className="analysis-panel" open>
+    <details className="analysis-panel">
       <summary className="analysis-summary">
         <div>
           <span className="eyebrow">Análise rápida</span>
           <strong>{data ? getAnalysisDescription(activeView, data) : "Carregue resultados para ver a análise."}</strong>
         </div>
-        <span className="analysis-summary-chip">{data ? `${getAnalysisViewLabel(activeView)} · ${data.periodLabel}` : "Abrir"}</span>
       </summary>
 
       <div className="analysis-body" aria-label="Análise rápida dos resultados">
-        {data ? (
-          <div className="analysis-current-filter">
-            <span>{getAnalysisViewLabel(activeView)}</span>
-            <strong>{data.scopeLabel === "Todos os sorteios" ? data.periodLabel : `${data.periodLabel} · ${data.scopeLabel}`}</strong>
-          </div>
-        ) : null}
-
         <details className="analysis-options">
           <summary>
             <span>Ajustar análise</span>
@@ -1123,53 +1358,41 @@ function AnalysisPanel({
 
 function AnalysisContent({ data, view }: { data: AnalysisData; view: AnalysisView }) {
   if (view === "map") {
-    return <NumberHeatMap stats={data.stats} />;
+    return (
+      <div className="analysis-scroll-area">
+        <NumberHeatMap stats={data.stats} />
+      </div>
+    );
   }
 
-  if (view === "least") {
-    return <LeastTrendGroups groups={buildLeastTrendGroups(data.stats)} />;
-  }
+  const groups =
+    view === "most"
+      ? buildTrendGroups(data.stats, (item) => item.hits, "desc")
+      : view === "least"
+        ? buildTrendGroups(data.stats, (item) => item.hits, "asc")
+        : buildTrendGroups(data.stats, (item) => item.overdue, "desc");
 
-  const items = view === "most" ? data.most : data.delayed;
-  const label = view === "delayed" ? "concursos sem sair" : "vezes";
-  const getValue = (item: NumberTrend) => (view === "delayed" ? item.overdue : item.hits);
-
-  return (
-    <div className="trend-list">
-      {items.map((item) => (
-        <div className="trend-row" key={`${view}-${item.number}`}>
-          <span className="trend-number">{item.number}</span>
-          <div>
-            <strong>
-              {getValue(item)} {label}
-            </strong>
-            <div className="trend-bar" aria-hidden="true">
-              <span style={{ width: `${Math.max(8, item.intensity * 100)}%` }} />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  return <TrendGroups groups={groups} view={view} />;
 }
 
-function LeastTrendGroups({ groups }: { groups: NumberTrendGroup[] }) {
+function TrendGroups({ groups, view }: { groups: NumberTrendGroup[]; view: AnalysisView }) {
   return (
-    <div className="least-groups">
-      {groups.map((group) => (
-        <article className="least-group" key={`least-${group.hits}`}>
-          <div className="least-group-header">
-            <strong>{formatHitsLabel(group.hits)}</strong>
-            <span>{formatNumberCount(group.items.length)}</span>
-          </div>
-          <div className="least-number-cloud">
-            {group.visibleItems.map((item) => (
-              <span key={`least-${group.hits}-${item.number}`}>{item.number}</span>
-            ))}
-            {group.hiddenCount ? <small>+{group.hiddenCount}</small> : null}
-          </div>
-        </article>
-      ))}
+    <div className="analysis-scroll-area">
+      <div className="trend-groups">
+        {groups.map((group) => (
+          <article className="trend-group" key={`${view}-${group.value}`}>
+            <div className="trend-group-header">
+              <strong>{view === "delayed" ? formatOverdueLabel(group.value) : formatHitsLabel(group.value)}</strong>
+              <span>{formatNumberCount(group.items.length)}</span>
+            </div>
+            <div className="trend-number-cloud">
+              {group.items.map((item) => (
+                <span key={`${view}-${group.value}-${item.number}`}>{item.number}</span>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1195,30 +1418,37 @@ function NumberHeatMap({ stats }: { stats: NumberTrend[] }) {
   );
 }
 
-function DrawSpotlight({ draw }: { draw: Draw | null | undefined }) {
-  if (!draw) {
+function SuggestionPanel({
+  activeView,
+  data,
+  lottery,
+  numbers,
+  onLucky,
+}: {
+  activeView: AnalysisView;
+  data: AnalysisData | null;
+  lottery: LotteryDefinition | null;
+  numbers: string[];
+  onLucky: () => void;
+}) {
+  if (!lottery || !data) {
     return null;
   }
 
-  const groups = getDisplayGroups(draw);
-
   return (
-    <article className="draw-spotlight">
-      <div>
-        <span className="eyebrow">Concurso {draw.drawNumber}</span>
-        <h3>{draw.date || "Data não informada"}</h3>
+    <article className="suggestion-card">
+      <div className="suggestion-header">
+        <div>
+          <span className="eyebrow">Sugestão para jogar</span>
+          <h3>{formatLotteryName(lottery.slug)}</h3>
+        </div>
+        <button className="lucky-button" onClick={onLucky} type="button">
+          Estou com sorte
+        </button>
       </div>
-      <div className={`number-cloud ${groups.length > 1 ? "grouped" : ""}`}>
-        {groups.map((group, groupIndex) => (
-          <div className="number-group" key={`${draw.drawNumber}-group-${groupIndex}`}>
-            {groups.length > 1 ? <small>{groupIndex + 1}º sorteio</small> : null}
-            <div>
-              {group.map((number, numberIndex) => (
-                <span key={`${draw.drawNumber}-${groupIndex}-${number}-${numberIndex}`}>{number}</span>
-              ))}
-            </div>
-          </div>
-        ))}
+      <p className="suggestion-copy">{getSuggestionDescription(activeView, data)}</p>
+      <div className="suggestion-numbers" aria-label="Sugestão baseada na análise rápida">
+        {numbers.length ? numbers.map((number) => <span key={`analysis-suggestion-${number}`}>{number}</span>) : <em>Toque em “Estou com sorte” para gerar uma sugestão.</em>}
       </div>
     </article>
   );

@@ -1,7 +1,8 @@
 import { getLottery } from "@/data/lotteries";
-import { fetchDrawFromCaixa } from "@/lib/server/caixa";
+import { CaixaApiError, fetchDrawFromCaixa } from "@/lib/server/caixa";
 import {
   getDraw,
+  getLatestDraw,
   getNextMissingDrawNumber,
   listDraws,
   saveDraw,
@@ -84,6 +85,15 @@ function normalizeBatchSize(value: number | undefined): number {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Erro desconhecido ao consultar a Caixa.";
+}
+
+function isFutureDrawApiError(error: unknown): error is CaixaApiError {
+  return error instanceof CaixaApiError && typeof error.status === "number" && error.status >= 500;
+}
+
+async function isLikelyFutureDraw(lotterySlug: string, drawNumber: number): Promise<boolean> {
+  const latestDraw = await getLatestDraw(lotterySlug);
+  return Boolean(latestDraw && drawNumber > latestDraw.drawNumber);
 }
 
 export async function getStoredDraw(lotterySlug: string, drawNumber: number): Promise<StoredDraw | null> {
@@ -283,6 +293,21 @@ export async function syncMissingDrawsFromCaixa(
         elapsedMs: elapsedMs(startedAt),
       });
     } catch (error) {
+      if (isFutureDrawApiError(error) && (await isLikelyFutureDraw(lottery.slug, currentDrawNumber))) {
+        consecutiveMisses = MAX_CONSECUTIVE_NOT_FOUND;
+        skippedDrawNumbers.push(currentDrawNumber);
+        stopReason = "not_found_limit";
+        nextDrawNumber = null;
+        warnService("syncMissingDrawsFromCaixa:future-draw-unavailable", {
+          lottery: lottery.slug,
+          currentDrawNumber,
+          status: error.status,
+          savedInBatch: savedDraws.length,
+          elapsedMs: elapsedMs(startedAt),
+        });
+        break;
+      }
+
       stopReason = "error";
       errorMessage = getErrorMessage(error);
       nextDrawNumber = currentDrawNumber;
