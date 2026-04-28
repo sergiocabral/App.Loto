@@ -209,14 +209,15 @@ function drawContainsNumbers(draw: Draw, numbers: string[]): boolean {
   return numbers.every((number) => drawNumbers.has(number));
 }
 
-function buildLegacyUrl(lotterySlug: string, drawNumber: string): string {
-  const params = new URLSearchParams({ format: "legacy" });
+function buildRawPageUrl(lotterySlug: string, drawNumber: string): string {
+  const params = new URLSearchParams();
 
   if (drawNumber) {
     params.set("draw", drawNumber);
   }
 
-  return `/api/lotteries/${lotterySlug}?${params.toString()}`;
+  const query = params.toString();
+  return `/raw/${lotterySlug}${query ? `?${query}` : ""}`;
 }
 
 function getHistoryStatusMessage(draws: Draw[]): string {
@@ -610,7 +611,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
       return "#";
     }
 
-    return buildLegacyUrl(selectedLottery.slug, activeDrawNumber.trim());
+    return buildRawPageUrl(selectedLottery.slug, activeDrawNumber.trim());
   }, [selectedLottery, activeDrawNumber]);
   const suggestionKey = useMemo(
     () => (selectedLottery && analysisData ? buildSuggestionKey(selectedLottery, analysisView, analysisData) : ""),
@@ -932,17 +933,17 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   }
 
   return (
-    <div className="dashboard">
+    <>
+      <div className="dashboard">
       <section className="hero-card">
         <div>
-          <span className="eyebrow">Luckygames</span>
-          <h1>Resultados das Loterias da Caixa, grátis e fácil.</h1>
+          <h1>Luckygames</h1>
           <p className="hero-copy">
-            Consulte sorteios e estatísticas simples. Os números vêm da fonte pública das{" "}
+            Resultados das{" "}
             <a href="https://loterias.caixa.gov.br" rel="noreferrer" target="_blank">
               Loterias da Caixa
             </a>
-            ; o Luckygames apenas facilita a consulta.
+            , estatísticas simples e sugestões para consultar com calma. O serviço apenas facilita a leitura dos sorteios públicos.
           </p>
           <div className="donation-callout">
             <strong>Ganhou ou o serviço ajudou?</strong>
@@ -1098,7 +1099,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
               {rawText ? (
                 <details className="raw-output raw-output-top">
                   <summary>
-                    <span>Visão crua dos resultados</span>
+                    <span>
+                      <strong>Visão crua dos resultados</strong>
+                      <small>Clique no título para abrir/fechar a prévia</small>
+                    </span>
                     <a className="legacy-link" href={legacyHref} onClick={(event) => event.stopPropagation()} rel="noreferrer" target="_blank">
                       Abrir em nova aba
                     </a>
@@ -1146,6 +1150,19 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
         </section>
       </section>
     </div>
+    <footer className="super-footer" aria-label="Apoie o Luckygames">
+      <div className="donation-callout donation-callout-bottom">
+        <strong>Serviço gratuito</strong>
+        <span>
+          Se o Luckygames ajudou, apoie com um PIX para <strong className="pix-key">contato@luckygames.tips</strong> ou cartão em{" "}
+          <a href="https://idontneedit.org" rel="noreferrer" target="_blank">
+            idontneedit.org
+          </a>
+          .
+        </span>
+      </div>
+    </footer>
+  </>
   );
 }
 
