@@ -58,6 +58,9 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
       : formatLotteryName(lottery.slug);
   const totalDraws = hasValidDraw ? (draw ? 1 : 0) : history.length;
   const legacyApiUrl = `/api/lotteries/${lottery.slug}?format=legacy${hasValidDraw && drawNumber ? `&draw=${drawNumber}` : ""}`;
+  const legacyDownloadName = hasValidDraw && drawNumber
+    ? `${lottery.slug}-concurso-${drawNumber}.txt`
+    : `${lottery.slug}-resultados.txt`;
 
   return (
     <main className="raw-page-shell">
@@ -74,8 +77,8 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
                 {hasValidDraw ? (draw ? "1 concurso" : "0 concursos") : `${totalDraws} concurso${totalDraws === 1 ? "" : "s"}`}
               </span>
             </div>
-            <a className="raw-page-link raw-page-link-download" href={legacyApiUrl} rel="noreferrer" target="_blank">
-              Abrir texto para baixar
+            <a className="raw-page-link raw-page-link-download" download={legacyDownloadName} href={legacyApiUrl}>
+              Baixar texto
             </a>
           </div>
         </header>
