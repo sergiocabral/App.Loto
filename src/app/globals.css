@@ -195,13 +195,14 @@ input:disabled {
   background: linear-gradient(135deg, #f8fafc 0%, #7dd3fc 48%, #fbbf24 100%);
   background-clip: text;
   color: transparent;
+  display: inline-block;
   font-size: clamp(38px, 7vw, 72px);
   font-weight: 900;
-  letter-spacing: -0.065em;
+  letter-spacing: -0.052em;
   line-height: 1.04;
   margin: -4px 0 0;
-  max-width: 720px;
-  padding: 4px 0 8px;
+  max-width: 100%;
+  padding: 4px 0.12em 8px 0;
   text-shadow: 0 22px 54px rgba(56, 189, 248, 0.18);
 }
 
@@ -1673,17 +1674,20 @@ button {
   min-height: 54px;
   padding: 8px 4px;
   place-items: center;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
 }
 
 .heat-number strong {
+  color: currentColor;
   font-family: 'JetBrains Mono', monospace;
   font-size: 14px;
 }
 
 .heat-number small {
-  color: var(--muted-strong);
+  color: currentColor;
   font-size: 11px;
   font-weight: 800;
+  opacity: 0.78;
 }
 
 .analysis-empty {

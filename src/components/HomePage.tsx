@@ -1241,23 +1241,46 @@ function TrendGroups({ groups, view }: { groups: NumberTrendGroup[]; view: Analy
   );
 }
 
+function getHeatNumberStyle(item: NumberTrend, minHits: number, hitRange: number) {
+  const relativeIntensity = hitRange > 0 ? (item.hits - minHits) / hitRange : item.hits ? 0.58 : 0;
+  const hue = 222 - relativeIntensity * 184;
+  const saturation = 72 + relativeIntensity * 18;
+  const lightness = 14 + relativeIntensity * 48;
+  const borderLightness = 34 + relativeIntensity * 32;
+  const glow = 0.08 + relativeIntensity * 0.22;
+
+  return {
+    background: `linear-gradient(135deg, hsl(${hue} ${saturation}% ${lightness}%), hsl(${Math.max(18, hue - 18)} ${Math.min(95, saturation + 4)}% ${Math.max(18, lightness - 6)}%))`,
+    borderColor: `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
+    boxShadow: item.hits ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "none",
+    color: relativeIntensity > 0.52 ? "#020617" : "#f8fafc",
+  };
+}
+
 function NumberHeatMap({ stats }: { stats: NumberTrend[] }) {
+  const hitCounts = stats.map((item) => item.hits);
+  const minHits = Math.min(...hitCounts);
+  const maxHits = Math.max(...hitCounts);
+  const hitRange = Math.max(maxHits - minHits, 0);
+
   return (
     <div className="number-heat-map">
-      {stats.map((item) => (
-        <div
-          className="heat-number"
-          key={`map-${item.number}`}
-          style={{
-            backgroundColor: `rgba(56, 189, 248, ${0.08 + item.intensity * 0.5})`,
-            borderColor: item.hits ? `rgba(125, 211, 252, ${0.25 + item.intensity * 0.5})` : "rgba(148, 163, 184, 0.16)",
-          }}
-          title={`${item.number}: ${item.hits} vez(es), atraso ${item.overdue}`}
-        >
-          <strong>{item.number}</strong>
-          <small>{item.hits}x</small>
-        </div>
-      ))}
+      {stats.map((item) => {
+        const aboveMinimum = item.hits - minHits;
+        const relativeLabel = hitRange > 0 ? ` · ${aboveMinimum} acima do menor valor (${minHits}x)` : "";
+
+        return (
+          <div
+            className="heat-number"
+            key={`map-${item.number}`}
+            style={getHeatNumberStyle(item, minHits, hitRange)}
+            title={`${item.number}: ${item.hits} vez(es), atraso ${item.overdue}${relativeLabel}`}
+          >
+            <strong>{item.number}</strong>
+            <small>{item.hits}x</small>
+          </div>
+        );
+      })}
     </div>
   );
 }
