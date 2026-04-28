@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -245,7 +246,7 @@ async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Pro
     return pendingRequest;
   }
 
-  const endpoint = drawNumber ? `/api/lotteries/${lotterySlug}?draw=${drawNumber}` : `/api/lotteries/${lotterySlug}`;
+  const endpoint = drawNumber ? `/api/lotteries/${lotterySlug}?draw=${drawNumber}` : `/api/lotteries/${lotterySlug}?collect=false`;
   const request = fetch(endpoint, { cache: "no-store" })
     .then(async (response) => {
       const payload = (await response.json()) as LotteryApiPayload;
@@ -831,6 +832,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       <section className="hero-card">
         <div>
           <Link aria-label="Voltar para o início sem loteria selecionada" className="brand-home" href="/" onClick={returnToHome}>
+            <Image alt="Luckygames" className="brand-icon" height={72} priority src="/gohorse.png" width={72} />
             <h1>Luckygames</h1>
           </Link>
           <p className="hero-copy">
@@ -993,15 +995,23 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
               {numberFilter.length && filteredDraws.length === 0 ? (
                 <FilterEmptyState numbers={numberFilter} />
               ) : (
-                <DrawList
-                  draws={visibleDraws}
-                  hasMore={hasMoreDraws}
-                  onLoadMore={loadMoreDraws}
-                  onSelect={setSelectedDraw}
-                  selectedDrawNumber={selectedDraw?.drawNumber ?? null}
-                  totalCount={filteredDraws.length}
-                  visibleCount={visibleDraws.length}
-                />
+                <>
+                  <div className="results-list-heading">
+                    <span className="results-list-label">Resultados</span>
+                    <strong>
+                      {filteredDraws.length} concurso{filteredDraws.length === 1 ? "" : "s"}
+                    </strong>
+                  </div>
+                  <DrawList
+                    draws={visibleDraws}
+                    hasMore={hasMoreDraws}
+                    onLoadMore={loadMoreDraws}
+                    onSelect={setSelectedDraw}
+                    selectedDrawNumber={selectedDraw?.drawNumber ?? null}
+                    totalCount={filteredDraws.length}
+                    visibleCount={visibleDraws.length}
+                  />
+                </>
               )}
             </>
           ) : null}

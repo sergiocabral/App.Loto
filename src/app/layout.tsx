@@ -5,8 +5,8 @@ import "./globals.css";
 
 const officialSiteUrl = getOfficialSiteUrl();
 const siteUrl = officialSiteUrl.origin;
-const socialImageUrl = "/site-card.svg";
-const iconUrl = "/site-icon.svg";
+const socialImageUrl = "/gohorse.png";
+const iconUrl = "/gohorse.png";
 const socialTitle = "Luckygames.tips | Resultados e palpites para loterias";
 const socialDescription =
   "Confira resultados das Loterias da Caixa, veja análises rápidas e escolha seus próximos números com mais praticidade.";
@@ -20,9 +20,9 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   icons: {
-    icon: [{ url: iconUrl, type: "image/svg+xml" }],
-    shortcut: [{ url: iconUrl, type: "image/svg+xml" }],
-    apple: [{ url: iconUrl, type: "image/svg+xml" }],
+    icon: [{ url: iconUrl, type: "image/png" }],
+    shortcut: [{ url: iconUrl, type: "image/png" }],
+    apple: [{ url: iconUrl, type: "image/png" }],
   },
   openGraph: {
     title: socialTitle,
@@ -34,10 +34,10 @@ export const metadata: Metadata = {
     images: [
       {
         url: socialImageUrl,
-        width: 1200,
-        height: 630,
-        type: "image/svg+xml",
-        alt: "Luckygames.tips: uma forma simples e rápida de acompanhar resultados e análises das loterias.",
+        width: 1024,
+        height: 1024,
+        type: "image/png",
+        alt: "Ícone circular amarelo e preto da Luckygames.tips.",
       },
     ],
   },

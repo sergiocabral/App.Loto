@@ -70,7 +70,8 @@ const MAX_CHAT_BODY_BYTES = 64_000;
 const MAX_CONTEXT_DRAWS = 120;
 const MAX_MESSAGES = 12;
 const MAX_MESSAGE_CHARS = 900;
-const MAX_REPLY_CHARS = 700;
+const MAX_REPLY_CHARS = 600;
+const MAX_COMPLETION_TOKENS = 180;
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
 function logChat(message: string, details?: Record<string, unknown>): void {
@@ -322,6 +323,17 @@ function buildSystemPrompt(context: ChatContext): string {
   ].join("\n");
 }
 
+function clampReplyLength(reply: string): string {
+  const normalized = reply.trim();
+
+  if (normalized.length <= MAX_REPLY_CHARS) {
+    return normalized;
+  }
+
+  const clipped = normalized.slice(0, MAX_REPLY_CHARS).replace(/\s+\S*$/, "").trimEnd();
+  return `${clipped}…`;
+}
+
 async function requestOpenAI(messages: OpenAIChatMessage[]): Promise<string> {
   const chatConfig = getOpenAIChatConfig();
 
@@ -330,7 +342,7 @@ async function requestOpenAI(messages: OpenAIChatMessage[]): Promise<string> {
   }
 
   const body = {
-    max_completion_tokens: 220,
+    max_completion_tokens: MAX_COMPLETION_TOKENS,
     messages,
     model: chatConfig.model,
     ...(chatConfig.model.startsWith("gpt-5") ? {} : { temperature: 0.35 }),
@@ -355,7 +367,7 @@ async function requestOpenAI(messages: OpenAIChatMessage[]): Promise<string> {
     throw new Error("OpenAI response did not include a message.");
   }
 
-  return content.slice(0, MAX_REPLY_CHARS);
+  return clampReplyLength(content);
 }
 
 export async function POST(request: Request) {
@@ -386,7 +398,7 @@ export async function POST(request: Request) {
   const guardrailReply = buildPromptInjectionGuardrail(messages[messages.length - 1].content);
 
   if (guardrailReply) {
-    return NextResponse.json({ reply: guardrailReply });
+    return NextResponse.json({ reply: clampReplyLength(guardrailReply) });
   }
 
   try {

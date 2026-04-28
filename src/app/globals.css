@@ -180,9 +180,22 @@ input:disabled {
 }
 
 .brand-home {
-  display: inline-block;
+  align-items: center;
+  display: inline-flex;
+  gap: clamp(10px, 2vw, 16px);
   max-width: 100%;
   text-decoration: none;
+}
+
+.brand-icon {
+  background: #facc15;
+  border: 3px solid #020617;
+  border-radius: 50%;
+  box-shadow: 0 14px 34px rgba(251, 191, 36, 0.2), 0 0 0 4px rgba(251, 191, 36, 0.12);
+  flex: 0 0 auto;
+  height: clamp(48px, 9vw, 72px);
+  object-fit: cover;
+  width: clamp(48px, 9vw, 72px);
 }
 
 .brand-home:focus-visible {
@@ -201,7 +214,7 @@ input:disabled {
   letter-spacing: -0.052em;
   line-height: 1.04;
   margin: -4px 0 0;
-  max-width: 100%;
+  max-width: min(100%, calc(100vw - 112px));
   padding: 4px 0.12em 8px 0;
   text-shadow: 0 22px 54px rgba(56, 189, 248, 0.18);
 }
@@ -1148,6 +1161,28 @@ button {
   max-height: 560px;
   overflow: auto;
   padding-right: 4px;
+}
+
+.results-list-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin: 12px 0 8px;
+  padding: 0 2px;
+}
+
+.results-list-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 0;
+}
+
+.results-list-heading strong {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .load-more-draws {
