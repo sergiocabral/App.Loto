@@ -2,7 +2,7 @@ import path from "node:path";
 import { config } from "dotenv";
 import { Pool } from "pg";
 
-config({ path: path.resolve(process.cwd(), "../.env") });
+config({ path: path.resolve(process.cwd(), ".env") });
 config({ path: path.resolve(process.cwd(), ".env.local"), override: true });
 
 let pool: Pool | null = null;

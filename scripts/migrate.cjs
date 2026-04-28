@@ -5,7 +5,7 @@ const path = require("node:path");
 const { config } = require("dotenv");
 const { Pool } = require("pg");
 
-config({ path: path.resolve(__dirname, "../../.env") });
+config({ path: path.resolve(__dirname, "../.env") });
 config({ path: path.resolve(__dirname, "../.env.local"), override: true });
 
 const host = process.env.POSTGRES_HOST;

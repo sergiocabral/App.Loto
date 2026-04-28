@@ -154,13 +154,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ lot
     return NextResponse.json({ error: "Unknown lottery" }, { status: 404 });
   }
 
-  const authorization = authorizeMutationRequest(request);
-
-  if (!authorization.ok) {
-    logApi("POST:unauthorized", { lottery: lottery.slug, status: authorization.status, elapsedMs: elapsedMs(startedAt) });
-    return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  }
-
   const rateLimit = checkMutationRateLimit(request, lottery.slug);
 
   if (!rateLimit.ok) {
@@ -232,6 +225,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ lot
       draws: publicSync.draws,
       text: renderHistoryText(sync.draws),
     });
+  }
+
+  const authorization = authorizeMutationRequest(request);
+
+  if (!authorization.ok) {
+    logApi("POST:unauthorized", { lottery: lottery.slug, status: authorization.status, action, elapsedMs: elapsedMs(startedAt) });
+    return NextResponse.json({ error: authorization.error }, { status: authorization.status });
   }
 
   const drawNumber = parsePositiveInteger(bodyRecord.drawNumber);

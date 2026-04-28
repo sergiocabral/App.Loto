@@ -182,25 +182,6 @@ function cacheHistoryData(lotterySlug: string, draws: Draw[], rawText: string, s
   return loadedData;
 }
 
-function formatSyncStopReason(reason: string | null): string {
-  switch (reason) {
-    case "batch_completed":
-      return "Lote concluído";
-    case "not_found_limit":
-      return "Fim provável";
-    case "api_returned_previous_draw":
-      return "Último concurso alcançado";
-    case "api_returned_different_draw":
-      return "Resposta inesperada";
-    case "already_running":
-      return "Em andamento";
-    case "error":
-      return "Erro";
-    default:
-      return "Aguardando";
-  }
-}
-
 async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Promise<LoadedLotteryData> {
   const cacheKey = getDataCacheKey(lotterySlug, drawNumber);
   const cachedData = loadedDataCache.get(cacheKey);
@@ -255,7 +236,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const [activeDrawNumber, setActiveDrawNumber] = useState(initialDrawNumber ?? "");
   const [draws, setDraws] = useState<Draw[]>([]);
   const [selectedDraw, setSelectedDraw] = useState<Draw | null>(null);
-  const [rawText, setRawText] = useState("");
   const [status, setStatus] = useState<LoadState>(initialLottery ? "loading" : "idle");
   const [statusMessage, setStatusMessage] = useState(
     initialLottery ? "Carregando resultados..." : "Escolha uma loteria.",
@@ -271,10 +251,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
+  const syncBaseFromCaixaRef = useRef<() => void>(() => {});
+  const autoSyncStartedRef = useRef(new Set<string>());
 
   const isSyncing = syncInfo.running;
   const latestDraw = draws[0] ?? selectedDraw;
-  const numberCount = latestDraw?.numbers.length ?? selectedLottery?.numbersPerDraw ?? 0;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
   const canSyncFromCaixa = Boolean(selectedLottery && status !== "loading" && (isSyncing || !activeDrawNumber.trim()));
   const canClearLookupFilter = Boolean(drawNumberInput.trim() || activeDrawNumber.trim() || numberFilter.length);
@@ -341,7 +322,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
 
         setDraws(loadedData.draws);
         setSelectedDraw(loadedData.selectedDraw);
-        setRawText(loadedData.rawText);
         setStatus("loaded");
         setStatusMessage(loadedData.statusMessage);
       } catch (loadError) {
@@ -368,7 +348,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setSelectedLottery(lottery);
     setDrawNumberInput("");
     setActiveDrawNumber("");
-    setRawText("");
     setDraws([]);
     setSelectedDraw(null);
     setError(null);
@@ -486,7 +465,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
 
       return loadedData.draws.find((draw) => draw.drawNumber === current.drawNumber) ?? loadedData.selectedDraw;
     });
-    setRawText(loadedData.rawText);
 
     setSyncInfo((current) => ({
       ...current,
@@ -573,6 +551,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
       }
 
       const message = syncError instanceof Error ? syncError.message : "Erro desconhecido ao sincronizar.";
+
       const hasVisibleDraws = loadedDataCache.get(getDataCacheKey(lottery.slug, ""))?.draws.length || draws.length;
       setStatus(hasVisibleDraws ? "loaded" : "error");
       setError(message);
@@ -588,6 +567,23 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
       syncStopRef.current = false;
     }
   }
+
+  useEffect(() => {
+    syncBaseFromCaixaRef.current = syncBaseFromCaixa;
+  });
+
+  useEffect(() => {
+    if (!selectedLottery || activeDrawNumber.trim() || status === "loading" || status === "error" || syncInfo.running) {
+      return;
+    }
+
+    if (autoSyncStartedRef.current.has(selectedLottery.slug)) {
+      return;
+    }
+
+    autoSyncStartedRef.current.add(selectedLottery.slug);
+    void syncBaseFromCaixaRef.current();
+  }, [activeDrawNumber, selectedLottery, status, syncInfo.running]);
 
   function changeAnalysisPeriod(period: AnalysisPeriod) {
     setSuggestedGame(null);
@@ -660,6 +656,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
         })}
       </section>
 
+      {selectedLottery ? (
       <section className="content-layout">
         <aside className="control-panel">
           <div className="panel-heading">
@@ -699,57 +696,17 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
           </form>
 
           <div className={`sync-panel ${syncInfo.running ? "running" : ""}`}>
-            <div className="sync-panel-header">
-              <div>
-                <span className="eyebrow">Sincronização</span>
-                <strong>Resultados</strong>
-              </div>
-              <button
-                className="sync-button"
-                disabled={!canSyncFromCaixa || syncInfo.stopRequested}
-                onClick={syncInfo.running ? requestStopSyncFromCaixa : syncBaseFromCaixa}
-                type="button"
-              >
-                {syncInfo.running ? (syncInfo.stopRequested ? "Pausando..." : "Pausar") : "Sincronizar"}
-              </button>
-            </div>
-            <div className="sync-progress-grid">
-              <div>
-                <span>Concurso</span>
-                <strong>{syncInfo.currentDrawNumber ?? "--"}</strong>
-              </div>
-              <div>
-                <span>Próximo</span>
-                <strong>{syncInfo.nextDrawNumber ?? "--"}</strong>
-              </div>
-              <div>
-                <span>Salvos</span>
-                <strong>{syncInfo.totalStoredDraws || drawCount}</strong>
-              </div>
-              <div>
-                <span>Status</span>
-                <strong>{formatSyncStopReason(syncInfo.stopReason)}</strong>
-              </div>
-            </div>
-            {syncInfo.message ? <p>{syncInfo.message}</p> : null}
-          </div>
-
-          <div className="metric-list">
-            <div>
-              <span>Concursos</span>
-              <strong>{drawCount}</strong>
-            </div>
-            <div>
+            <button
+              className="sync-button"
+              disabled={!canSyncFromCaixa || syncInfo.stopRequested}
+              onClick={syncInfo.running ? requestStopSyncFromCaixa : syncBaseFromCaixa}
+              type="button"
+            >
+              {syncInfo.running ? (syncInfo.stopRequested ? "Pausando..." : "Pausar carregamento") : "Carregar resultados"}
+            </button>
+            <div className="sync-latest-result">
               <span>Último</span>
-              <strong>{latestDraw?.drawNumber ?? "--"}</strong>
-            </div>
-            <div>
-              <span>Data</span>
-              <strong>{formatStatusDate(latestDraw)}</strong>
-            </div>
-            <div>
-              <span>Números</span>
-              <strong>{numberCount || "--"}</strong>
+              <strong>{latestDraw ? `${latestDraw.drawNumber} · ${formatStatusDate(latestDraw)}` : "nenhum resultado carregado"}</strong>
             </div>
           </div>
         </aside>
@@ -768,36 +725,21 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
                   : "Aguardando seleção"}
               </h2>
             </div>
-            {statusMessage ? <div className={`status-badge ${status}`}>{statusMessage}</div> : null}
+            <div className="results-actions">
+              <a className="legacy-link results-link" href={legacyHref} rel="noreferrer" target="_blank">
+                Ver todos os sorteios
+              </a>
+              {statusMessage ? <div className={`status-badge ${status}`}>{statusMessage}</div> : null}
+            </div>
           </div>
 
           {status === "loading" ? <LoadingState /> : null}
           {status === "error" ? <ErrorState message={error ?? "Erro ao carregar."} /> : null}
-          {status !== "loading" && status !== "error" && !selectedLottery ? <EmptyState /> : null}
-          {status !== "loading" && status !== "error" && selectedLottery && draws.length === 0 ? (
+          {status !== "loading" && status !== "error" && draws.length === 0 ? (
             <NoResultsState isSyncing={isSyncing} onStartSync={syncBaseFromCaixa} />
           ) : null}
           {status !== "loading" && status !== "error" && draws.length > 0 ? (
             <>
-              {rawText ? (
-                <details className="raw-output raw-output-top">
-                  <summary>
-                    <span>
-                      <strong>Visão crua dos resultados</strong>
-                      <small>Clique no título para abrir/fechar a prévia</small>
-                    </span>
-                    <a className="legacy-link" href={legacyHref} onClick={(event) => event.stopPropagation()} rel="noreferrer" target="_blank">
-                      Abrir em nova aba
-                    </a>
-                  </summary>
-                  <div className="raw-output-actions">
-                    <span>Visualização em texto para perceber padrões manualmente.</span>
-                  </div>
-                  <div className="raw-output-pre-wrap">
-                    <pre>{rawText}</pre>
-                  </div>
-                </details>
-              ) : null}
               <SuggestionPanel
                 activeView={analysisView}
                 data={analysisData}
@@ -832,10 +774,14 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
           ) : null}
         </section>
       </section>
+      ) : (
+        <section className="selection-empty" aria-label="Selecione uma loteria">
+          <EmptyState />
+        </section>
+      )}
     </div>
     <footer className="super-footer" aria-label="Apoie o Luckygames">
       <div className="donation-callout donation-callout-bottom">
-        <strong>Serviço gratuito</strong>
         <span>
           Se o Luckygames ajudou, apoie com um PIX para <strong className="pix-key">contato@luckygames.tips</strong> ou cartão em{" "}
           <a href="https://idontneedit.org" rel="noreferrer" target="_blank">
@@ -930,7 +876,7 @@ function AnalysisPanel({
       </summary>
 
       <div className="analysis-body" aria-label="Análise rápida dos resultados">
-        <details className="analysis-options">
+        <details className="analysis-options" open>
           <summary>
             <span>Ajustar análise</span>
             <strong>{getAnalysisViewLabel(activeView)}</strong>

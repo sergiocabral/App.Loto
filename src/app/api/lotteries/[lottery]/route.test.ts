@@ -242,22 +242,8 @@ describe("lottery route handlers", () => {
     expect(serviceMocks.syncMissingDrawsFromCaixa).not.toHaveBeenCalled();
   });
 
-  it("requires an admin token for mutation requests when configured", async () => {
+  it("keeps sync-caixa public while protecting explicit fetch-draw when a token is configured", async () => {
     vi.stubEnv("LUCKYGAMES_ADMIN_TOKEN", "secret-token");
-    const route = await import("@/app/api/lotteries/[lottery]/route");
-
-    const unauthorized = await route.POST(
-      new Request("http://localhost/api/lotteries/MegaSena", {
-        body: JSON.stringify({ action: "sync-caixa", batchSize: 1 }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      }),
-      { params: Promise.resolve({ lottery: "MegaSena" }) },
-    );
-
-    expect(unauthorized.status).toBe(401);
-    expect(serviceMocks.syncMissingDrawsFromCaixa).not.toHaveBeenCalled();
-
     serviceMocks.syncMissingDrawsFromCaixa.mockResolvedValueOnce({
       draws: [],
       savedDraws: [],
@@ -273,10 +259,36 @@ describe("lottery route handlers", () => {
       batchSize: 1,
       stopReason: "not_found_limit",
     });
+    const route = await import("@/app/api/lotteries/[lottery]/route");
 
-    const authorized = await route.POST(
+    const publicSync = await route.POST(
       new Request("http://localhost/api/lotteries/MegaSena", {
         body: JSON.stringify({ action: "sync-caixa", batchSize: 1 }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+
+    expect(publicSync.status).toBe(200);
+    expect(serviceMocks.syncMissingDrawsFromCaixa).toHaveBeenCalledWith("MegaSena", { batchSize: 1 });
+
+    const unauthorizedFetch = await route.POST(
+      new Request("http://localhost/api/lotteries/MegaSena", {
+        body: JSON.stringify({ action: "fetch-draw", drawNumber: 5 }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+
+    expect(unauthorizedFetch.status).toBe(401);
+    expect(serviceMocks.fetchAndStoreDrawFromCaixa).not.toHaveBeenCalled();
+
+    serviceMocks.fetchAndStoreDrawFromCaixa.mockResolvedValueOnce(draw(5));
+    const authorizedFetch = await route.POST(
+      new Request("http://localhost/api/lotteries/MegaSena", {
+        body: JSON.stringify({ action: "fetch-draw", drawNumber: 5 }),
         headers: {
           authorization: "Bearer secret-token",
           "content-type": "application/json",
@@ -286,8 +298,8 @@ describe("lottery route handlers", () => {
       { params: Promise.resolve({ lottery: "MegaSena" }) },
     );
 
-    expect(authorized.status).toBe(200);
-    expect(serviceMocks.syncMissingDrawsFromCaixa).toHaveBeenCalledWith("MegaSena", { batchSize: 1 });
+    expect(authorizedFetch.status).toBe(200);
+    expect(serviceMocks.fetchAndStoreDrawFromCaixa).toHaveBeenCalledWith("MegaSena", 5);
   });
 
   it("rejects mutation requests with unsupported content-type or large body", async () => {
