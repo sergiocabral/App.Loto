@@ -821,7 +821,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
               />
               <div className="lookup-buttons">
                 <button disabled={!selectedLottery || status === "loading" || isSyncing} type="submit">
-                  {lookupMode === "draw" ? "Consultar" : "Filtrar"}
+                  {lookupMode === "draw" ? "Consultar" : "Pesquisar"}
                 </button>
                 <button className="secondary-button" disabled={!canClearLookupFilter} onClick={clearLookupFilter} type="button">
                   Limpar filtro
