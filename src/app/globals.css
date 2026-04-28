@@ -165,6 +165,14 @@ input:disabled {
   max-width: 760px;
 }
 
+.hero-copy a {
+  color: var(--text);
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-color: rgba(56, 189, 248, 0.5);
+  text-underline-offset: 3px;
+}
+
 .donation-callout {
   align-items: center;
   background: linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(56, 189, 248, 0.1));
@@ -189,7 +197,8 @@ input:disabled {
   font-size: 13px;
 }
 
-.donation-callout a {
+.donation-callout a,
+.donation-callout .pix-key {
   color: var(--text);
   font-weight: 800;
   text-decoration: underline;
@@ -652,6 +661,28 @@ button {
   max-height: 560px;
   overflow: auto;
   padding-right: 4px;
+}
+
+.load-more-draws {
+  align-items: center;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  color: var(--text);
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  min-height: 58px;
+  padding: 12px;
+}
+
+.load-more-draws span {
+  font-weight: 900;
+}
+
+.load-more-draws small {
+  color: var(--muted-strong);
+  font-size: 12px;
 }
 
 .draw-row {

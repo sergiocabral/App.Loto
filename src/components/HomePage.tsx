@@ -57,7 +57,6 @@ type LoadedLotteryData = {
   statusMessage: string;
 };
 
-type FetchMode = "database" | "caixa";
 type LookupMode = "draw" | "numbers";
 type AnalysisPeriod = 10 | 25 | 50 | 100 | "all";
 type AnalysisView = "most" | "least" | "delayed" | "map";
@@ -119,6 +118,7 @@ const DUPLA_SENA_SCOPE_OPTIONS: Array<{ value: DuplaSenaAnalysisScope; label: st
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
 const CAIXA_SYNC_BATCH_SIZE = 1;
+const DRAW_LIST_PAGE_SIZE = 50;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
   running: false,
@@ -174,30 +174,6 @@ function getInitialLottery(slug?: string): LotteryDefinition | null {
 
 function getDataCacheKey(lotterySlug: string, drawNumber: string): string {
   return drawNumber ? `${lotterySlug}:draw:${drawNumber}` : `${lotterySlug}:history`;
-}
-
-function upsertLoadedDrawInCache(lotterySlug: string, loadedDraw: Draw): void {
-  const historyCacheKey = getDataCacheKey(lotterySlug, "");
-  const historyData = loadedDataCache.get(historyCacheKey);
-
-  if (!historyData) {
-    return;
-  }
-
-  const existingIndex = historyData.draws.findIndex((draw) => draw.drawNumber === loadedDraw.drawNumber);
-  const nextDraws = existingIndex >= 0 ? [...historyData.draws] : [loadedDraw, ...historyData.draws];
-
-  if (existingIndex >= 0) {
-    nextDraws[existingIndex] = loadedDraw;
-  }
-
-  nextDraws.sort((left, right) => right.drawNumber - left.drawNumber);
-  loadedDataCache.set(historyCacheKey, {
-    ...historyData,
-    draws: nextDraws,
-    selectedDraw: nextDraws[0] ?? loadedDraw,
-    statusMessage: `Histórico com ${nextDraws.length} concursos.`,
-  });
 }
 
 function parseNumberFilter(input: string, lottery: LotteryDefinition): string[] {
@@ -588,37 +564,6 @@ async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Pro
   return request;
 }
 
-async function fetchDrawFromCaixaAndStore(lotterySlug: string, drawNumber: string): Promise<LoadedLotteryData> {
-  const endpoint = `/api/lotteries/${lotterySlug}`;
-  const response = await fetch(endpoint, {
-    body: JSON.stringify({ drawNumber }),
-    cache: "no-store",
-    headers: {
-      "content-type": "application/json",
-    },
-    method: "POST",
-  });
-  const payload = (await response.json()) as LotteryApiPayload;
-
-  if (!response.ok) {
-    throw new Error(payload.error || `Falha HTTP ${response.status}`);
-  }
-
-  const loadedData: LoadedLotteryData = {
-    draws: payload.draw ? [payload.draw] : [],
-    selectedDraw: payload.draw ?? null,
-    rawText: payload.text ?? "",
-    statusMessage: payload.draw ? "Concurso atualizado." : "Concurso não encontrado.",
-  };
-
-  if (payload.draw) {
-    loadedDataCache.set(getDataCacheKey(lotterySlug, drawNumber), loadedData);
-    upsertLoadedDrawInCache(lotterySlug, payload.draw);
-  }
-
-  return loadedData;
-}
-
 export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProps) {
   const initialLottery = getInitialLottery(initialLotterySlug);
   const [selectedLottery, setSelectedLottery] = useState<LotteryDefinition | null>(initialLottery);
@@ -631,9 +576,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const [statusMessage, setStatusMessage] = useState(
     initialLottery ? "Carregando resultados..." : "Escolha uma loteria.",
   );
-  const [fetchMode, setFetchMode] = useState<FetchMode>("database");
-  const [lookupMode, setLookupMode] = useState<LookupMode>("draw");
+  const [lookupMode, setLookupMode] = useState<LookupMode>("numbers");
   const [numberFilter, setNumberFilter] = useState<string[]>([]);
+  const [visibleDrawState, setVisibleDrawState] = useState({ key: "", limit: DRAW_LIST_PAGE_SIZE });
   const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(25);
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
   const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
@@ -647,12 +592,15 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const latestDraw = draws[0] ?? selectedDraw;
   const numberCount = latestDraw?.numbers.length ?? selectedLottery?.numbersPerDraw ?? 0;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
-  const caixaDrawNumber = drawNumberInput.trim() || activeDrawNumber.trim();
-  const canFetchFromCaixa = Boolean(selectedLottery && lookupMode === "draw" && caixaDrawNumber && status !== "loading" && !isSyncing);
   const canSyncFromCaixa = Boolean(selectedLottery && status !== "loading" && (isSyncing || !activeDrawNumber.trim()));
+  const canClearLookupFilter = Boolean(drawNumberInput.trim() || activeDrawNumber.trim() || numberFilter.length);
 
   const filteredDraws = useMemo(() => draws.filter((draw) => drawContainsNumbers(draw, numberFilter)), [draws, numberFilter]);
-  const visibleDraws = useMemo(() => filteredDraws.slice(0, 20), [filteredDraws]);
+  const numberFilterKey = numberFilter.join("|");
+  const drawListKey = `${selectedLottery?.slug ?? ""}|${activeDrawNumber}|${numberFilterKey}`;
+  const visibleDrawLimit = visibleDrawState.key === drawListKey ? visibleDrawState.limit : DRAW_LIST_PAGE_SIZE;
+  const visibleDraws = useMemo(() => filteredDraws.slice(0, visibleDrawLimit), [filteredDraws, visibleDrawLimit]);
+  const hasMoreDraws = visibleDrawLimit < filteredDraws.length;
   const analysisData = useMemo(
     () => buildAnalysisData(draws, selectedLottery, analysisPeriod, selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"),
     [analysisPeriod, draws, duplaSenaAnalysisScope, selectedLottery],
@@ -691,26 +639,17 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
         }
       }
 
-      const shouldFetchFromCaixa = fetchMode === "caixa";
       const cacheKey = getDataCacheKey(lottery.slug, requestedDrawNumber);
-      const alreadyLoaded = shouldFetchFromCaixa ? null : loadedDataCache.get(cacheKey);
+      const alreadyLoaded = loadedDataCache.get(cacheKey);
 
       if (!alreadyLoaded) {
         setStatus("loading");
         setError(null);
-        setStatusMessage(
-          shouldFetchFromCaixa
-            ? `Atualizando concurso ${requestedDrawNumber}...`
-            : requestedDrawNumber
-              ? `Consultando concurso ${requestedDrawNumber}...`
-              : "Carregando resultados...",
-        );
+        setStatusMessage(requestedDrawNumber ? `Consultando concurso ${requestedDrawNumber}...` : "Carregando resultados...");
       }
 
       try {
-        const loadedData = shouldFetchFromCaixa
-          ? await fetchDrawFromCaixaAndStore(lottery.slug, requestedDrawNumber)
-          : await loadLotteryDataOnce(lottery.slug, requestedDrawNumber);
+        const loadedData = await loadLotteryDataOnce(lottery.slug, requestedDrawNumber);
 
         if (ignoreResult) {
           return;
@@ -729,10 +668,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
         setStatus("error");
         setError(loadError instanceof Error ? loadError.message : "Erro desconhecido ao carregar dados.");
         setStatusMessage("Não foi possível carregar os dados agora.");
-      } finally {
-        if (!ignoreResult && shouldFetchFromCaixa) {
-          setFetchMode("database");
-        }
       }
     }
 
@@ -741,7 +676,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     return () => {
       ignoreResult = true;
     };
-  }, [selectedLottery, activeDrawNumber, fetchMode, syncInfo.running]);
+  }, [selectedLottery, activeDrawNumber, syncInfo.running]);
 
   function selectLottery(lottery: LotteryDefinition) {
     syncStopRef.current = true;
@@ -755,8 +690,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setError(null);
     setStatus("loading");
     setStatusMessage("Preparando...");
-    setFetchMode("database");
-    setLookupMode("draw");
+    setLookupMode("numbers");
     setNumberFilter([]);
     setSyncInfo(INITIAL_SYNC_INFO);
     setSuggestedGame(null);
@@ -782,7 +716,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
         return;
       }
 
-      setFetchMode("database");
       setSuggestedGame(null);
       setNumberFilter(parsedNumbers);
       setSelectedDraw(null);
@@ -793,7 +726,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     }
 
     setNumberFilter([]);
-    setFetchMode("database");
     setSuggestedGame(null);
     setActiveDrawNumber(trimmed);
     updateLegacyUrl(selectedLottery.slug, trimmed || undefined);
@@ -812,28 +744,24 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     }
   }
 
-  function fetchActiveDrawFromCaixa() {
-    if (!selectedLottery || status === "loading" || isSyncing) {
-      return;
-    }
-
-    const drawNumberToFetch = drawNumberInput.trim() || activeDrawNumber.trim();
-    const numericDrawNumber = Number.parseInt(drawNumberToFetch, 10);
-
-    if (!Number.isFinite(numericDrawNumber) || numericDrawNumber < 1) {
-      setStatus("error");
-      setError("Informe um número de concurso válido.");
-      setStatusMessage("Verifique o número do concurso.");
-      return;
-    }
-
-    setDrawNumberInput(drawNumberToFetch);
-    setActiveDrawNumber(drawNumberToFetch);
-    setError(null);
+  function clearLookupFilter() {
+    setDrawNumberInput("");
+    setActiveDrawNumber("");
     setNumberFilter([]);
     setSuggestedGame(null);
-    setFetchMode("caixa");
-    updateLegacyUrl(selectedLottery.slug, drawNumberToFetch);
+    setSelectedDraw(draws[0] ?? null);
+
+    if (selectedLottery) {
+      updateLegacyUrl(selectedLottery.slug);
+      setStatusMessage(getHistoryStatusMessage(draws));
+    }
+  }
+
+  function loadMoreDraws() {
+    setVisibleDrawState((current) => ({
+      key: drawListKey,
+      limit: (current.key === drawListKey ? current.limit : DRAW_LIST_PAGE_SIZE) + DRAW_LIST_PAGE_SIZE,
+    }));
   }
 
   function requestStopSyncFromCaixa() {
@@ -909,7 +837,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     const sessionId = syncSessionRef.current + 1;
     syncSessionRef.current = sessionId;
     syncStopRef.current = false;
-    setFetchMode("database");
     setActiveDrawNumber("");
     setDrawNumberInput("");
     setNumberFilter([]);
@@ -1011,12 +938,16 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
           <span className="eyebrow">Luckygames</span>
           <h1>Resultados das Loterias da Caixa, grátis e fácil.</h1>
           <p className="hero-copy">
-            Consulte sorteios e estatísticas simples. Os números vêm da fonte pública das Loterias da Caixa; o Luckygames apenas facilita a consulta.
+            Consulte sorteios e estatísticas simples. Os números vêm da fonte pública das{" "}
+            <a href="https://loterias.caixa.gov.br" rel="noreferrer" target="_blank">
+              Loterias da Caixa
+            </a>
+            ; o Luckygames apenas facilita a consulta.
           </p>
           <div className="donation-callout">
             <strong>Ganhou ou o serviço ajudou?</strong>
             <span>
-              Apoie com um donativo por <a href="mailto:contato@luckygames.tips">contato@luckygames.tips</a> ou cartão em{" "}
+              Apoie com um PIX para <strong className="pix-key">contato@luckygames.tips</strong> ou cartão em{" "}
               <a href="https://idontneedit.org" rel="noreferrer" target="_blank">
                 idontneedit.org
               </a>
@@ -1054,11 +985,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
 
           <form className="lookup-form" onSubmit={submitDrawLookup}>
             <div className="lookup-mode-control" aria-label="Tipo de consulta">
-              <button className={lookupMode === "draw" ? "active" : ""} onClick={() => changeLookupMode("draw")} type="button">
-                Concurso
-              </button>
               <button className={lookupMode === "numbers" ? "active" : ""} onClick={() => changeLookupMode("numbers")} type="button">
                 Números
+              </button>
+              <button className={lookupMode === "draw" ? "active" : ""} onClick={() => changeLookupMode("draw")} type="button">
+                Concurso
               </button>
             </div>
             <label htmlFor="draw-number">{lookupMode === "draw" ? "Número do concurso" : "Números para encontrar"}</label>
@@ -1077,8 +1008,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
               </button>
             </div>
             <div className="lookup-actions">
-              <button className="secondary-button" disabled={!canFetchFromCaixa} onClick={fetchActiveDrawFromCaixa} type="button">
-                Atualizar resultado
+              <button className="secondary-button" disabled={!canClearLookupFilter} onClick={clearLookupFilter} type="button">
+                Limpar filtro
               </button>
             </div>
           </form>
@@ -1200,7 +1131,15 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
               {numberFilter.length && filteredDraws.length === 0 ? (
                 <FilterEmptyState numbers={numberFilter} />
               ) : (
-                <DrawList draws={visibleDraws} onSelect={setSelectedDraw} selectedDrawNumber={selectedDraw?.drawNumber ?? null} />
+                <DrawList
+                  draws={visibleDraws}
+                  hasMore={hasMoreDraws}
+                  onLoadMore={loadMoreDraws}
+                  onSelect={setSelectedDraw}
+                  selectedDrawNumber={selectedDraw?.drawNumber ?? null}
+                  totalCount={filteredDraws.length}
+                  visibleCount={visibleDraws.length}
+                />
               )}
             </>
           ) : null}
@@ -1456,12 +1395,20 @@ function SuggestionPanel({
 
 function DrawList({
   draws,
+  hasMore,
+  onLoadMore,
   onSelect,
   selectedDrawNumber,
+  totalCount,
+  visibleCount,
 }: {
   draws: Draw[];
+  hasMore: boolean;
+  onLoadMore: () => void;
   onSelect: (draw: Draw) => void;
   selectedDrawNumber: number | null;
+  totalCount: number;
+  visibleCount: number;
 }) {
   return (
     <div className="draw-list">
@@ -1477,6 +1424,14 @@ function DrawList({
           <small>{draw.date}</small>
         </button>
       ))}
+      {hasMore ? (
+        <button className="load-more-draws" onClick={onLoadMore} type="button">
+          <span>Ver mais resultados</span>
+          <small>
+            Exibindo {visibleCount} de {totalCount}
+          </small>
+        </button>
+      ) : null}
     </div>
   );
 }
