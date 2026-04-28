@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 function requestWithHeaders(headers: HeadersInit = {}) {
   return new Request("http://localhost/api/lotteries/MegaSena", { headers });
@@ -61,37 +61,6 @@ describe("server security helpers", () => {
         }),
       ),
     ).resolves.toMatchObject({ ok: false, status: 413 });
-  });
-
-  it("allows local writes without token but requires configured admin token", async () => {
-    const { authorizeMutationRequest } = await import("@/lib/server/security");
-
-    expect(authorizeMutationRequest(requestWithHeaders())).toEqual({ ok: true });
-
-    vi.stubEnv("LUCKYGAMES_ADMIN_TOKEN", "secret-token");
-
-    expect(authorizeMutationRequest(requestWithHeaders())).toEqual({ ok: false, status: 401, error: "Unauthorized" });
-    expect(authorizeMutationRequest(requestWithHeaders({ authorization: "Bearer wrong-token" }))).toEqual({
-      ok: false,
-      status: 401,
-      error: "Unauthorized",
-    });
-    expect(authorizeMutationRequest(requestWithHeaders({ authorization: "Bearer secret-token" }))).toEqual({ ok: true });
-    expect(authorizeMutationRequest(requestWithHeaders({ "x-luckygames-admin-token": "secret-token" }))).toEqual({ ok: true });
-  });
-
-  it("fails closed in production when no admin token is configured", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    const { authorizeMutationRequest } = await import("@/lib/server/security");
-
-    expect(authorizeMutationRequest(requestWithHeaders())).toEqual({
-      ok: false,
-      status: 503,
-      error: "Admin token is not configured",
-    });
-
-    vi.stubEnv("LUCKYGAMES_ALLOW_UNPROTECTED_WRITES", "true");
-    expect(authorizeMutationRequest(requestWithHeaders())).toEqual({ ok: true });
   });
 
   it("rate limits mutation requests by client IP and scope", async () => {

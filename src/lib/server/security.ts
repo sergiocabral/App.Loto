@@ -1,5 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
-
 export const MAX_DRAW_NUMBER = 1_000_000;
 export const MAX_POST_BODY_BYTES = 4_096;
 
@@ -24,36 +22,10 @@ type JsonBodyResult =
       error: string;
     };
 
-function boolFromEnv(value: string | undefined): boolean {
-  return ["1", "true", "yes", "on"].includes((value ?? "").toLowerCase());
-}
-
 function getClientIp(request: Request): string {
   const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const realIp = request.headers.get("x-real-ip")?.trim();
   return forwardedFor || realIp || "unknown";
-}
-
-function safeTokenEquals(received: string, expected: string): boolean {
-  const receivedBuffer = Buffer.from(received);
-  const expectedBuffer = Buffer.from(expected);
-
-  if (receivedBuffer.length !== expectedBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(receivedBuffer, expectedBuffer);
-}
-
-function readBearerToken(request: Request): string | null {
-  const authorization = request.headers.get("authorization") ?? "";
-  const [scheme, token] = authorization.split(/\s+/, 2);
-
-  if (scheme?.toLowerCase() === "bearer" && token) {
-    return token;
-  }
-
-  return request.headers.get("x-luckygames-admin-token");
 }
 
 export function parsePositiveInteger(value: unknown, maximum = MAX_DRAW_NUMBER): number | null {
@@ -110,26 +82,6 @@ export async function readJsonObjectBody(request: Request): Promise<JsonBodyResu
   } catch {
     return { ok: false, status: 400, error: "Invalid JSON body" };
   }
-}
-
-export function authorizeMutationRequest(request: Request): SecurityCheck {
-  const configuredToken = process.env.LUCKYGAMES_ADMIN_TOKEN?.trim();
-
-  if (!configuredToken) {
-    if (process.env.NODE_ENV !== "production" || boolFromEnv(process.env.LUCKYGAMES_ALLOW_UNPROTECTED_WRITES)) {
-      return { ok: true };
-    }
-
-    return { ok: false, status: 503, error: "Admin token is not configured" };
-  }
-
-  const receivedToken = readBearerToken(request);
-
-  if (!receivedToken || !safeTokenEquals(receivedToken, configuredToken)) {
-    return { ok: false, status: 401, error: "Unauthorized" };
-  }
-
-  return { ok: true };
 }
 
 export function checkMutationRateLimit(request: Request, scope: string): SecurityCheck {

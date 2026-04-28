@@ -135,53 +135,6 @@ export async function getStoredDraw(lotterySlug: string, drawNumber: number): Pr
   return draw;
 }
 
-export async function fetchAndStoreDrawFromCaixa(lotterySlug: string, drawNumber: number): Promise<StoredDraw | null> {
-  const startedAt = Date.now();
-  logService("fetchAndStoreDrawFromCaixa:start", { lotterySlug, drawNumber });
-
-  const lottery = getLottery(lotterySlug);
-
-  if (!lottery) {
-    warnService("fetchAndStoreDrawFromCaixa:unknown-lottery", {
-      lotterySlug,
-      drawNumber,
-      elapsedMs: elapsedMs(startedAt),
-    });
-    return null;
-  }
-
-  try {
-    const fetchedDraw = await fetchDrawFromCaixa(lottery.slug, drawNumber);
-
-    if (!fetchedDraw) {
-      logService("fetchAndStoreDrawFromCaixa:not-found", {
-        lottery: lottery.slug,
-        drawNumber,
-        elapsedMs: elapsedMs(startedAt),
-      });
-      return null;
-    }
-
-    const storedDraw = await saveDraw(fetchedDraw);
-    logService("fetchAndStoreDrawFromCaixa:saved", {
-      lottery: lottery.slug,
-      drawNumber,
-      groups: storedDraw.numberGroups?.length ?? 0,
-      numbers: storedDraw.numbers.length,
-      elapsedMs: elapsedMs(startedAt),
-    });
-
-    return storedDraw;
-  } catch (error) {
-    errorService("fetchAndStoreDrawFromCaixa:error", error, {
-      lottery: lottery.slug,
-      drawNumber,
-      elapsedMs: elapsedMs(startedAt),
-    });
-    throw error;
-  }
-}
-
 export async function syncMissingDrawsFromCaixa(
   lotterySlug: string,
   options: { batchSize?: number; startAt?: number } = {},

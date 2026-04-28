@@ -55,27 +55,6 @@ describe("lottery service", () => {
     await expect(getStoredDraw("Unknown", 1)).resolves.toBeNull();
   });
 
-  it("fetches from Caixa and stores an explicit draw", async () => {
-    caixaMocks.fetchDrawFromCaixa.mockResolvedValueOnce(draw(10));
-    repositoryMocks.saveDraw.mockResolvedValueOnce(draw(10));
-
-    const { fetchAndStoreDrawFromCaixa } = await import("@/lib/server/service");
-    const stored = await fetchAndStoreDrawFromCaixa("MegaSena", 10);
-
-    expect(caixaMocks.fetchDrawFromCaixa).toHaveBeenCalledWith("MegaSena", 10);
-    expect(repositoryMocks.saveDraw).toHaveBeenCalledWith(expect.objectContaining({ drawNumber: 10 }));
-    expect(stored).toMatchObject({ drawNumber: 10 });
-  });
-
-  it("does not save when Caixa returns null", async () => {
-    caixaMocks.fetchDrawFromCaixa.mockResolvedValueOnce(null);
-
-    const { fetchAndStoreDrawFromCaixa } = await import("@/lib/server/service");
-
-    await expect(fetchAndStoreDrawFromCaixa("MegaSena", 999999)).resolves.toBeNull();
-    expect(repositoryMocks.saveDraw).not.toHaveBeenCalled();
-  });
-
   it("syncs a sequential batch and uses sequential next draw over API hints", async () => {
     const fetchedOne = draw(1, { nextDrawNumber: 50 });
     const fetchedTwo = draw(2, { nextDrawNumber: 3 });

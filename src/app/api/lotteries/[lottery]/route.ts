@@ -2,17 +2,11 @@ import { NextResponse } from "next/server";
 import { getLottery } from "@/data/lotteries";
 import {
   collectMissingDraws,
-  fetchAndStoreDrawFromCaixa,
   getStoredDraw,
   loadLotteryHistory,
   syncMissingDrawsFromCaixa,
 } from "@/lib/server/service";
-import {
-  authorizeMutationRequest,
-  checkMutationRateLimit,
-  parsePositiveInteger,
-  readJsonObjectBody,
-} from "@/lib/server/security";
+import { checkMutationRateLimit, parsePositiveInteger, readJsonObjectBody } from "@/lib/server/security";
 import { renderDrawText, renderHistoryText } from "@/lib/render";
 import type { Draw } from "@/lib/types";
 
@@ -169,91 +163,59 @@ export async function POST(request: Request, { params }: { params: Promise<{ lot
   }
 
   const bodyRecord = bodyResult.body;
-  const action = typeof bodyRecord.action === "string" ? bodyRecord.action : "fetch-draw";
+  const action = typeof bodyRecord.action === "string" ? bodyRecord.action : "sync-caixa";
 
-  if (action !== "sync-caixa" && action !== "fetch-draw") {
+  if (action !== "sync-caixa") {
     logApi("POST:unknown-action", { lottery: lottery.slug, action, elapsedMs: elapsedMs(startedAt) });
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   }
 
-  if (action === "sync-caixa") {
-    const batchSize = bodyRecord.batchSize === undefined ? undefined : parsePositiveInteger(bodyRecord.batchSize, 25);
-    const startAt = bodyRecord.startAt === undefined || bodyRecord.startAt === null ? undefined : parsePositiveInteger(bodyRecord.startAt);
+  const batchSize = bodyRecord.batchSize === undefined ? undefined : parsePositiveInteger(bodyRecord.batchSize, 25);
+  const startAt = bodyRecord.startAt === undefined || bodyRecord.startAt === null ? undefined : parsePositiveInteger(bodyRecord.startAt);
 
-    if (bodyRecord.batchSize !== undefined && !batchSize) {
-      logApi("POST:invalid-batch-size", { lottery: lottery.slug, elapsedMs: elapsedMs(startedAt) });
-      return NextResponse.json({ error: "Batch size must be a positive integer up to 25" }, { status: 400 });
-    }
-
-    if (bodyRecord.startAt !== undefined && bodyRecord.startAt !== null && !startAt) {
-      logApi("POST:invalid-start-at", { lottery: lottery.slug, elapsedMs: elapsedMs(startedAt) });
-      return NextResponse.json({ error: "Start draw must be a positive integer" }, { status: 400 });
-    }
-
-    const syncOptions: { batchSize?: number; startAt?: number } = {};
-
-    if (typeof batchSize === "number") {
-      syncOptions.batchSize = batchSize;
-    }
-
-    if (typeof startAt === "number") {
-      syncOptions.startAt = startAt;
-    }
-
-    logApi("POST:sync-caixa", { lottery: lottery.slug, batchSize, startAt });
-    const sync = await syncMissingDrawsFromCaixa(lottery.slug, syncOptions);
-
-    logApi("POST:sync-caixa-done", {
-      lottery: lottery.slug,
-      savedDraws: sync.savedDraws.length,
-      attemptedDrawNumbers: sync.attemptedDrawNumbers,
-      nextDrawNumber: sync.nextDrawNumber,
-      hasMore: sync.hasMore,
-      stopReason: sync.stopReason,
-      elapsedMs: elapsedMs(startedAt),
-    });
-
-    const publicSync = {
-      ...sync,
-      draws: toPublicDraws(sync.draws),
-      savedDraws: toPublicDraws(sync.savedDraws),
-    };
-
-    return NextResponse.json({
-      lottery: lottery.slug,
-      sync: publicSync,
-      draws: publicSync.draws,
-      text: renderHistoryText(sync.draws),
-    });
+  if (bodyRecord.batchSize !== undefined && !batchSize) {
+    logApi("POST:invalid-batch-size", { lottery: lottery.slug, elapsedMs: elapsedMs(startedAt) });
+    return NextResponse.json({ error: "Batch size must be a positive integer up to 25" }, { status: 400 });
   }
 
-  const authorization = authorizeMutationRequest(request);
-
-  if (!authorization.ok) {
-    logApi("POST:unauthorized", { lottery: lottery.slug, status: authorization.status, action, elapsedMs: elapsedMs(startedAt) });
-    return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  if (bodyRecord.startAt !== undefined && bodyRecord.startAt !== null && !startAt) {
+    logApi("POST:invalid-start-at", { lottery: lottery.slug, elapsedMs: elapsedMs(startedAt) });
+    return NextResponse.json({ error: "Start draw must be a positive integer" }, { status: 400 });
   }
 
-  const drawNumber = parsePositiveInteger(bodyRecord.drawNumber);
+  const syncOptions: { batchSize?: number; startAt?: number } = {};
 
-  if (!drawNumber) {
-    logApi("POST:invalid-draw", { lottery: lottery.slug, elapsedMs: elapsedMs(startedAt) });
-    return NextResponse.json({ error: "Draw number must be a positive integer" }, { status: 400 });
+  if (typeof batchSize === "number") {
+    syncOptions.batchSize = batchSize;
   }
 
-  logApi("POST:fetch-caixa-explicit", { lottery: lottery.slug, drawNumber });
-  const draw = await fetchAndStoreDrawFromCaixa(lottery.slug, drawNumber);
+  if (typeof startAt === "number") {
+    syncOptions.startAt = startAt;
+  }
 
-  logApi("POST:fetch-caixa-explicit-done", {
+  logApi("POST:sync-caixa", { lottery: lottery.slug, batchSize, startAt });
+  const sync = await syncMissingDrawsFromCaixa(lottery.slug, syncOptions);
+
+  logApi("POST:sync-caixa-done", {
     lottery: lottery.slug,
-    drawNumber,
-    found: Boolean(draw),
+    savedDraws: sync.savedDraws.length,
+    attemptedDrawNumbers: sync.attemptedDrawNumbers,
+    nextDrawNumber: sync.nextDrawNumber,
+    hasMore: sync.hasMore,
+    stopReason: sync.stopReason,
     elapsedMs: elapsedMs(startedAt),
   });
 
+  const publicSync = {
+    ...sync,
+    draws: toPublicDraws(sync.draws),
+    savedDraws: toPublicDraws(sync.savedDraws),
+  };
+
   return NextResponse.json({
     lottery: lottery.slug,
-    draw: draw ? toPublicDraw(draw) : null,
-    text: draw ? renderDrawText(draw, false) : "",
+    sync: publicSync,
+    draws: publicSync.draws,
+    text: renderHistoryText(sync.draws),
   });
 }
