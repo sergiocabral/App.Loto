@@ -976,6 +976,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
               <AnalysisPanel
                 activeView={analysisView}
                 availableDrawCount={availableAnalysisDrawCount}
+                availableDraws={analysisSourceDraws}
                 customRange={effectiveCustomAnalysisRange}
                 data={analysisData}
                 isDuplaSena={selectedLottery?.slug === "DuplaSena"}
@@ -1163,6 +1164,7 @@ function FilterEmptyState({ numbers }: { numbers: string[] }) {
 function AnalysisPanel({
   activeView,
   availableDrawCount,
+  availableDraws,
   customRange,
   data,
   isDuplaSena,
@@ -1175,6 +1177,7 @@ function AnalysisPanel({
 }: {
   activeView: AnalysisView;
   availableDrawCount: number;
+  availableDraws: Draw[];
   customRange: AnalysisDrawRange;
   data: AnalysisData | null;
   isDuplaSena: boolean;
@@ -1219,6 +1222,7 @@ function AnalysisPanel({
               {period === "all" ? (
                 <RangeSliderCard
                   availableDrawCount={availableDrawCount}
+                  draws={availableDraws}
                   range={customRange}
                   onRangeChange={onCustomRangeChange}
                 />
@@ -1269,10 +1273,12 @@ function AnalysisPanel({
 
 function RangeSliderCard({
   availableDrawCount,
+  draws,
   onRangeChange,
   range,
 }: {
   availableDrawCount: number;
+  draws: Draw[];
   onRangeChange: (range: AnalysisDrawRange) => void;
   range: AnalysisDrawRange;
 }) {
@@ -1282,6 +1288,11 @@ function RangeSliderCard({
   const selectedCount = Math.max(1, end - start + 1);
   const startPercent = maximum > 1 ? ((start - 1) / (maximum - 1)) * 100 : 0;
   const endPercent = maximum > 1 ? ((end - 1) / (maximum - 1)) * 100 : 100;
+  const thumbSize = 20;
+  const startPosition = `calc(${startPercent}% + ${thumbSize / 2 - (thumbSize * startPercent) / 100}px)`;
+  const endPosition = `calc(${endPercent}% + ${thumbSize / 2 - (thumbSize * endPercent) / 100}px)`;
+  const startDraw = draws[start - 1] ?? null;
+  const endDraw = draws[end - 1] ?? null;
 
   function updateStart(value: number) {
     onRangeChange({ end, start: maximum > 1 ? Math.min(value, end - 1) : 1 });
@@ -1302,8 +1313,9 @@ function RangeSliderCard({
       <div
         className="range-slider-shell"
         style={{
-          "--range-end": `${endPercent}%`,
-          "--range-start": `${startPercent}%`,
+          "--range-end-position": endPosition,
+          "--range-start-position": startPosition,
+          "--slider-thumb-size": `${thumbSize}px`,
         } as CSSProperties}
       >
         <div className="range-slider-track" aria-hidden="true" />
@@ -1327,8 +1339,14 @@ function RangeSliderCard({
         />
       </div>
       <div className="range-slider-values" aria-label="Limites da faixa analisada">
-        <span>Início: {start}</span>
-        <span>Fim: {end}</span>
+        <div className="range-slider-value">
+          <span>Início</span>
+          <strong>{startDraw ? `${start} · ${formatStatusDate(startDraw)}` : `${start} · Sem data`}</strong>
+        </div>
+        <div className="range-slider-value">
+          <span>Fim</span>
+          <strong>{endDraw ? `${end} · ${formatStatusDate(endDraw)}` : `${end} · Sem data`}</strong>
+        </div>
       </div>
       <p>Use os dois controles para analisar qualquer trecho do histórico carregado, inclusive concursos mais antigos.</p>
     </div>
