@@ -53,10 +53,10 @@ export const ANALYSIS_PERIOD_OPTIONS: Array<{ value: AnalysisPeriod; label: stri
 
 export const ANALYSIS_VIEW_OPTIONS: Array<{ value: AnalysisView; label: string }> = [
   { value: "most", label: "Mais sorteados" },
-  { value: "recent", label: "Calor recente" },
-  { value: "map", label: "Mapa" },
   { value: "least", label: "Menos sorteados" },
   { value: "delayed", label: "Atrasados" },
+  { value: "map", label: "Calor por frequência" },
+  { value: "recent", label: "Calor recente" },
 ];
 
 const RECENCY_DECAY_FACTOR = 0.9;

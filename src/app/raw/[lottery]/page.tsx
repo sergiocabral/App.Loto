@@ -75,7 +75,7 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
               </span>
             </div>
             <a className="raw-page-link raw-page-link-download" href={legacyApiUrl} rel="noreferrer" target="_blank">
-              Abrir TXT puro
+              Abrir texto para baixar
             </a>
           </div>
         </header>
