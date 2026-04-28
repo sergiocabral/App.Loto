@@ -29,10 +29,24 @@ function warnService(message: string, details?: Record<string, unknown>): void {
   console.warn(SERVICE_LOG_PREFIX, message);
 }
 
+function getErrorDetails(error: unknown): unknown {
+  if (!(error instanceof Error)) {
+    return error;
+  }
+
+  const details: Record<string, unknown> = { name: error.name, message: error.message };
+
+  if (process.env.NODE_ENV !== "production") {
+    details.stack = error.stack;
+  }
+
+  return details;
+}
+
 function errorService(message: string, error: unknown, details?: Record<string, unknown>): void {
   console.error(SERVICE_LOG_PREFIX, message, {
     ...details,
-    error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error,
+    error: getErrorDetails(error),
   });
 }
 
@@ -47,6 +61,7 @@ export type CollectResult = {
 };
 
 export type CaixaSyncStopReason =
+  | "already_running"
   | "batch_completed"
   | "not_found_limit"
   | "api_returned_previous_draw"
@@ -74,6 +89,8 @@ export type CaixaSyncResult = {
 const DEFAULT_CAIXA_SYNC_BATCH_SIZE = 5;
 const MAX_CAIXA_SYNC_BATCH_SIZE = 25;
 const MAX_CONSECUTIVE_NOT_FOUND = 3;
+
+const activeCaixaSyncs = new Set<string>();
 
 function normalizeBatchSize(value: number | undefined): number {
   if (!Number.isFinite(value)) {
@@ -199,9 +216,56 @@ export async function syncMissingDrawsFromCaixa(
   const savedDraws: StoredDraw[] = [];
   const attemptedDrawNumbers: number[] = [];
   const skippedDrawNumbers: number[] = [];
-  const startAt = Math.max(1, Math.floor(options.startAt ?? 1));
+  const lockKey = lottery.slug;
+
+  if (activeCaixaSyncs.has(lockKey)) {
+    const draws = await listDraws(lottery.slug);
+
+    warnService("syncMissingDrawsFromCaixa:already-running", {
+      lottery: lottery.slug,
+      totalStoredDraws: draws.length,
+      elapsedMs: elapsedMs(startedAt),
+    });
+
+    return {
+      draws,
+      savedDraws,
+      attemptedDrawNumbers,
+      skippedDrawNumbers,
+      currentDrawNumber: null,
+      nextDrawNumber: null,
+      hasMore: true,
+      totalStoredDraws: draws.length,
+      newestDrawNumber: draws[0]?.drawNumber ?? null,
+      oldestDrawNumber: draws.at(-1)?.drawNumber ?? null,
+      consecutiveMisses: 0,
+      batchSize,
+      stopReason: "already_running",
+      error: "A synchronization is already running for this lottery.",
+    };
+  }
+
+  activeCaixaSyncs.add(lockKey);
+
+  try {
+    return await runCaixaSync(lottery.slug, batchSize, options.startAt, startedAt, savedDraws, attemptedDrawNumbers, skippedDrawNumbers);
+  } finally {
+    activeCaixaSyncs.delete(lockKey);
+  }
+}
+
+async function runCaixaSync(
+  lotterySlug: string,
+  batchSize: number,
+  requestedStartAt: number | undefined,
+  startedAt: number,
+  savedDraws: StoredDraw[],
+  attemptedDrawNumbers: number[],
+  skippedDrawNumbers: number[],
+): Promise<CaixaSyncResult> {
+  const startAt = Math.max(1, Math.floor(requestedStartAt ?? 1));
   let currentDrawNumber: number | null = null;
-  let nextDrawNumber: number | null = await getNextMissingDrawNumber(lottery.slug, startAt);
+  let nextDrawNumber: number | null = await getNextMissingDrawNumber(lotterySlug, startAt);
   let consecutiveMisses = 0;
   let stopReason: CaixaSyncStopReason = "batch_completed";
   let errorMessage: string | undefined;
@@ -211,20 +275,20 @@ export async function syncMissingDrawsFromCaixa(
     attemptedDrawNumbers.push(currentDrawNumber);
 
     logService("syncMissingDrawsFromCaixa:attempt", {
-      lottery: lottery.slug,
+      lottery: lotterySlug,
       currentDrawNumber,
       batchIndex: index + 1,
       batchSize,
     });
 
     try {
-      const fetchedDraw = await fetchDrawFromCaixa(lottery.slug, currentDrawNumber);
+      const fetchedDraw = await fetchDrawFromCaixa(lotterySlug, currentDrawNumber);
 
       if (!fetchedDraw) {
         consecutiveMisses += 1;
         skippedDrawNumbers.push(currentDrawNumber);
         warnService("syncMissingDrawsFromCaixa:not-found", {
-          lottery: lottery.slug,
+          lottery: lotterySlug,
           currentDrawNumber,
           consecutiveMisses,
           maxConsecutiveMisses: MAX_CONSECUTIVE_NOT_FOUND,
@@ -236,7 +300,7 @@ export async function syncMissingDrawsFromCaixa(
           break;
         }
 
-        nextDrawNumber = await getNextMissingDrawNumber(lottery.slug, currentDrawNumber + 1);
+        nextDrawNumber = await getNextMissingDrawNumber(lotterySlug, currentDrawNumber + 1);
         continue;
       }
 
@@ -244,7 +308,7 @@ export async function syncMissingDrawsFromCaixa(
         stopReason = "api_returned_previous_draw";
         nextDrawNumber = null;
         logService("syncMissingDrawsFromCaixa:reached-api-end", {
-          lottery: lottery.slug,
+          lottery: lotterySlug,
           requestedDrawNumber: currentDrawNumber,
           responseDrawNumber: fetchedDraw.drawNumber,
           newestKnownDraw: fetchedDraw.drawNumber,
@@ -257,7 +321,7 @@ export async function syncMissingDrawsFromCaixa(
         nextDrawNumber = null;
         skippedDrawNumbers.push(currentDrawNumber);
         warnService("syncMissingDrawsFromCaixa:different-draw", {
-          lottery: lottery.slug,
+          lottery: lotterySlug,
           requestedDrawNumber: currentDrawNumber,
           responseDrawNumber: fetchedDraw.drawNumber,
         });
@@ -274,17 +338,17 @@ export async function syncMissingDrawsFromCaixa(
 
       if (apiNextDrawNumber && apiNextDrawNumber !== sequentialNextDrawNumber) {
         logService("syncMissingDrawsFromCaixa:api-next-ignored", {
-          lottery: lottery.slug,
+          lottery: lotterySlug,
           currentDrawNumber,
           apiNextDrawNumber,
           sequentialNextDrawNumber,
         });
       }
 
-      nextDrawNumber = await getNextMissingDrawNumber(lottery.slug, nextSearchStart);
+      nextDrawNumber = await getNextMissingDrawNumber(lotterySlug, nextSearchStart);
 
       logService("syncMissingDrawsFromCaixa:saved", {
-        lottery: lottery.slug,
+        lottery: lotterySlug,
         drawNumber: storedDraw.drawNumber,
         savedInBatch: savedDraws.length,
         apiNextDrawNumber,
@@ -293,13 +357,13 @@ export async function syncMissingDrawsFromCaixa(
         elapsedMs: elapsedMs(startedAt),
       });
     } catch (error) {
-      if (isFutureDrawApiError(error) && (await isLikelyFutureDraw(lottery.slug, currentDrawNumber))) {
+      if (isFutureDrawApiError(error) && (await isLikelyFutureDraw(lotterySlug, currentDrawNumber))) {
         consecutiveMisses = MAX_CONSECUTIVE_NOT_FOUND;
         skippedDrawNumbers.push(currentDrawNumber);
         stopReason = "not_found_limit";
         nextDrawNumber = null;
         warnService("syncMissingDrawsFromCaixa:future-draw-unavailable", {
-          lottery: lottery.slug,
+          lottery: lotterySlug,
           currentDrawNumber,
           status: error.status,
           savedInBatch: savedDraws.length,
@@ -312,7 +376,7 @@ export async function syncMissingDrawsFromCaixa(
       errorMessage = getErrorMessage(error);
       nextDrawNumber = currentDrawNumber;
       errorService("syncMissingDrawsFromCaixa:error", error, {
-        lottery: lottery.slug,
+        lottery: lotterySlug,
         currentDrawNumber,
         savedInBatch: savedDraws.length,
         elapsedMs: elapsedMs(startedAt),
@@ -321,11 +385,11 @@ export async function syncMissingDrawsFromCaixa(
     }
   }
 
-  const draws = await listDraws(lottery.slug);
+  const draws = await listDraws(lotterySlug);
   const hasMore = stopReason === "batch_completed" && attemptedDrawNumbers.length === batchSize && Boolean(nextDrawNumber);
 
   logService("syncMissingDrawsFromCaixa:done", {
-    lottery: lottery.slug,
+    lottery: lotterySlug,
     savedInBatch: savedDraws.length,
     attemptedInBatch: attemptedDrawNumbers.length,
     skippedInBatch: skippedDrawNumbers.length,

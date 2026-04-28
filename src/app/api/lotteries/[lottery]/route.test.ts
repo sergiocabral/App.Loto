@@ -100,19 +100,18 @@ describe("lottery route handlers", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await readJson(response)).toEqual({ error: "Draw number must be positive" });
+    expect(await readJson(response)).toEqual({ error: "Draw number must be a positive integer" });
   });
 
-  it("preserves current parseInt behavior for GET draw values", async () => {
-    serviceMocks.getStoredDraw.mockResolvedValueOnce(draw(123));
+  it("strictly rejects non-integer GET draw values", async () => {
     const route = await import("@/app/api/lotteries/[lottery]/route");
 
     const response = await route.GET(new Request("http://localhost/api/lotteries/MegaSena?draw=123abc"), {
       params: Promise.resolve({ lottery: "MegaSena" }),
     });
 
-    expect(response.status).toBe(200);
-    expect(serviceMocks.getStoredDraw).toHaveBeenCalledWith("MegaSena", 123);
+    expect(response.status).toBe(400);
+    expect(serviceMocks.getStoredDraw).not.toHaveBeenCalled();
   });
 
   it("returns history JSON and uses collectMissingDraws by default", async () => {
@@ -208,7 +207,7 @@ describe("lottery route handlers", () => {
     );
 
     expect(invalidResponse.status).toBe(400);
-    expect(await readJson(invalidResponse)).toEqual({ error: "Draw number must be positive" });
+    expect(await readJson(invalidResponse)).toEqual({ error: "Draw number must be a positive integer" });
 
     serviceMocks.fetchAndStoreDrawFromCaixa.mockResolvedValueOnce(draw(5));
     const response = await route.POST(
@@ -226,7 +225,39 @@ describe("lottery route handlers", () => {
     expect(payload.draw).toMatchObject({ drawNumber: 5 });
   });
 
-  it("normalizes NaN sync body values to service defaults", async () => {
+  it("rejects invalid sync body values before calling the service", async () => {
+    const route = await import("@/app/api/lotteries/[lottery]/route");
+
+    const response = await route.POST(
+      new Request("http://localhost/api/lotteries/MegaSena", {
+        body: JSON.stringify({ action: "sync-caixa", batchSize: "abc", startAt: "nope" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await readJson(response)).toEqual({ error: "Batch size must be a positive integer up to 25" });
+    expect(serviceMocks.syncMissingDrawsFromCaixa).not.toHaveBeenCalled();
+  });
+
+  it("requires an admin token for mutation requests when configured", async () => {
+    vi.stubEnv("LUCKYGAMES_ADMIN_TOKEN", "secret-token");
+    const route = await import("@/app/api/lotteries/[lottery]/route");
+
+    const unauthorized = await route.POST(
+      new Request("http://localhost/api/lotteries/MegaSena", {
+        body: JSON.stringify({ action: "sync-caixa", batchSize: 1 }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+
+    expect(unauthorized.status).toBe(401);
+    expect(serviceMocks.syncMissingDrawsFromCaixa).not.toHaveBeenCalled();
+
     serviceMocks.syncMissingDrawsFromCaixa.mockResolvedValueOnce({
       draws: [],
       savedDraws: [],
@@ -239,22 +270,88 @@ describe("lottery route handlers", () => {
       newestDrawNumber: null,
       oldestDrawNumber: null,
       consecutiveMisses: 0,
-      batchSize: 5,
+      batchSize: 1,
       stopReason: "not_found_limit",
     });
+
+    const authorized = await route.POST(
+      new Request("http://localhost/api/lotteries/MegaSena", {
+        body: JSON.stringify({ action: "sync-caixa", batchSize: 1 }),
+        headers: {
+          authorization: "Bearer secret-token",
+          "content-type": "application/json",
+        },
+        method: "POST",
+      }),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+
+    expect(authorized.status).toBe(200);
+    expect(serviceMocks.syncMissingDrawsFromCaixa).toHaveBeenCalledWith("MegaSena", { batchSize: 1 });
+  });
+
+  it("rejects mutation requests with unsupported content-type or large body", async () => {
     const route = await import("@/app/api/lotteries/[lottery]/route");
 
-    const response = await route.POST(
+    const unsupportedContentType = await route.POST(
       new Request("http://localhost/api/lotteries/MegaSena", {
-        body: JSON.stringify({ action: "sync-caixa", batchSize: "abc", startAt: "nope" }),
+        body: JSON.stringify({ action: "sync-caixa" }),
+        headers: { "content-type": "text/plain" },
+        method: "POST",
+      }),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+
+    expect(unsupportedContentType.status).toBe(415);
+
+    const largeBody = await route.POST(
+      new Request("http://localhost/api/lotteries/MegaSena", {
+        body: JSON.stringify({ action: "sync-caixa", filler: "x".repeat(5000) }),
         headers: { "content-type": "application/json" },
         method: "POST",
       }),
       { params: Promise.resolve({ lottery: "MegaSena" }) },
     );
 
-    expect(response.status).toBe(200);
-    expect(serviceMocks.syncMissingDrawsFromCaixa).toHaveBeenCalledWith("MegaSena", { batchSize: undefined, startAt: undefined });
+    expect(largeBody.status).toBe(413);
+    expect(serviceMocks.syncMissingDrawsFromCaixa).not.toHaveBeenCalled();
+  });
+
+  it("rate limits repeated mutation requests by IP and lottery", async () => {
+    serviceMocks.syncMissingDrawsFromCaixa.mockResolvedValue({
+      draws: [],
+      savedDraws: [],
+      attemptedDrawNumbers: [],
+      skippedDrawNumbers: [],
+      currentDrawNumber: null,
+      nextDrawNumber: null,
+      hasMore: false,
+      totalStoredDraws: 0,
+      newestDrawNumber: null,
+      oldestDrawNumber: null,
+      consecutiveMisses: 0,
+      batchSize: 1,
+      stopReason: "not_found_limit",
+    });
+    const route = await import("@/app/api/lotteries/[lottery]/route");
+
+    let lastResponse: Response | null = null;
+
+    for (let index = 0; index < 31; index += 1) {
+      lastResponse = await route.POST(
+        new Request("http://localhost/api/lotteries/MegaSena", {
+          body: JSON.stringify({ action: "sync-caixa", batchSize: 1 }),
+          headers: {
+            "content-type": "application/json",
+            "x-real-ip": "203.0.113.10",
+          },
+          method: "POST",
+        }),
+        { params: Promise.resolve({ lottery: "MegaSena" }) },
+      );
+    }
+
+    expect(lastResponse?.status).toBe(429);
   });
 
   it("uses empty body when POST JSON is invalid", async () => {

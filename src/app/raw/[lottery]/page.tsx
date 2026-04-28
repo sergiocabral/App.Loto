@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getLottery } from "@/data/lotteries";
 import { loadLotteryHistory, getStoredDraw } from "@/lib/server/service";
+import { parsePositiveInteger } from "@/lib/server/security";
 import { renderDrawText, renderHistoryText } from "@/lib/render";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +24,10 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
   const lottery = getLottery(lotteryParam);
   const query = await searchParams;
   const drawParam = readSingleParam(query.draw);
-  const drawNumber = Number.parseInt(drawParam, 10);
-  const hasValidDraw = Number.isFinite(drawNumber) && drawNumber > 0;
+  const hasDrawParam = drawParam.trim().length > 0;
+  const drawNumber = hasDrawParam ? parsePositiveInteger(drawParam) : null;
+  const hasValidDraw = Boolean(drawNumber);
+  const hasInvalidDraw = hasDrawParam && !drawNumber;
 
   if (!lottery) {
     return (
@@ -41,12 +44,16 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
     );
   }
 
-  const draw = hasValidDraw ? await getStoredDraw(lottery.slug, drawNumber) : null;
-  const history = hasValidDraw ? [] : await loadLotteryHistory(lottery.slug);
-  const text = hasValidDraw ? (draw ? renderDrawText(draw, false) : "") : renderHistoryText(history);
-  const title = hasValidDraw ? `${formatLotteryName(lottery.slug)} — concurso ${drawNumber}` : formatLotteryName(lottery.slug);
+  const draw = hasValidDraw && drawNumber ? await getStoredDraw(lottery.slug, drawNumber) : null;
+  const history = !hasValidDraw && !hasInvalidDraw ? await loadLotteryHistory(lottery.slug) : [];
+  const text = hasValidDraw ? (draw ? renderDrawText(draw, false) : "") : hasInvalidDraw ? "" : renderHistoryText(history);
+  const title = hasValidDraw && drawNumber
+    ? `${formatLotteryName(lottery.slug)} — concurso ${drawNumber}`
+    : hasInvalidDraw
+      ? `${formatLotteryName(lottery.slug)} — concurso inválido`
+      : formatLotteryName(lottery.slug);
   const totalDraws = hasValidDraw ? (draw ? 1 : 0) : history.length;
-  const legacyApiUrl = `/api/lotteries/${lottery.slug}?format=legacy${hasValidDraw ? `&draw=${drawNumber}` : ""}`;
+  const legacyApiUrl = `/api/lotteries/${lottery.slug}?format=legacy${hasValidDraw && drawNumber ? `&draw=${drawNumber}` : ""}`;
 
   return (
     <main className="raw-page-shell">
@@ -86,8 +93,8 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
           <pre className="raw-page-pre">{text}</pre>
         ) : (
           <div className="empty-state compact">
-            <strong>Nenhum resultado salvo</strong>
-            <p>Sincronize os resultados no Luckygames para preencher esta visão.</p>
+            <strong>{hasInvalidDraw ? "Concurso inválido" : "Nenhum resultado salvo"}</strong>
+            <p>{hasInvalidDraw ? "Informe apenas números positivos para abrir um concurso específico." : "Sincronize os resultados no Luckygames para preencher esta visão."}</p>
           </div>
         )}
       </section>

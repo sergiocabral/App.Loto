@@ -94,6 +94,22 @@ describe("lottery service", () => {
     expect(repositoryMocks.getNextMissingDrawNumber).toHaveBeenNthCalledWith(2, "MegaSena", 2);
   });
 
+  it("prevents concurrent Caixa syncs for the same lottery", async () => {
+    repositoryMocks.getNextMissingDrawNumber.mockResolvedValueOnce(1).mockResolvedValueOnce(null);
+    caixaMocks.fetchDrawFromCaixa.mockResolvedValueOnce(draw(1));
+    repositoryMocks.saveDraw.mockImplementation(async (value) => draw(value.drawNumber, value));
+    repositoryMocks.listDraws.mockResolvedValue([draw(1)]);
+
+    const { syncMissingDrawsFromCaixa } = await import("@/lib/server/service");
+    const resultPromise = syncMissingDrawsFromCaixa("MegaSena", { batchSize: 1, startAt: 1 });
+    const concurrentResult = await syncMissingDrawsFromCaixa("MegaSena", { batchSize: 1, startAt: 1 });
+    const result = await resultPromise;
+
+    expect(result.stopReason).toBe("batch_completed");
+    expect(concurrentResult.stopReason).toBe("already_running");
+    expect(caixaMocks.fetchDrawFromCaixa).toHaveBeenCalledTimes(1);
+  });
+
   it("stops sync after consecutive not-found responses", async () => {
     repositoryMocks.getNextMissingDrawNumber.mockResolvedValueOnce(1).mockResolvedValueOnce(2).mockResolvedValueOnce(3);
     caixaMocks.fetchDrawFromCaixa.mockResolvedValue(null);

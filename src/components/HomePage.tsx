@@ -30,15 +30,25 @@ import type { Draw } from "@/lib/types";
 
 type LookupMode = "numbers" | "draw";
 
+type PublicDraw = Omit<Draw, "raw">;
+
+function asClientDraw(draw: PublicDraw): Draw {
+  return { ...draw, raw: {} };
+}
+
+function asClientDraws(draws: PublicDraw[]): Draw[] {
+  return draws.map(asClientDraw);
+}
+
 type CollectionPayload = {
-  draws: Draw[];
+  draws: PublicDraw[];
   hasMore: boolean;
   nextDrawNumber: number | null;
 };
 
 type CaixaSyncPayload = {
-  draws: Draw[];
-  savedDraws: Draw[];
+  draws: PublicDraw[];
+  savedDraws: PublicDraw[];
   attemptedDrawNumbers: number[];
   skippedDrawNumbers: number[];
   currentDrawNumber: number | null;
@@ -69,8 +79,8 @@ type SyncInfo = {
 type LotteryApiPayload = {
   lottery: string;
   collection?: CollectionPayload | null;
-  draws?: Draw[];
-  draw?: Draw | null;
+  draws?: PublicDraw[];
+  draw?: PublicDraw | null;
   text?: string;
   sync?: CaixaSyncPayload;
   error?: string;
@@ -182,6 +192,8 @@ function formatSyncStopReason(reason: string | null): string {
       return "Último concurso alcançado";
     case "api_returned_different_draw":
       return "Resposta inesperada";
+    case "already_running":
+      return "Em andamento";
     case "error":
       return "Erro";
     default:
@@ -214,13 +226,13 @@ async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Pro
 
       const loadedData: LoadedLotteryData = drawNumber
         ? {
-            draws: payload.draw ? [payload.draw] : [],
-            selectedDraw: payload.draw ?? null,
+            draws: payload.draw ? [asClientDraw(payload.draw)] : [],
+            selectedDraw: payload.draw ? asClientDraw(payload.draw) : null,
             rawText: payload.text ?? "",
             statusMessage: payload.draw ? "Concurso encontrado." : "Concurso não encontrado.",
           }
         : (() => {
-            const history = payload.draws ?? payload.collection?.draws ?? [];
+            const history = asClientDraws(payload.draws ?? payload.collection?.draws ?? []);
 
             return cacheHistoryData(lotterySlug, history, payload.text ?? "");
           })();
@@ -464,7 +476,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
       return payload.sync;
     }
 
-    const history = payload.draws ?? payload.sync.draws ?? [];
+    const history = asClientDraws(payload.draws ?? payload.sync.draws ?? []);
     const loadedData = cacheHistoryData(lottery.slug, history, payload.text ?? "", getHistoryStatusMessage(history));
     setDraws(loadedData.draws);
     setSelectedDraw((current) => {

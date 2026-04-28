@@ -114,15 +114,16 @@ describe("raw results page", () => {
     expect(serviceMocks.getStoredDraw).toHaveBeenCalledWith("Quina", 7);
   });
 
-  it("preserves current parseInt behavior for draw query", async () => {
-    serviceMocks.getStoredDraw.mockResolvedValueOnce(draw(123));
+  it("strictly rejects non-integer draw query", async () => {
     const { default: RawLotteryPage } = await import("@/app/raw/[lottery]/page");
 
-    await RawLotteryPage({
+    const element = await RawLotteryPage({
       params: Promise.resolve({ lottery: "Quina" }),
       searchParams: Promise.resolve({ draw: "123abc" }),
     });
 
-    expect(serviceMocks.getStoredDraw).toHaveBeenCalledWith("Quina", 123);
+    expect(serviceMocks.getStoredDraw).not.toHaveBeenCalled();
+    expect(serviceMocks.loadLotteryHistory).not.toHaveBeenCalled();
+    expect(stringifyElement(element)).toContain("Concurso inválido");
   });
 });
