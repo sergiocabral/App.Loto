@@ -982,7 +982,7 @@ button {
 }
 
 .suggestion-header {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -993,10 +993,17 @@ button {
   letter-spacing: -0.04em;
 }
 
-.lucky-button {
-  background: linear-gradient(135deg, #fbbf24, #fb7185);
+.suggestion-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.lucky-button,
+.clear-suggestions-button {
   border-radius: 999px;
-  color: #020617;
   flex: 0 0 auto;
   font-size: 13px;
   font-weight: 900;
@@ -1004,10 +1011,76 @@ button {
   padding: 10px 14px;
 }
 
+.lucky-button {
+  background: linear-gradient(135deg, #fbbf24, #fb7185);
+  color: #020617;
+}
+
+.clear-suggestions-button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  color: var(--muted-strong);
+}
+
+.clear-suggestions-button:hover {
+  background: rgba(251, 113, 133, 0.14);
+  border-color: rgba(251, 113, 133, 0.34);
+  color: var(--text);
+}
+
 .suggestion-copy {
   color: var(--muted-strong);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.suggestion-list {
+  display: grid;
+  gap: 10px;
+}
+
+.suggestion-list > em {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.suggestion-game {
+  background: rgba(2, 6, 23, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.suggestion-game:first-child {
+  border-color: rgba(52, 211, 153, 0.34);
+  box-shadow: 0 14px 30px rgba(16, 185, 129, 0.1);
+}
+
+.suggestion-game-meta {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.suggestion-game-meta strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.suggestion-game-meta span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .suggestion-numbers {

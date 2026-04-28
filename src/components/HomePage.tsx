@@ -94,8 +94,11 @@ type LoadedLotteryData = {
 };
 
 type SuggestedGame = {
-  key: string;
+  combinationKey: string;
+  filterKey: string;
+  lotterySlug: string;
   numbers: string[];
+  sourceLabel: string;
 };
 
 
@@ -229,6 +232,34 @@ async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Pro
   return request;
 }
 
+function getCombinationKey(numbers: string[]): string {
+  return numbers.join("-");
+}
+
+function getSuggestionSourceLabel(view: AnalysisView, data: AnalysisData): string {
+  return `${getAnalysisViewLabel(view)} · ${data.periodLabel}${data.scopeLabel === "Todos os sorteios" ? "" : ` · ${data.scopeLabel}`}`;
+}
+
+function buildUniqueLuckySuggestion(
+  lottery: LotteryDefinition,
+  view: AnalysisView,
+  data: AnalysisData,
+  existingKeys: Set<string>,
+): string[] | null {
+  const maxAttempts = 80;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const numbers = buildLuckySuggestion(lottery, view, data);
+    const combinationKey = getCombinationKey(numbers);
+
+    if (!existingKeys.has(combinationKey)) {
+      return numbers;
+    }
+  }
+
+  return null;
+}
+
 export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProps) {
   const initialLottery = getInitialLottery(initialLotterySlug);
   const [selectedLottery, setSelectedLottery] = useState<LotteryDefinition | null>(initialLottery);
@@ -247,7 +278,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
   const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
-  const [suggestedGame, setSuggestedGame] = useState<SuggestedGame | null>(null);
+  const [suggestedGames, setSuggestedGames] = useState<SuggestedGame[]>([]);
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
@@ -281,7 +312,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     () => (selectedLottery && analysisData ? buildSuggestionKey(selectedLottery, analysisView, analysisData) : ""),
     [analysisData, analysisView, selectedLottery],
   );
-  const visibleSuggestionNumbers = suggestedGame?.key === suggestionKey ? suggestedGame.numbers : [];
+  const visibleSuggestedGames = useMemo(
+    () => suggestedGames.filter((game) => selectedLottery && game.lotterySlug === selectedLottery.slug),
+    [selectedLottery, suggestedGames],
+  );
 
   useEffect(() => {
     if (!selectedLottery || syncInfo.running) {
@@ -356,7 +390,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setLookupMode("numbers");
     setNumberFilter([]);
     setSyncInfo(INITIAL_SYNC_INFO);
-    setSuggestedGame(null);
     updateLegacyUrl(lottery.slug);
   }
 
@@ -374,12 +407,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
 
       if (!parsedNumbers.length) {
         setNumberFilter([]);
-        setSuggestedGame(null);
         setStatusMessage("Informe números válidos para filtrar.");
         return;
       }
 
-      setSuggestedGame(null);
       setNumberFilter(parsedNumbers);
       setSelectedDraw(null);
       setActiveDrawNumber("");
@@ -389,7 +420,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     }
 
     setNumberFilter([]);
-    setSuggestedGame(null);
     setActiveDrawNumber(trimmed);
     updateLegacyUrl(selectedLottery.slug, trimmed || undefined);
   }
@@ -398,8 +428,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setLookupMode(mode);
     setDrawNumberInput("");
     setNumberFilter([]);
-    setSuggestedGame(null);
-
     if (mode === "numbers" && selectedLottery && activeDrawNumber.trim()) {
       setSelectedDraw(null);
       setActiveDrawNumber("");
@@ -411,7 +439,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setDrawNumberInput("");
     setActiveDrawNumber("");
     setNumberFilter([]);
-    setSuggestedGame(null);
     setSelectedDraw(draws[0] ?? null);
 
     if (selectedLottery) {
@@ -506,7 +533,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setStatus("syncing");
     setError(null);
     setStatusMessage("Sincronizando...");
-    setSuggestedGame(null);
     setSyncInfo({
       ...INITIAL_SYNC_INFO,
       running: true,
@@ -586,17 +612,14 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   }, [activeDrawNumber, selectedLottery, status, syncInfo.running]);
 
   function changeAnalysisPeriod(period: AnalysisPeriod) {
-    setSuggestedGame(null);
     setAnalysisPeriod(period);
   }
 
   function changeAnalysisView(view: AnalysisView) {
-    setSuggestedGame(null);
     setAnalysisView(view);
   }
 
   function changeDuplaSenaAnalysisScope(scope: DuplaSenaAnalysisScope) {
-    setSuggestedGame(null);
     setDuplaSenaAnalysisScope(scope);
   }
 
@@ -605,10 +628,39 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
       return;
     }
 
-    setSuggestedGame({
-      key: suggestionKey,
-      numbers: buildLuckySuggestion(selectedLottery, analysisView, analysisData),
-    });
+    const existingKeys = new Set(
+      suggestedGames
+        .filter((game) => game.lotterySlug === selectedLottery.slug)
+        .map((game) => game.combinationKey),
+    );
+    const numbers = buildUniqueLuckySuggestion(selectedLottery, analysisView, analysisData, existingKeys);
+
+    if (!numbers) {
+      setStatusMessage("Não encontrei uma nova combinação diferente para este filtro.");
+      return;
+    }
+
+    setSuggestedGames((current) => [
+      {
+        combinationKey: getCombinationKey(numbers),
+        filterKey: suggestionKey,
+        lotterySlug: selectedLottery.slug,
+        numbers,
+        sourceLabel: getSuggestionSourceLabel(analysisView, analysisData),
+      },
+      ...current,
+    ]);
+    setStatusMessage("Nova sugestão adicionada.");
+  }
+
+  function clearSuggestedGames() {
+    if (!selectedLottery) {
+      setSuggestedGames([]);
+      return;
+    }
+
+    setSuggestedGames((current) => current.filter((game) => game.lotterySlug !== selectedLottery.slug));
+    setStatusMessage("Sugestões limpas.");
   }
 
   return (
@@ -744,7 +796,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
                 activeView={analysisView}
                 data={analysisData}
                 lottery={selectedLottery}
-                numbers={visibleSuggestionNumbers}
+                games={visibleSuggestedGames}
+                onClear={clearSuggestedGames}
                 onLucky={generateLuckySuggestion}
               />
               <AnalysisPanel
@@ -1006,14 +1059,16 @@ function NumberHeatMap({ stats }: { stats: NumberTrend[] }) {
 function SuggestionPanel({
   activeView,
   data,
+  games,
   lottery,
-  numbers,
+  onClear,
   onLucky,
 }: {
   activeView: AnalysisView;
   data: AnalysisData | null;
+  games: SuggestedGame[];
   lottery: LotteryDefinition | null;
-  numbers: string[];
+  onClear: () => void;
   onLucky: () => void;
 }) {
   if (!lottery || !data) {
@@ -1027,13 +1082,36 @@ function SuggestionPanel({
           <span className="eyebrow">Sugestão para jogar</span>
           <h3>{formatLotteryName(lottery.slug)}</h3>
         </div>
-        <button className="lucky-button" onClick={onLucky} type="button">
-          Estou com sorte
-        </button>
+        <div className="suggestion-actions">
+          {games.length ? (
+            <button className="clear-suggestions-button" onClick={onClear} type="button">
+              Limpar
+            </button>
+          ) : null}
+          <button className="lucky-button" onClick={onLucky} type="button">
+            Estou com sorte
+          </button>
+        </div>
       </div>
       <p className="suggestion-copy">{getSuggestionDescription(activeView, data)}</p>
-      <div className="suggestion-numbers" aria-label="Sugestão baseada na análise rápida">
-        {numbers.length ? numbers.map((number) => <span key={`analysis-suggestion-${number}`}>{number}</span>) : <em>Toque em “Estou com sorte” para gerar uma sugestão.</em>}
+      <div className="suggestion-list" aria-label="Sugestões baseadas na análise rápida">
+        {games.length ? (
+          games.map((game, index) => (
+            <div className="suggestion-game" key={`${game.lotterySlug}-${game.combinationKey}`}>
+              <div className="suggestion-game-meta">
+                <strong>{index === 0 ? "Nova sugestão" : `Sugestão ${games.length - index}`}</strong>
+                <span>{game.sourceLabel}</span>
+              </div>
+              <div className="suggestion-numbers">
+                {game.numbers.map((number) => (
+                  <span key={`${game.combinationKey}-${number}`}>{number}</span>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <em>Toque em “Estou com sorte” para gerar sugestões únicas.</em>
+        )}
       </div>
     </article>
   );
