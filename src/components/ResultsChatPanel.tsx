@@ -2,6 +2,7 @@
 
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { LotteryDefinition } from "@/data/lotteries";
+import { DEFAULT_CHAT_SUGGESTIONS, type ChatSuggestion } from "@/lib/chatSuggestions";
 import { getDisplayGroups, type AnalysisData } from "@/lib/analysis";
 import type { Draw } from "@/lib/types";
 
@@ -42,6 +43,10 @@ type ChatAnalysisSummary = {
 type ChatApiPayload = {
   reply?: string;
   error?: string;
+};
+
+type ChatSuggestionsPayload = {
+  suggestions?: ChatSuggestion[];
 };
 
 type ChatError = {
@@ -403,8 +408,37 @@ function ResultsChatPanelSession({
   const [messages, setMessages] = useState<ChatMessage[]>(() => [createMessage("assistant", introMessage, contextKey)]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [suggestions, setSuggestions] = useState<ChatSuggestion[]>(DEFAULT_CHAT_SUGGESTIONS);
   const [chatError, setChatError] = useState<ChatError | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSuggestions() {
+      try {
+        const response = await fetch("/api/chat/suggestions", { cache: "no-store" });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as ChatSuggestionsPayload;
+
+        if (isMounted && Array.isArray(payload.suggestions) && payload.suggestions.length) {
+          setSuggestions(payload.suggestions.slice(0, 4));
+        }
+      } catch {
+        // Keep client-side defaults when runtime suggestions cannot be loaded.
+      }
+    }
+
+    void loadSuggestions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight, behavior: "smooth" });
@@ -420,9 +454,11 @@ function ResultsChatPanelSession({
     }
 
     const requestContextKey = contextKey;
+    const promptForModel = resolvePromptForSubmission(question);
     const userMessage = createMessage("user", question, requestContextKey);
+    const apiUserMessage = createMessage("user", promptForModel, requestContextKey);
     const nextMessages = [...messages, userMessage];
-    const apiMessages = nextMessages
+    const apiMessages = [...messages, apiUserMessage]
       .filter((message) => message.contextKey === requestContextKey)
       .slice(-CHAT_HISTORY_LIMIT)
       .map((message) => ({ content: message.content, role: message.role }));
@@ -476,12 +512,16 @@ function ResultsChatPanelSession({
     }
   }
 
-  function applySuggestedPrompt(prompt: string) {
+  function applySuggestedPrompt(suggestion: ChatSuggestion) {
     if (!canChat || isSending) {
       return;
     }
 
-    setInput(prompt);
+    setInput(suggestion.message);
+  }
+
+  function resolvePromptForSubmission(question: string): string {
+    return suggestions.find((suggestion) => suggestion.message === question)?.prompt ?? question;
   }
 
   return (
@@ -517,24 +557,11 @@ function ResultsChatPanelSession({
         </div>
 
         <div className="chat-suggestions" aria-label="Sugestões de perguntas">
-          <button disabled={!canChat || isSending} onClick={() => applySuggestedPrompt("Resuma os principais padrões desses resultados.")} type="button">
-            Resumir padrões
-          </button>
-          <button disabled={!canChat || isSending} onClick={() => applySuggestedPrompt("Quais números aparecem com mais destaque nesse filtro?")} type="button">
-            Destaques
-          </button>
-          <button disabled={!canChat || isSending} onClick={() => applySuggestedPrompt("Existe algum atraso ou repetição interessante para observar?")} type="button">
-            Atrasos
-          </button>
-          <button
-            disabled={!canChat || isSending}
-            onClick={() =>
-              applySuggestedPrompt("Faça uma análise inspirada na Lei de Benford para estes sorteios e explique se ela faz sentido nesse tipo de loteria.")
-            }
-            type="button"
-          >
-            Benford
-          </button>
+          {suggestions.map((suggestion) => (
+            <button disabled={!canChat || isSending} key={suggestion.id} onClick={() => applySuggestedPrompt(suggestion)} type="button">
+              {suggestion.label}
+            </button>
+          ))}
         </div>
 
         {chatError?.contextKey === contextKey ? <p className="chat-error">{chatError.message}</p> : null}
