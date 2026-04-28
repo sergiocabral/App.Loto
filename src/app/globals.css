@@ -611,16 +611,33 @@ button {
   gap: 10px;
   justify-content: space-between;
   list-style: none;
-  min-height: 74px;
-  padding: 13px;
+  min-height: 52px;
+  padding: 13px 14px;
+  position: relative;
 }
 
 .results-chat-summary::-webkit-details-marker {
   display: none;
 }
 
-.results-chat-summary > div {
-  min-width: 0;
+.results-chat-summary::after {
+  align-items: center;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 999px;
+  color: var(--primary);
+  content: '+';
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 18px;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.results-chat-panel[open] .results-chat-summary::after {
+  content: '−';
 }
 
 .results-chat-summary strong {
@@ -629,45 +646,6 @@ button {
   font-size: 15px;
   letter-spacing: -0.02em;
   line-height: 1.25;
-}
-
-.results-chat-summary p {
-  color: var(--muted-strong);
-  font-size: 11px;
-  line-height: 1.35;
-  margin-top: 3px;
-}
-
-.chat-click-hint {
-  color: var(--primary);
-  display: inline-block;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-}
-
-.chat-status-pill {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 900;
-  padding: 6px 8px;
-  text-transform: uppercase;
-}
-
-.chat-status-pill.ready {
-  background: rgba(52, 211, 153, 0.14);
-  border-color: rgba(52, 211, 153, 0.26);
-  color: var(--success);
-}
-
-.chat-status-pill.waiting {
-  background: rgba(251, 191, 36, 0.12);
-  border-color: rgba(251, 191, 36, 0.22);
-  color: var(--warning);
 }
 
 .results-chat-body {
@@ -727,12 +705,67 @@ button {
   text-transform: uppercase;
 }
 
-.chat-message p {
+.chat-message-content {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 15px;
   font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
   padding: 10px;
+}
+
+.chat-markdown {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-markdown p {
+  margin: 0;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.chat-markdown li {
+  padding-left: 2px;
+}
+
+.chat-markdown-heading {
+  color: var(--text);
+  display: block;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+}
+
+.chat-markdown code {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #e0f2fe;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.92em;
+  padding: 1px 4px;
+}
+
+.chat-markdown pre {
+  background: rgba(2, 6, 23, 0.56);
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 12px;
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 9px;
+}
+
+.chat-markdown pre code {
+  background: transparent;
+  border-radius: 0;
+  display: block;
+  padding: 0;
   white-space: pre-wrap;
 }
 
@@ -740,7 +773,7 @@ button {
   justify-self: start;
 }
 
-.chat-message.assistant p {
+.chat-message.assistant .chat-message-content {
   background: rgba(255, 255, 255, 0.075);
   color: var(--muted-strong);
 }
@@ -753,13 +786,18 @@ button {
   text-align: right;
 }
 
-.chat-message.user p {
+.chat-message.user .chat-message-content {
   background: linear-gradient(135deg, rgba(56, 189, 248, 0.9), rgba(167, 139, 250, 0.9));
   color: #020617;
   font-weight: 700;
 }
 
-.chat-message.pending p {
+.chat-message.user .chat-markdown code {
+  background: rgba(2, 6, 23, 0.12);
+  color: #020617;
+}
+
+.chat-message.pending .chat-message-content {
   color: var(--primary);
 }
 
@@ -800,14 +838,6 @@ button {
 .chat-input-form {
   display: grid;
   gap: 8px;
-}
-
-.chat-input-form label {
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .chat-input-form textarea {
@@ -1914,8 +1944,14 @@ button {
     padding: 14px;
   }
 
-  .chat-status-pill {
-    align-self: flex-start;
+  .results-chat-summary {
+    padding: 14px;
+  }
+
+  .results-chat-summary::after {
+    position: absolute;
+    right: 14px;
+    top: 11px;
   }
 
   .chat-message-list {
@@ -2016,7 +2052,7 @@ button {
     max-width: 96%;
   }
 
-  .chat-message p,
+  .chat-message-content,
   .chat-input-form textarea {
     font-size: 11px;
   }

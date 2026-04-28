@@ -329,11 +329,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const isSyncing = syncInfo.running;
   const latestDraw = draws[0] ?? selectedDraw;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
-  const availableAnalysisDrawCount = Math.max(1, drawCount);
-  const effectiveCustomAnalysisDrawCount = Math.min(
-    Math.max(customAnalysisDrawCount ?? availableAnalysisDrawCount, 1),
-    availableAnalysisDrawCount,
-  );
   const canSyncFromCaixa = Boolean(selectedLottery && status !== "loading" && (isSyncing || !activeDrawNumber.trim()));
   const canClearLookupFilter = Boolean(drawNumberInput.trim() || activeDrawNumber.trim() || numberFilter.length);
 
@@ -343,16 +338,22 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const visibleDrawLimit = visibleDrawState.key === drawListKey ? visibleDrawState.limit : DRAW_LIST_PAGE_SIZE;
   const visibleDraws = useMemo(() => filteredDraws.slice(0, visibleDrawLimit), [filteredDraws, visibleDrawLimit]);
   const hasMoreDraws = visibleDrawLimit < filteredDraws.length;
+  const analysisSourceDraws = numberFilter.length || activeDrawNumber.trim() ? filteredDraws : draws;
+  const availableAnalysisDrawCount = Math.max(1, analysisSourceDraws.length || drawCount);
+  const effectiveCustomAnalysisDrawCount = Math.min(
+    Math.max(customAnalysisDrawCount ?? availableAnalysisDrawCount, 1),
+    availableAnalysisDrawCount,
+  );
   const analysisData = useMemo(
     () =>
       buildAnalysisData(
-        draws,
+        analysisSourceDraws,
         selectedLottery,
         analysisPeriod,
         selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all",
         analysisPeriod === "all" ? effectiveCustomAnalysisDrawCount : undefined,
       ),
-    [analysisPeriod, draws, duplaSenaAnalysisScope, effectiveCustomAnalysisDrawCount, selectedLottery],
+    [analysisPeriod, analysisSourceDraws, duplaSenaAnalysisScope, effectiveCustomAnalysisDrawCount, selectedLottery],
   );
   const legacyHref = useMemo(() => {
     if (!selectedLottery) {
@@ -848,7 +849,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
 
           <ResultsChatPanel
             activeDrawNumber={activeDrawNumber}
-            draws={filteredDraws}
+            analysisData={analysisData}
+            analysisViewLabel={getAnalysisViewLabel(analysisView)}
+            draws={analysisData?.selectedDraws ?? []}
             isLoading={status === "loading"}
             lottery={selectedLottery}
             numberFilter={numberFilter}
