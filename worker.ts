@@ -12,10 +12,52 @@ type WorkerContext = {
   passThroughOnException(): void;
 };
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
+}
+
 function createCanonicalRedirectResponse(redirectUrl: URL): Response {
-  const response = Response.redirect(redirectUrl, 307);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
+  const redirectHref = redirectUrl.href;
+  const safeScriptHref = JSON.stringify(redirectHref).replace(/</g, "\\u003c");
+  const safeHtmlHref = escapeHtml(redirectHref);
+
+  return new Response(
+    `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="0;url=${safeHtmlHref}">
+    <link rel="canonical" href="${safeHtmlHref}">
+    <title>Redirecionando para Luckygames</title>
+    <script>window.location.replace(${safeScriptHref});</script>
+  </head>
+  <body>
+    <p>Redirecionando para <a href="${safeHtmlHref}">${safeHtmlHref}</a>...</p>
+  </body>
+</html>`,
+    {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/html; charset=utf-8",
+      },
+      status: 200,
+    },
+  );
 }
 
 const worker = {

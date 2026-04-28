@@ -24,7 +24,7 @@ Aplicação Next.js para consultar resultados das Loterias da Caixa, persistir c
 - Comentários via Remark42, quando configurado.
 - Analytics via Umami, quando configurado.
 - Chat GPT opcional para conversar sobre o recorte carregado, quando OpenAI estiver configurado.
-- Redirect canônico opcional no Cloudflare Worker usando `OFFICIAL_DOMAIN_NAME`.
+- Redirect canônico opcional no Cloudflare Worker usando `OFFICIAL_DOMAIN_NAME`, entregue como uma página HTML leve que redireciona pelo navegador.
 
 ## Requisitos
 
@@ -287,7 +287,7 @@ O chat recebe apenas o contexto de loteria, filtros, concursos e análise rápid
 
 ## Redirect canônico por domínio
 
-No Cloudflare Worker, `OFFICIAL_DOMAIN_NAME` permite receber tráfego por múltiplos domínios e redirecionar para o domínio oficial preservando path e query string.
+No Cloudflare Worker, `OFFICIAL_DOMAIN_NAME` permite receber tráfego por múltiplos domínios e redirecionar para o domínio oficial preservando path e query string. Para evitar exceções/cache agressivo de redirect HTTP no Worker, o domínio alternativo recebe uma página HTML mínima com `Cache-Control: no-store`, `meta refresh` e `window.location.replace(...)`.
 
 Exemplo:
 
@@ -300,7 +300,7 @@ Regras importantes:
 - Use somente o domínio, sem `https://`, sem `/`, sem porta e sem path.
 - Se a variável estiver vazia, inválida ou apontar para localhost, nenhum redirect é feito.
 - Se o app já foi carregado pelo domínio oficial, nenhum redirect é feito.
-- O redirect é feito no Worker antes de entregar a requisição ao Next/OpenNext.
+- O redirecionamento é decidido no Worker antes de entregar a requisição ao Next/OpenNext, mas a navegação para o domínio oficial é feita pelo navegador por uma resposta HTML `200` sem cache.
 
 ## Deploy no Cloudflare Workers
 
