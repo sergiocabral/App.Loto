@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ResultsChatPanel } from "@/components/ResultsChatPanel";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import {
   ANALYSIS_PERIOD_OPTIONS,
@@ -22,6 +22,7 @@ import {
   getSuggestionDescription,
   parseNumberFilter,
   type AnalysisData,
+  type AnalysisDrawRange,
   type AnalysisPeriod,
   type AnalysisView,
   type DuplaSenaAnalysisScope,
@@ -315,7 +316,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const [numberFilter, setNumberFilter] = useState<string[]>([]);
   const [visibleDrawState, setVisibleDrawState] = useState({ key: "", limit: DRAW_LIST_PAGE_SIZE });
   const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(25);
-  const [customAnalysisDrawCount, setCustomAnalysisDrawCount] = useState<number | null>(null);
+  const [customAnalysisRange, setCustomAnalysisRange] = useState<AnalysisDrawRange | null>(null);
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
   const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
@@ -340,10 +341,23 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
   const hasMoreDraws = visibleDrawLimit < filteredDraws.length;
   const analysisSourceDraws = numberFilter.length || activeDrawNumber.trim() ? filteredDraws : draws;
   const availableAnalysisDrawCount = Math.max(1, analysisSourceDraws.length || drawCount);
-  const effectiveCustomAnalysisDrawCount = Math.min(
-    Math.max(customAnalysisDrawCount ?? availableAnalysisDrawCount, 1),
-    availableAnalysisDrawCount,
-  );
+  const effectiveCustomAnalysisRange = useMemo(() => {
+    const maximum = availableAnalysisDrawCount;
+    const fallback = { end: maximum, start: 1 };
+    const range = customAnalysisRange ?? fallback;
+    const start = Math.min(Math.max(Math.round(range.start), 1), maximum);
+    const end = Math.min(Math.max(Math.round(range.end), 1), maximum);
+
+    if (maximum <= 1) {
+      return { end: 1, start: 1 };
+    }
+
+    if (start >= end) {
+      return start >= maximum ? { end: maximum, start: maximum - 1 } : { end: start + 1, start };
+    }
+
+    return { end, start };
+  }, [availableAnalysisDrawCount, customAnalysisRange]);
   const analysisData = useMemo(
     () =>
       buildAnalysisData(
@@ -351,9 +365,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
         selectedLottery,
         analysisPeriod,
         selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all",
-        analysisPeriod === "all" ? effectiveCustomAnalysisDrawCount : undefined,
+        analysisPeriod === "all" ? effectiveCustomAnalysisRange : undefined,
       ),
-    [analysisPeriod, analysisSourceDraws, duplaSenaAnalysisScope, effectiveCustomAnalysisDrawCount, selectedLottery],
+    [analysisPeriod, analysisSourceDraws, duplaSenaAnalysisScope, effectiveCustomAnalysisRange, selectedLottery],
   );
   const legacyHref = useMemo(() => {
     if (!selectedLottery) {
@@ -443,7 +457,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setStatusMessage("Preparando...");
     setLookupMode("numbers");
     setNumberFilter([]);
-    setCustomAnalysisDrawCount(null);
+    setCustomAnalysisRange(null);
     setSyncInfo(INITIAL_SYNC_INFO);
     updateLegacyUrl(lottery.slug);
   }
@@ -670,9 +684,27 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setAnalysisPeriod(period);
   }
 
-  function changeCustomAnalysisDrawCount(count: number) {
-    const normalizedCount = Number.isFinite(count) ? Math.round(count) : availableAnalysisDrawCount;
-    setCustomAnalysisDrawCount(Math.min(Math.max(normalizedCount, 1), availableAnalysisDrawCount));
+  function changeCustomAnalysisRange(nextRange: AnalysisDrawRange) {
+    setCustomAnalysisRange((current) => {
+      const maximum = availableAnalysisDrawCount;
+      const currentRange = current ?? { end: maximum, start: 1 };
+      const start = Number.isFinite(nextRange.start) ? Math.round(nextRange.start) : currentRange.start;
+      const end = Number.isFinite(nextRange.end) ? Math.round(nextRange.end) : currentRange.end;
+      const normalizedStart = Math.min(Math.max(start, 1), maximum);
+      const normalizedEnd = Math.min(Math.max(end, 1), maximum);
+
+      if (maximum <= 1) {
+        return { end: 1, start: 1 };
+      }
+
+      if (normalizedStart >= normalizedEnd) {
+        return normalizedStart >= maximum
+          ? { end: maximum, start: maximum - 1 }
+          : { end: normalizedStart + 1, start: normalizedStart };
+      }
+
+      return { end: normalizedEnd, start: normalizedStart };
+    });
   }
 
   function changeAnalysisView(view: AnalysisView) {
@@ -738,7 +770,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setNumberFilter([]);
     setVisibleDrawState({ key: "", limit: DRAW_LIST_PAGE_SIZE });
     setAnalysisPeriod(25);
-    setCustomAnalysisDrawCount(null);
+    setCustomAnalysisRange(null);
     setAnalysisView("most");
     setDuplaSenaAnalysisScope("all");
     setSyncInfo(INITIAL_SYNC_INFO);
@@ -898,10 +930,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
               <AnalysisPanel
                 activeView={analysisView}
                 availableDrawCount={availableAnalysisDrawCount}
-                customDrawCount={effectiveCustomAnalysisDrawCount}
+                customRange={effectiveCustomAnalysisRange}
                 data={analysisData}
                 isDuplaSena={selectedLottery?.slug === "DuplaSena"}
-                onCustomDrawCountChange={changeCustomAnalysisDrawCount}
+                onCustomRangeChange={changeCustomAnalysisRange}
                 onPeriodChange={changeAnalysisPeriod}
                 onScopeChange={changeDuplaSenaAnalysisScope}
                 onViewChange={changeAnalysisView}
@@ -1085,10 +1117,10 @@ function FilterEmptyState({ numbers }: { numbers: string[] }) {
 function AnalysisPanel({
   activeView,
   availableDrawCount,
-  customDrawCount,
+  customRange,
   data,
   isDuplaSena,
-  onCustomDrawCountChange,
+  onCustomRangeChange,
   onPeriodChange,
   onScopeChange,
   onViewChange,
@@ -1097,10 +1129,10 @@ function AnalysisPanel({
 }: {
   activeView: AnalysisView;
   availableDrawCount: number;
-  customDrawCount: number;
+  customRange: AnalysisDrawRange;
   data: AnalysisData | null;
   isDuplaSena: boolean;
-  onCustomDrawCountChange: (count: number) => void;
+  onCustomRangeChange: (range: AnalysisDrawRange) => void;
   onPeriodChange: (period: AnalysisPeriod) => void;
   onScopeChange: (scope: DuplaSenaAnalysisScope) => void;
   onViewChange: (view: AnalysisView) => void;
@@ -1139,22 +1171,11 @@ function AnalysisPanel({
                 ))}
               </div>
               {period === "all" ? (
-                <div className="period-slider-card">
-                  <div className="period-slider-meta">
-                    <span>Quantidade de sorteios</span>
-                    <strong>{customDrawCount} de {availableDrawCount} concursos</strong>
-                  </div>
-                  <input
-                    aria-label="Quantidade de sorteios analisados"
-                    className="period-slider"
-                    max={availableDrawCount}
-                    min={1}
-                    onChange={(event) => onCustomDrawCountChange(Number.parseInt(event.target.value, 10))}
-                    type="range"
-                    value={customDrawCount}
-                  />
-                  <p>Arraste para escolher qualquer quantidade dentro do histórico carregado.</p>
-                </div>
+                <RangeSliderCard
+                  availableDrawCount={availableDrawCount}
+                  range={customRange}
+                  onRangeChange={onCustomRangeChange}
+                />
               ) : null}
             </div>
 
@@ -1197,6 +1218,74 @@ function AnalysisPanel({
         {data ? <AnalysisContent data={data} view={activeView} /> : <div className="analysis-empty">Carregue resultados para ver a análise.</div>}
       </div>
     </details>
+  );
+}
+
+function RangeSliderCard({
+  availableDrawCount,
+  onRangeChange,
+  range,
+}: {
+  availableDrawCount: number;
+  onRangeChange: (range: AnalysisDrawRange) => void;
+  range: AnalysisDrawRange;
+}) {
+  const maximum = Math.max(1, availableDrawCount);
+  const start = Math.min(Math.max(range.start, 1), maximum);
+  const end = Math.min(Math.max(range.end, 1), maximum);
+  const selectedCount = Math.max(1, end - start + 1);
+  const startPercent = maximum > 1 ? ((start - 1) / (maximum - 1)) * 100 : 0;
+  const endPercent = maximum > 1 ? ((end - 1) / (maximum - 1)) * 100 : 100;
+
+  function updateStart(value: number) {
+    onRangeChange({ end, start: maximum > 1 ? Math.min(value, end - 1) : 1 });
+  }
+
+  function updateEnd(value: number) {
+    onRangeChange({ end: maximum > 1 ? Math.max(value, start + 1) : 1, start });
+  }
+
+  return (
+    <div className="period-slider-card">
+      <div className="period-slider-meta">
+        <span>Faixa no histórico</span>
+        <strong>
+          {start} a {end} · {selectedCount} {selectedCount === 1 ? "concurso" : "concursos"}
+        </strong>
+      </div>
+      <div
+        className="range-slider-shell"
+        style={{
+          "--range-end": `${endPercent}%`,
+          "--range-start": `${startPercent}%`,
+        } as CSSProperties}
+      >
+        <div className="range-slider-track" aria-hidden="true" />
+        <input
+          aria-label="Início da faixa analisada"
+          className="period-slider range-start"
+          max={maximum}
+          min={1}
+          onChange={(event) => updateStart(Number.parseInt(event.target.value, 10))}
+          type="range"
+          value={start}
+        />
+        <input
+          aria-label="Fim da faixa analisada"
+          className="period-slider range-end"
+          max={maximum}
+          min={1}
+          onChange={(event) => updateEnd(Number.parseInt(event.target.value, 10))}
+          type="range"
+          value={end}
+        />
+      </div>
+      <div className="range-slider-values" aria-label="Limites da faixa analisada">
+        <span>Início: {start}</span>
+        <span>Fim: {end}</span>
+      </div>
+      <p>Use os dois controles para analisar qualquer trecho do histórico carregado, inclusive concursos mais antigos.</p>
+    </div>
   );
 }
 

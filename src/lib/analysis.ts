@@ -3,6 +3,10 @@ import type { Draw } from "@/lib/types";
 
 export type AnalysisPeriod = 10 | 25 | 50 | 100 | "all";
 export type AnalysisView = "most" | "least" | "delayed" | "map";
+export type AnalysisDrawRange = {
+  end: number;
+  start: number;
+};
 export type DuplaSenaAnalysisScope = "all" | "first" | "second";
 
 export type NumberTrend = {
@@ -136,9 +140,13 @@ export function getAnalysisDescription(view: AnalysisView, data: AnalysisData): 
   }
 }
 
-export function getAnalysisPeriodLabel(period: AnalysisPeriod, drawCount: number, requestedDrawCount?: number): string {
+export function getAnalysisPeriodLabel(period: AnalysisPeriod, drawCount: number, requestedRange?: AnalysisDrawRange): string {
   if (period === "all") {
-    return requestedDrawCount === undefined ? `${drawCount} concursos` : `Últimos ${drawCount} concursos`;
+    if (requestedRange) {
+      return `Sorteios ${requestedRange.start} a ${requestedRange.end} do histórico`;
+    }
+
+    return `${drawCount} concursos`;
   }
 
   return `Últimos ${Math.min(period, drawCount)} concursos`;
@@ -297,21 +305,40 @@ export function getSuggestionDescription(view: AnalysisView, data: AnalysisData)
   }
 }
 
+function normalizeRequestedRange(range: AnalysisDrawRange, drawCount: number): AnalysisDrawRange {
+  const maximum = Math.max(1, drawCount);
+  const start = Math.min(Math.max(Math.round(range.start), 1), maximum);
+  const end = Math.min(Math.max(Math.round(range.end), 1), maximum);
+
+  if (maximum <= 1) {
+    return { end: 1, start: 1 };
+  }
+
+  if (start >= end) {
+    return start >= maximum ? { end: maximum, start: maximum - 1 } : { end: start + 1, start };
+  }
+
+  return { end, start };
+}
+
 export function buildAnalysisData(
   draws: Draw[],
   lottery: LotteryDefinition | null,
   period: AnalysisPeriod,
   scope: DuplaSenaAnalysisScope,
-  requestedDrawCount?: number,
+  requestedRange?: AnalysisDrawRange,
 ): AnalysisData | null {
   if (!lottery || !draws.length) {
     return null;
   }
 
-  const drawLimit = period === "all" ? requestedDrawCount : period;
-  const selectedDraws = (drawLimit === undefined ? draws : draws.slice(0, Math.max(1, drawLimit))).filter(
-    (draw) => getNumbersForAnalysis(draw, scope).length > 0,
-  );
+  const normalizedRange = period === "all" && requestedRange ? normalizeRequestedRange(requestedRange, draws.length) : undefined;
+  const selectedDraws = (normalizedRange
+    ? draws.slice(normalizedRange.start - 1, normalizedRange.end)
+    : period === "all"
+      ? draws
+      : draws.slice(0, period)
+  ).filter((draw) => getNumbersForAnalysis(draw, scope).length > 0);
 
   if (!selectedDraws.length) {
     return null;
@@ -364,7 +391,7 @@ export function buildAnalysisData(
     delayed,
     maxHits,
     drawCount: selectedDraws.length,
-    periodLabel: getAnalysisPeriodLabel(period, selectedDraws.length, requestedDrawCount),
+    periodLabel: getAnalysisPeriodLabel(period, selectedDraws.length, normalizedRange),
     scopeLabel: getAnalysisScopeLabel(scope),
   };
 }
