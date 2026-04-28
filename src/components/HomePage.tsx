@@ -17,6 +17,7 @@ import {
   formatHitsLabel,
   formatNumberCount,
   formatOverdueLabel,
+  formatRecencyScore,
   getAnalysisDescription,
   getAnalysisViewLabel,
   getDisplayGroups,
@@ -147,11 +148,11 @@ const REMARK42_NO_FOOTER = process.env.NEXT_PUBLIC_REMARK42_NO_FOOTER !== "false
 const REMARK42_ROOT_ID = "remark42";
 const REMARK42_SCRIPT_ID = "remark42-embed-script";
 
-
+const INITIAL_DRAW_LIST_PAGE_SIZE = 25;
+const MAX_DRAW_LIST_INCREMENT = 400;
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
 const CAIXA_SYNC_BATCH_SIZE = 1;
-const DRAW_LIST_PAGE_SIZE = 50;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
   running: false,
@@ -357,7 +358,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   );
   const [lookupMode, setLookupMode] = useState<LookupMode>("numbers");
   const [numberFilter, setNumberFilter] = useState<string[]>([]);
-  const [visibleDrawState, setVisibleDrawState] = useState({ key: "", limit: DRAW_LIST_PAGE_SIZE });
+  const [visibleDrawState, setVisibleDrawState] = useState({ increment: INITIAL_DRAW_LIST_PAGE_SIZE, key: "", limit: INITIAL_DRAW_LIST_PAGE_SIZE });
   const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(25);
   const [customAnalysisRange, setCustomAnalysisRange] = useState<AnalysisDrawRange | null>(null);
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
@@ -379,7 +380,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const filteredDraws = useMemo(() => draws.filter((draw) => drawContainsNumbers(draw, numberFilter)), [draws, numberFilter]);
   const numberFilterKey = numberFilter.join("|");
   const drawListKey = `${selectedLottery?.slug ?? ""}|${activeDrawNumber}|${numberFilterKey}`;
-  const visibleDrawLimit = visibleDrawState.key === drawListKey ? visibleDrawState.limit : DRAW_LIST_PAGE_SIZE;
+  const visibleDrawLimit = visibleDrawState.key === drawListKey ? visibleDrawState.limit : INITIAL_DRAW_LIST_PAGE_SIZE;
   const visibleDraws = useMemo(() => filteredDraws.slice(0, visibleDrawLimit), [filteredDraws, visibleDrawLimit]);
   const hasMoreDraws = visibleDrawLimit < filteredDraws.length;
   const analysisSourceDraws = numberFilter.length || activeDrawNumber.trim() ? filteredDraws : draws;
@@ -563,10 +564,17 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   }
 
   function loadMoreDraws() {
-    setVisibleDrawState((current) => ({
-      key: drawListKey,
-      limit: (current.key === drawListKey ? current.limit : DRAW_LIST_PAGE_SIZE) + DRAW_LIST_PAGE_SIZE,
-    }));
+    setVisibleDrawState((current) => {
+      const currentLimit = current.key === drawListKey ? current.limit : INITIAL_DRAW_LIST_PAGE_SIZE;
+      const currentIncrement = current.key === drawListKey ? current.increment : INITIAL_DRAW_LIST_PAGE_SIZE;
+      const nextIncrement = Math.min(currentIncrement * 2, MAX_DRAW_LIST_INCREMENT);
+
+      return {
+        increment: nextIncrement,
+        key: drawListKey,
+        limit: currentLimit + nextIncrement,
+      };
+    });
   }
 
   function requestStopSyncFromCaixa() {
@@ -816,7 +824,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setStatusMessage("Escolha uma loteria.");
     setLookupMode("numbers");
     setNumberFilter([]);
-    setVisibleDrawState({ key: "", limit: DRAW_LIST_PAGE_SIZE });
+    setVisibleDrawState({ increment: INITIAL_DRAW_LIST_PAGE_SIZE, key: "", limit: INITIAL_DRAW_LIST_PAGE_SIZE });
     setAnalysisPeriod(25);
     setCustomAnalysisRange(null);
     setAnalysisView("most");
@@ -1322,7 +1330,7 @@ function RangeSliderCard({
   return (
     <div className="period-slider-card">
       <div className="period-slider-meta">
-        <span>Faixa no histórico</span>
+        <span>Ajustar</span>
         <strong>
           {selectedCount} {selectedCount === 1 ? "concurso" : "concursos"}
         </strong>
@@ -1358,23 +1366,40 @@ function RangeSliderCard({
       <div className="range-slider-values" aria-label="Limites cronológicos da faixa analisada">
         <div className="range-slider-value">
           <span>Início</span>
-          <strong>{oldestDraw ? `${formatStatusDate(oldestDraw)} · Concurso ${oldestDraw.drawNumber}` : "Sem data"}</strong>
+          <strong>
+            {oldestDraw ? (
+              <>
+                <span>{formatStatusDate(oldestDraw)}</span>
+                <span>Concurso {oldestDraw.drawNumber}</span>
+              </>
+            ) : (
+              "Sem data"
+            )}
+          </strong>
         </div>
         <div className="range-slider-value">
           <span>Fim</span>
-          <strong>{newestDraw ? `${formatStatusDate(newestDraw)} · Concurso ${newestDraw.drawNumber}` : "Sem data"}</strong>
+          <strong>
+            {newestDraw ? (
+              <>
+                <span>{formatStatusDate(newestDraw)}</span>
+                <span>Concurso {newestDraw.drawNumber}</span>
+              </>
+            ) : (
+              "Sem data"
+            )}
+          </strong>
         </div>
       </div>
-      <p>À esquerda fica o início mais antigo; à direita, o fim mais recente da análise.</p>
     </div>
   );
 }
 
 function AnalysisContent({ data, view }: { data: AnalysisData; view: AnalysisView }) {
-  if (view === "map") {
+  if (view === "map" || view === "recent") {
     return (
       <div className="analysis-scroll-area">
-        <NumberHeatMap stats={data.stats} />
+        <NumberHeatMap stats={data.stats} variant={view} />
       </div>
     );
   }
@@ -1411,8 +1436,8 @@ function TrendGroups({ groups, view }: { groups: NumberTrendGroup[]; view: Analy
   );
 }
 
-function getHeatNumberStyle(item: NumberTrend, minHits: number, hitRange: number) {
-  const relativeIntensity = hitRange > 0 ? (item.hits - minHits) / hitRange : item.hits ? 0.58 : 0;
+function getHeatNumberStyle(intensity: number, isActive: boolean) {
+  const relativeIntensity = Math.min(Math.max(intensity, 0), 1);
   const hue = 222 - relativeIntensity * 184;
   const saturation = 72 + relativeIntensity * 18;
   const lightness = 14 + relativeIntensity * 48;
@@ -1422,32 +1447,42 @@ function getHeatNumberStyle(item: NumberTrend, minHits: number, hitRange: number
   return {
     background: `linear-gradient(135deg, hsl(${hue} ${saturation}% ${lightness}%), hsl(${Math.max(18, hue - 18)} ${Math.min(95, saturation + 4)}% ${Math.max(18, lightness - 6)}%))`,
     borderColor: `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
-    boxShadow: item.hits ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "none",
+    boxShadow: isActive ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "none",
     color: relativeIntensity > 0.52 ? "#020617" : "#f8fafc",
   };
 }
 
-function NumberHeatMap({ stats }: { stats: NumberTrend[] }) {
-  const hitCounts = stats.map((item) => item.hits);
-  const minHits = Math.min(...hitCounts);
-  const maxHits = Math.max(...hitCounts);
-  const hitRange = Math.max(maxHits - minHits, 0);
+function NumberHeatMap({ stats, variant }: { stats: NumberTrend[]; variant: "map" | "recent" }) {
+  const scores = stats.map((item) => (variant === "recent" ? item.recencyScore : item.hits));
+  const minScore = Math.min(...scores);
+  const maxScore = Math.max(...scores);
+  const scoreRange = Math.max(maxScore - minScore, 0);
 
   return (
     <div className="number-heat-map">
       {stats.map((item) => {
-        const aboveMinimum = item.hits - minHits;
-        const relativeLabel = hitRange > 0 ? ` · ${aboveMinimum} acima do menor valor (${minHits}x)` : "";
+        const score = variant === "recent" ? item.recencyScore : item.hits;
+        const relativeIntensity = scoreRange > 0 ? (score - minScore) / scoreRange : score ? 0.58 : 0;
+        const relativeLabel =
+          variant === "recent"
+            ? `peso recente ${formatRecencyScore(item.recencyScore)}`
+            : scoreRange > 0
+              ? `${item.hits - minScore} acima do menor valor (${minScore}x)`
+              : "";
+        const title =
+          variant === "recent"
+            ? `${item.number}: ${item.hits} vez(es), ${relativeLabel}, atraso ${item.overdue}`
+            : `${item.number}: ${item.hits} vez(es), atraso ${item.overdue}${relativeLabel ? ` · ${relativeLabel}` : ""}`;
 
         return (
           <div
             className="heat-number"
-            key={`map-${item.number}`}
-            style={getHeatNumberStyle(item, minHits, hitRange)}
-            title={`${item.number}: ${item.hits} vez(es), atraso ${item.overdue}${relativeLabel}`}
+            key={`${variant}-${item.number}`}
+            style={getHeatNumberStyle(relativeIntensity, score > 0)}
+            title={title}
           >
             <strong>{item.number}</strong>
-            <small>{item.hits}x</small>
+            <small>{variant === "recent" ? formatRecencyScore(item.recencyScore) : `${item.hits}x`}</small>
           </div>
         );
       })}
@@ -1509,7 +1544,13 @@ function SuggestionPanel({
             </div>
           ))
         ) : (
-          <em>{activeView === "map" ? "Toque em “Estou com sorte” para usar os números mais quentes do mapa." : "Toque em “Estou com sorte” para gerar sugestões únicas."}</em>
+          <em>
+            {activeView === "recent"
+              ? "Toque em “Estou com sorte” para usar o calor recente dos números."
+              : activeView === "map"
+                ? "Toque em “Estou com sorte” para usar os números mais quentes do mapa."
+                : "Toque em “Estou com sorte” para gerar sugestões únicas."}
+          </em>
         )}
       </div>
     </article>

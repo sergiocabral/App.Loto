@@ -2,7 +2,7 @@ import type { LotteryDefinition } from "@/data/lotteries";
 import type { Draw } from "@/lib/types";
 
 export type AnalysisPeriod = 10 | 25 | 50 | 100 | "all";
-export type AnalysisView = "most" | "least" | "delayed" | "map";
+export type AnalysisView = "most" | "least" | "delayed" | "map" | "recent";
 export type AnalysisDrawRange = {
   end: number;
   start: number;
@@ -16,6 +16,7 @@ export type NumberTrend = {
   overdue: number;
   lastDrawNumber: number | null;
   intensity: number;
+  recencyScore: number;
 };
 
 export type NumberTrendGroup = {
@@ -34,7 +35,9 @@ export type AnalysisData = {
   most: NumberTrend[];
   least: NumberTrend[];
   delayed: NumberTrend[];
+  recent: NumberTrend[];
   maxHits: number;
+  maxRecencyScore: number;
   drawCount: number;
   periodLabel: string;
   scopeLabel: string;
@@ -50,10 +53,13 @@ export const ANALYSIS_PERIOD_OPTIONS: Array<{ value: AnalysisPeriod; label: stri
 
 export const ANALYSIS_VIEW_OPTIONS: Array<{ value: AnalysisView; label: string }> = [
   { value: "most", label: "Mais sorteados" },
+  { value: "recent", label: "Calor recente" },
+  { value: "map", label: "Mapa" },
   { value: "least", label: "Menos sorteados" },
   { value: "delayed", label: "Atrasados" },
-  { value: "map", label: "Mapa" },
 ];
+
+const RECENCY_DECAY_FACTOR = 0.9;
 
 export const DUPLA_SENA_SCOPE_OPTIONS: Array<{ value: DuplaSenaAnalysisScope; label: string }> = [
   { value: "all", label: "Todos" },
@@ -107,6 +113,14 @@ export function getAnalysisViewLabel(view: AnalysisView): string {
   return ANALYSIS_VIEW_OPTIONS.find((option) => option.value === view)?.label ?? "Análise";
 }
 
+export function getRecentAppearanceWeight(drawIndex: number): number {
+  return RECENCY_DECAY_FACTOR ** Math.max(0, drawIndex);
+}
+
+export function formatRecencyScore(score: number): string {
+  return score.toFixed(2).replace(/\.00$/, "").replace(/(\d)0$/, "$1").replace(".", ",");
+}
+
 export function formatHitsLabel(hitCount: number): string {
   return `${hitCount} ${hitCount === 1 ? "vez" : "vezes"}`;
 }
@@ -135,6 +149,8 @@ export function getAnalysisDescription(view: AnalysisView, data: AnalysisData): 
       return `Considerando ${filterText}, mostra há quantos concursos cada número não aparece.`;
     case "map":
       return `Considerando ${filterText}, cores mais fortes indicam números que apareceram mais.`;
+    case "recent":
+      return `Considerando ${filterText}, o mapa dá mais calor às aparições recentes: último concurso vale 1 ponto, o anterior 0,9 e os mais antigos contam cada vez menos.`;
     default:
       return `Considerando ${filterText}, destaca os números que mais apareceram.`;
   }
@@ -214,22 +230,26 @@ export function getSuggestionVariantKey(lottery: LotteryDefinition, view: Analys
 }
 
 export function buildSuggestionKey(lottery: LotteryDefinition, view: AnalysisView, data: AnalysisData): string {
-  const fingerprint = data.stats.map((item) => `${item.number}:${item.hits}:${item.overdue}`).join(",");
+  const fingerprint = data.stats.map((item) => `${item.number}:${item.hits}:${item.overdue}:${item.recencyScore.toFixed(4)}`).join(",");
   return [getSuggestionVariantKey(lottery, view, data), fingerprint].join("|");
 }
 
 export function getAnalysisWeight(item: NumberTrend, view: AnalysisView, data: AnalysisData): number {
   const maxHits = Math.max(data.maxHits, 1);
   const maxOverdue = Math.max(...data.stats.map((stat) => stat.overdue), 1);
+  const maxRecencyScore = Math.max(data.maxRecencyScore, 1);
   const hotScore = item.hits / maxHits;
   const coldScore = 1 - hotScore;
   const overdueScore = item.overdue / maxOverdue;
+  const recencyScore = item.recencyScore / maxRecencyScore;
 
   switch (view) {
     case "least":
       return coldScore * 0.78 + overdueScore * 0.18 + 0.04;
     case "delayed":
       return overdueScore * 0.78 + coldScore * 0.16 + 0.06;
+    case "recent":
+      return recencyScore * 0.88 + hotScore * 0.08 + 0.04;
     default:
       return hotScore * 0.78 + overdueScore * 0.14 + 0.08;
   }
@@ -249,6 +269,10 @@ export function shuffleItems<T>(items: T[], random: () => number = Math.random):
 export function buildSuggestionGroups(view: AnalysisView, data: AnalysisData): NumberTrendGroup[] {
   if (view === "most" || view === "map") {
     return buildTrendGroups(data.stats, (item) => item.hits, "desc");
+  }
+
+  if (view === "recent") {
+    return buildTrendGroups(data.stats, (item) => Math.round(item.recencyScore * 1000), "desc");
   }
 
   if (view === "least") {
@@ -302,6 +326,8 @@ export function getSuggestionDescription(view: AnalysisView, data: AnalysisData)
       return `Sugestão embaralhada priorizando números há mais tempo sem aparecer em ${filterText}.`;
     case "map":
       return `Sugestão priorizando os números mais quentes do mapa em ${filterText}.`;
+    case "recent":
+      return `Sugestão priorizando números com mais aparições recentes em ${filterText}.`;
     default:
       return `Sugestão embaralhada priorizando números mais frequentes em ${filterText}.`;
   }
@@ -347,14 +373,17 @@ export function buildAnalysisData(
   }
 
   const hits = new Map<string, number>();
+  const recencyScores = new Map<string, number>();
   const lastSeen = new Map<string, number>();
   const overdueByNumber = new Map<string, number>();
 
   selectedDraws.forEach((draw, drawIndex) => {
     const uniqueNumbers = new Set(getNumbersForAnalysis(draw, scope));
+    const recencyWeight = getRecentAppearanceWeight(drawIndex);
 
     for (const number of uniqueNumbers) {
       hits.set(number, (hits.get(number) ?? 0) + 1);
+      recencyScores.set(number, (recencyScores.get(number) ?? 0) + recencyWeight);
 
       if (!lastSeen.has(number)) {
         lastSeen.set(number, draw.drawNumber);
@@ -365,8 +394,10 @@ export function buildAnalysisData(
 
   const numbers = buildNumberRange(lottery);
   const maxHits = Math.max(...numbers.map((number) => hits.get(number) ?? 0), 0);
+  const maxRecencyScore = Math.max(...numbers.map((number) => recencyScores.get(number) ?? 0), 0);
   const stats = numbers.map((number) => {
     const numberHits = hits.get(number) ?? 0;
+    const recencyScore = recencyScores.get(number) ?? 0;
     const lastDrawNumber = lastSeen.get(number) ?? null;
     const overdue = overdueByNumber.get(number) ?? selectedDraws.length;
 
@@ -377,6 +408,7 @@ export function buildAnalysisData(
       overdue,
       lastDrawNumber,
       intensity: maxHits ? numberHits / maxHits : 0,
+      recencyScore,
     };
   });
 
@@ -384,6 +416,9 @@ export function buildAnalysisData(
   const most = [...stats].sort((left, right) => right.hits - left.hits || byNumber(left, right));
   const least = [...stats].sort((left, right) => left.hits - right.hits || byNumber(left, right));
   const delayed = [...stats].sort((left, right) => right.overdue - left.overdue || left.hits - right.hits || byNumber(left, right));
+  const recent = [...stats].sort(
+    (left, right) => right.recencyScore - left.recencyScore || right.hits - left.hits || left.overdue - right.overdue || byNumber(left, right),
+  );
 
   return {
     selectedDraws,
@@ -391,7 +426,9 @@ export function buildAnalysisData(
     most,
     least,
     delayed,
+    recent,
     maxHits,
+    maxRecencyScore,
     drawCount: selectedDraws.length,
     periodLabel: getAnalysisPeriodLabel(period, selectedDraws.length, normalizedRange),
     scopeLabel: getAnalysisScopeLabel(scope),

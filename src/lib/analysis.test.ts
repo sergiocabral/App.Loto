@@ -11,12 +11,14 @@ import {
   formatHitsLabel,
   formatNumberCount,
   formatOverdueLabel,
+  formatRecencyScore,
   getAnalysisDescription,
   getAnalysisFilterText,
   getAnalysisPeriodLabel,
   getAnalysisScopeLabel,
   getDisplayGroups,
   getNumbersForAnalysis,
+  getRecentAppearanceWeight,
   getSuggestionDescription,
   getSuggestionSize,
   parseNumberFilter,
@@ -101,6 +103,12 @@ describe("analysis helpers", () => {
     expect(formatNumberCount(4)).toBe("4 números");
     expect(formatOverdueLabel(0)).toBe("Saiu no último concurso");
     expect(formatOverdueLabel(3)).toBe("3 concursos sem sair");
+    expect(formatRecencyScore(1)).toBe("1");
+    expect(formatRecencyScore(0.9)).toBe("0,9");
+    expect(formatRecencyScore(0.81)).toBe("0,81");
+    expect(getRecentAppearanceWeight(0)).toBe(1);
+    expect(getRecentAppearanceWeight(1)).toBe(0.9);
+    expect(getRecentAppearanceWeight(2)).toBeCloseTo(0.81);
     expect(getAnalysisPeriodLabel(10, 4)).toBe("Últimos 4 concursos");
     expect(getAnalysisPeriodLabel("all", 4)).toBe("4 concursos");
     expect(getAnalysisScopeLabel("all")).toBe("Todos os sorteios");
@@ -116,8 +124,12 @@ describe("analysis helpers", () => {
     expect(data?.periodLabel).toBe("5 concursos");
     expect(data?.scopeLabel).toBe("Todos os sorteios");
     expect(data?.maxHits).toBe(5);
+    expect(data?.maxRecencyScore).toBeCloseTo(4.0951);
     expect(data?.most.at(0)).toMatchObject({ number: "01", hits: 5, overdue: 0, lastDrawNumber: 5, intensity: 1 });
-    expect(data?.least.at(0)).toMatchObject({ number: "17", hits: 0, overdue: 5, lastDrawNumber: null });
+    expect(data?.recent.at(0)).toMatchObject({ number: "01", hits: 5, overdue: 0, lastDrawNumber: 5 });
+    expect(data?.recent.at(0)?.recencyScore).toBeCloseTo(4.0951);
+    expect(data?.recent.find((item) => item.number === "07")?.recencyScore).toBeCloseTo(0.9);
+    expect(data?.least.at(0)).toMatchObject({ number: "17", hits: 0, overdue: 5, lastDrawNumber: null, recencyScore: 0 });
     expect(data?.delayed.at(0)?.overdue).toBe(5);
   });
 
@@ -193,16 +205,20 @@ describe("analysis helpers", () => {
     expect(buildSuggestionGroups("least", data).at(0)?.value).toBe(0);
     expect(buildSuggestionGroups("delayed", data).at(0)?.value).toBe(5);
     expect(buildSuggestionGroups("map", data).at(0)?.items.length).toBeGreaterThan(0);
+    expect(buildSuggestionGroups("recent", data).at(0)).toMatchObject({ value: 4095 });
   });
 
   it("builds lucky suggestions by filling from the top ranked groups", () => {
     const data = buildAnalysisData(draws, megaSena, "all", "all")!;
     const alwaysFirst = () => 0;
     const mostSuggestion = buildLuckySuggestion(megaSena, "most", data, alwaysFirst);
+    const recentSuggestion = buildLuckySuggestion(megaSena, "recent", data, alwaysFirst);
     const leastSuggestion = buildLuckySuggestion(megaSena, "least", data, alwaysFirst);
 
     expect(mostSuggestion).toHaveLength(6);
     expect(mostSuggestion).toEqual(expect.arrayContaining(["01", "02"]));
+    expect(recentSuggestion).toHaveLength(6);
+    expect(recentSuggestion).toEqual(expect.arrayContaining(["01", "02"]));
     expect(leastSuggestion).toHaveLength(6);
     expect(leastSuggestion).toEqual(expect.arrayContaining(["18", "19", "20", "21", "22", "23"]));
   });
@@ -250,7 +266,7 @@ describe("analysis helpers", () => {
     const data = buildAnalysisData(draws, megaSena, "all", "all")!;
 
     expect(getAnalysisFilterText(data)).toBe("5 concursos");
-    for (const view of ["most", "least", "delayed", "map"] satisfies AnalysisView[]) {
+    for (const view of ["most", "least", "delayed", "map", "recent"] satisfies AnalysisView[]) {
       expect(getAnalysisDescription(view, data)).toContain("Considerando 5 concursos");
       expect(getSuggestionDescription(view, data)).toContain("5 concursos");
     }

@@ -1555,7 +1555,7 @@ button {
 }
 
 .segmented-control.view-selector {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
 }
 
 .segmented-control button {
@@ -1569,7 +1569,7 @@ button {
   justify-content: center;
   line-height: 1.1;
   min-height: 38px;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   padding: 7px 5px;
   text-align: center;
 }
@@ -1714,7 +1714,7 @@ button {
 }
 
 .range-slider-value {
-  align-items: center;
+  align-items: flex-start;
   background: rgba(2, 6, 23, 0.32);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
@@ -1735,13 +1735,23 @@ button {
 
 .range-slider-value strong {
   color: var(--text);
+  display: grid;
   font-size: 11px;
   font-weight: 900;
+  gap: 2px;
+  line-height: 1.25;
   min-width: 0;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.range-slider-value strong span {
+  color: inherit;
+  flex: initial;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  text-transform: none;
 }
 
 .period-slider {
@@ -2368,7 +2378,15 @@ button {
   }
 
   .segmented-control.view-selector {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  }
+
+  .range-slider-values {
+    grid-template-columns: 1fr;
+  }
+
+  .range-slider-value strong {
+    text-align: left;
   }
 
   .number-heat-map {
