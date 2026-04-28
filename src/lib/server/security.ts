@@ -47,7 +47,7 @@ export function parsePositiveInteger(value: unknown, maximum = MAX_DRAW_NUMBER):
   return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= maximum ? parsed : null;
 }
 
-export async function readJsonObjectBody(request: Request): Promise<JsonBodyResult> {
+export async function readJsonObjectBody(request: Request, maxBodyBytes = MAX_POST_BODY_BYTES): Promise<JsonBodyResult> {
   const contentType = request.headers.get("content-type") ?? "";
 
   if (!contentType.toLowerCase().includes("application/json")) {
@@ -57,13 +57,13 @@ export async function readJsonObjectBody(request: Request): Promise<JsonBodyResu
   const contentLength = request.headers.get("content-length");
   const parsedContentLength = contentLength ? Number.parseInt(contentLength, 10) : null;
 
-  if (parsedContentLength && parsedContentLength > MAX_POST_BODY_BYTES) {
+  if (parsedContentLength && parsedContentLength > maxBodyBytes) {
     return { ok: false, status: 413, error: "Request body is too large" };
   }
 
   const text = await request.text();
 
-  if (text.length > MAX_POST_BODY_BYTES) {
+  if (text.length > maxBodyBytes) {
     return { ok: false, status: 413, error: "Request body is too large" };
   }
 

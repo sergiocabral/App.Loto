@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import {
@@ -844,6 +845,14 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
               <strong>{latestDraw ? `${latestDraw.drawNumber} · ${formatStatusDate(latestDraw)}` : "nenhum resultado carregado"}</strong>
             </div>
           </div>
+
+          <ResultsChatPanel
+            activeDrawNumber={activeDrawNumber}
+            draws={filteredDraws}
+            isLoading={status === "loading"}
+            lottery={selectedLottery}
+            numberFilter={numberFilter}
+          />
         </aside>
 
         <section className="results-panel">
