@@ -375,7 +375,13 @@ input:disabled {
 .lookup-row {
   display: grid;
   gap: 10px;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr;
+}
+
+.lookup-buttons {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 input {
@@ -398,6 +404,7 @@ button {
 }
 
 .lookup-row button,
+.lookup-buttons button,
 .lookup-actions button,
 .sync-button,
 .empty-action {
@@ -419,12 +426,14 @@ button {
   gap: 10px;
 }
 
+.lookup-buttons .secondary-button,
 .lookup-actions .secondary-button {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border);
   color: var(--muted-strong);
 }
 
+.lookup-buttons .secondary-button:not(:disabled):hover,
 .lookup-actions .secondary-button:not(:disabled):hover {
   background: rgba(56, 189, 248, 0.16);
   border-color: var(--border-strong);
@@ -522,16 +531,23 @@ button {
 }
 
 .results-actions {
-  align-items: flex-end;
+  align-items: stretch;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: flex-start;
+  min-width: 180px;
+}
+
+.results-actions .status-badge {
+  text-align: center;
+  width: 100%;
 }
 
 .results-link {
   min-height: 38px;
   padding: 9px 12px;
+  width: 100%;
 }
 
 .results-panel {
@@ -750,21 +766,30 @@ button {
 
 .analysis-panel {
   background: rgba(255, 255, 255, 0.055);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 22px;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.06), 0 16px 34px rgba(2, 6, 23, 0.16);
   margin-bottom: 14px;
   overflow: hidden;
 }
 
 .analysis-summary {
   align-items: center;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.14), rgba(167, 139, 250, 0.1));
   color: var(--muted-strong);
+  cursor: pointer;
   display: flex;
   gap: 14px;
   justify-content: space-between;
   list-style: none;
   padding: 16px;
   position: relative;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.analysis-summary:hover {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(167, 139, 250, 0.16));
+  color: var(--text);
 }
 
 .analysis-summary::-webkit-details-marker {
@@ -772,11 +797,19 @@ button {
 }
 
 .analysis-summary::after {
+  align-items: center;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 999px;
   color: var(--primary);
   content: '+';
+  display: inline-flex;
   flex: 0 0 auto;
   font-size: 20px;
   font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
 }
 
 .analysis-panel[open] .analysis-summary::after {
@@ -785,6 +818,16 @@ button {
 
 .analysis-summary > div {
   min-width: 0;
+}
+
+.analysis-click-hint {
+  color: var(--primary);
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
 }
 
 .analysis-summary strong {
@@ -798,7 +841,7 @@ button {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: grid;
   gap: 12px;
-  padding: 0 16px 16px;
+  padding: 14px 16px 16px;
 }
 
 .analysis-scroll-area {
@@ -1356,7 +1399,7 @@ button {
     gap: 10px;
     margin: 0 -10px;
     overflow-x: auto;
-    padding: 0 18px 4px;
+    padding: 0 18px 14px;
     scroll-padding-left: 18px;
     scroll-snap-type: x proximity;
   }
@@ -1423,7 +1466,7 @@ button {
   }
 
   .analysis-body {
-    padding: 0 14px 14px;
+    padding: 14px 14px 14px;
   }
 
   .analysis-scroll-area {

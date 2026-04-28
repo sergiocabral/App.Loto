@@ -761,14 +761,14 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
                 type="text"
                 value={drawNumberInput}
               />
-              <button disabled={!selectedLottery || status === "loading" || isSyncing} type="submit">
-                {lookupMode === "draw" ? "Consultar" : "Filtrar"}
-              </button>
-            </div>
-            <div className="lookup-actions">
-              <button className="secondary-button" disabled={!canClearLookupFilter} onClick={clearLookupFilter} type="button">
-                Limpar filtro
-              </button>
+              <div className="lookup-buttons">
+                <button disabled={!selectedLottery || status === "loading" || isSyncing} type="submit">
+                  {lookupMode === "draw" ? "Consultar" : "Filtrar"}
+                </button>
+                <button className="secondary-button" disabled={!canClearLookupFilter} onClick={clearLookupFilter} type="button">
+                  Limpar filtro
+                </button>
+              </div>
             </div>
           </form>
 
@@ -948,11 +948,11 @@ function AnalysisPanel({
     <details className="analysis-panel">
       <summary className="analysis-summary">
         <div>
-          <span className="eyebrow">Análise rápida</span>
-          <strong>{data ? getAnalysisDescription(activeView, data) : "Carregue resultados para ver a análise."}</strong>
+          <span className="analysis-click-hint">Toque para abrir ou fechar</span>
+          <strong>Análise rápida</strong>
+          <p>{data ? getAnalysisDescription(activeView, data) : "Carregue resultados para ver a análise."}</p>
         </div>
       </summary>
-
       <div className="analysis-body" aria-label="Análise rápida dos resultados">
         <details className="analysis-options" open>
           <summary>

@@ -8,7 +8,7 @@ describe("lottery definitions", () => {
 
     expect(new Set(slugs).size).toBe(LOTTERIES.length);
     expect(new Set(apiSlugs).size).toBe(LOTTERIES.length);
-    expect(slugs).toEqual(["DiaDeSorte", "DuplaSena", "LotoFacil", "LotoMania", "MegaSena", "Quina", "TimeMania"]);
+    expect(slugs).toEqual(["MegaSena", "LotoFacil", "Quina", "LotoMania", "DuplaSena", "TimeMania", "DiaDeSorte"]);
   });
 
   it("resolves lotteries case-insensitively without accepting unknown values", () => {

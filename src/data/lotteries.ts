@@ -17,10 +17,28 @@ export type LotteryDefinition = {
 
 export const LOTTERIES: LotteryDefinition[] = [
   {
-    slug: "DiaDeSorte",
-    apiSlug: "diadesorte",
-    countNumbers: 31,
-    numbersPerDraw: 7,
+    slug: "MegaSena",
+    apiSlug: "megasena",
+    countNumbers: 60,
+    numbersPerDraw: 6,
+  },
+  {
+    slug: "LotoFacil",
+    apiSlug: "lotofacil",
+    countNumbers: 25,
+    numbersPerDraw: 15,
+  },
+  {
+    slug: "Quina",
+    apiSlug: "quina",
+    countNumbers: 80,
+    numbersPerDraw: 5,
+  },
+  {
+    slug: "LotoMania",
+    apiSlug: "lotomania",
+    countNumbers: 99,
+    numbersPerDraw: 20,
   },
   {
     slug: "DuplaSena",
@@ -30,33 +48,15 @@ export const LOTTERIES: LotteryDefinition[] = [
     groups: [6, 6],
   },
   {
-    slug: "LotoFacil",
-    apiSlug: "lotofacil",
-    countNumbers: 25,
-    numbersPerDraw: 15,
-  },
-  {
-    slug: "LotoMania",
-    apiSlug: "lotomania",
-    countNumbers: 99,
-    numbersPerDraw: 20,
-  },
-  {
-    slug: "MegaSena",
-    apiSlug: "megasena",
-    countNumbers: 60,
-    numbersPerDraw: 6,
-  },
-  {
-    slug: "Quina",
-    apiSlug: "quina",
-    countNumbers: 80,
-    numbersPerDraw: 5,
-  },
-  {
     slug: "TimeMania",
     apiSlug: "timemania",
     countNumbers: 80,
+    numbersPerDraw: 7,
+  },
+  {
+    slug: "DiaDeSorte",
+    apiSlug: "diadesorte",
+    countNumbers: 31,
     numbersPerDraw: 7,
   },
 ];
