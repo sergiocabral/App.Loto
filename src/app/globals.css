@@ -1910,17 +1910,10 @@ button {
 .suggestion-game.active {
   background: rgba(52, 211, 153, 0.13);
   border-color: rgba(52, 211, 153, 0.44);
-  box-shadow: 0 14px 30px rgba(16, 185, 129, 0.1);
-}
-
-.suggestion-game.active {
-  outline: 2px solid rgba(52, 211, 153, 0.22);
-  outline-offset: 2px;
 }
 
 .suggestion-game:first-child {
   border-color: rgba(52, 211, 153, 0.34);
-  box-shadow: 0 14px 30px rgba(16, 185, 129, 0.1);
 }
 
 .suggestion-game-meta {
