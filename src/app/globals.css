@@ -1898,9 +1898,24 @@ button {
   background: rgba(2, 6, 23, 0.26);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
+  color: inherit;
   display: grid;
   gap: 10px;
   padding: 12px;
+  text-align: left;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.suggestion-game:hover,
+.suggestion-game.active {
+  background: rgba(52, 211, 153, 0.13);
+  border-color: rgba(52, 211, 153, 0.44);
+  box-shadow: 0 14px 30px rgba(16, 185, 129, 0.1);
+}
+
+.suggestion-game.active {
+  outline: 2px solid rgba(52, 211, 153, 0.22);
+  outline-offset: 2px;
 }
 
 .suggestion-game:first-child {

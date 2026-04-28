@@ -288,6 +288,66 @@ function getSuggestionSourceLabel(view: AnalysisView, data: AnalysisData): strin
   return `${getAnalysisViewLabel(view)} · ${data.periodLabel}${data.scopeLabel === "Todos os sorteios" ? "" : ` · ${data.scopeLabel}`}`;
 }
 
+function getGroupedNumbersClipboardText(groups: string[][]): string {
+  if (groups.length <= 1) {
+    return (groups[0] ?? []).join(" ");
+  }
+
+  return groups.map((group, index) => `${index + 1}º: ${group.join(" ")}`).join("\n");
+}
+
+function getDrawClipboardText(draw: Draw): string {
+  return getGroupedNumbersClipboardText(getDisplayGroups(draw));
+}
+
+function getSuggestedGameKey(game: SuggestedGame): string {
+  return `${game.lotterySlug}:${game.filterKey}:${game.variantIndex}:${game.combinationKey}`;
+}
+
+function copyTextWithTemporarySelection(text: string): boolean {
+  if (typeof document === "undefined" || !document.body) {
+    return false;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.opacity = "0";
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  const normalizedText = text.trim();
+
+  if (!normalizedText) {
+    return false;
+  }
+
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(normalizedText);
+      return true;
+    } catch {
+      return copyTextWithTemporarySelection(normalizedText);
+    }
+  }
+
+  return copyTextWithTemporarySelection(normalizedText);
+}
+
 function buildUniqueLuckySuggestion(
   lottery: LotteryDefinition,
   view: AnalysisView,
@@ -365,6 +425,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
   const [suggestedGames, setSuggestedGames] = useState<SuggestedGame[]>([]);
+  const [selectedSuggestedGameKey, setSelectedSuggestedGameKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
@@ -499,6 +560,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setActiveDrawNumber("");
     setDraws([]);
     setSelectedDraw(null);
+    setSelectedSuggestedGameKey(null);
     setError(null);
     setStatus("loading");
     setStatusMessage("Preparando...");
@@ -798,17 +860,35 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       },
       ...current,
     ]);
+    setSelectedSuggestedGameKey(null);
     setStatusMessage("Nova sugestão adicionada.");
   }
 
   function clearSuggestedGames() {
     if (!selectedLottery) {
       setSuggestedGames([]);
+      setSelectedSuggestedGameKey(null);
       return;
     }
 
     setSuggestedGames((current) => current.filter((game) => game.lotterySlug !== selectedLottery.slug));
+    setSelectedSuggestedGameKey(null);
     setStatusMessage("Sugestões limpas.");
+  }
+
+  async function copySelectionToClipboard(text: string, successMessage: string) {
+    const copied = await copyTextToClipboard(text);
+    setStatusMessage(copied ? successMessage : "Seleção feita, mas o navegador bloqueou a cópia automática.");
+  }
+
+  function selectDrawAndCopy(draw: Draw) {
+    setSelectedDraw(draw);
+    void copySelectionToClipboard(getDrawClipboardText(draw), `Números do concurso ${draw.drawNumber} copiados.`);
+  }
+
+  function selectSuggestedGame(game: SuggestedGame) {
+    setSelectedSuggestedGameKey(getSuggestedGameKey(game));
+    void copySelectionToClipboard(game.numbers.join(" "), "Sugestão copiada.");
   }
 
   function returnToHome() {
@@ -820,6 +900,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setActiveDrawNumber("");
     setDraws([]);
     setSelectedDraw(null);
+    setSelectedSuggestedGameKey(null);
     setStatus("idle");
     setStatusMessage("Escolha uma loteria.");
     setLookupMode("numbers");
@@ -985,6 +1066,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 games={visibleSuggestedGames}
                 onClear={clearSuggestedGames}
                 onLucky={generateLuckySuggestion}
+                onSelectGame={selectSuggestedGame}
+                selectedGameKey={selectedSuggestedGameKey}
               />
               <AnalysisPanel
                 activeView={analysisView}
@@ -1014,7 +1097,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                     draws={visibleDraws}
                     hasMore={hasMoreDraws}
                     onLoadMore={loadMoreDraws}
-                    onSelect={setSelectedDraw}
+                    onSelect={selectDrawAndCopy}
                     selectedDrawNumber={selectedDraw?.drawNumber ?? null}
                     totalCount={filteredDraws.length}
                     visibleCount={visibleDraws.length}
@@ -1497,6 +1580,8 @@ function SuggestionPanel({
   lottery,
   onClear,
   onLucky,
+  onSelectGame,
+  selectedGameKey,
 }: {
   activeView: AnalysisView;
   data: AnalysisData | null;
@@ -1504,6 +1589,8 @@ function SuggestionPanel({
   lottery: LotteryDefinition | null;
   onClear: () => void;
   onLucky: () => void;
+  onSelectGame: (game: SuggestedGame) => void;
+  selectedGameKey: string | null;
 }) {
   if (!lottery || !data) {
     return null;
@@ -1530,19 +1617,32 @@ function SuggestionPanel({
       <p className="suggestion-copy">{getSuggestionDescription(activeView, data)}</p>
       <div className="suggestion-list" aria-label="Sugestões baseadas na análise rápida">
         {games.length ? (
-          games.map((game, index) => (
-            <div className="suggestion-game" key={`${game.lotterySlug}-${game.combinationKey}`}>
-              <div className="suggestion-game-meta">
-                <strong>{index === 0 ? "Nova sugestão" : `Sugestão ${games.length - index}`}</strong>
-                <span>{game.sourceLabel}</span>
-              </div>
-              <div className="suggestion-numbers">
-                {game.numbers.map((number) => (
-                  <span key={`${game.combinationKey}-${number}`}>{number}</span>
-                ))}
-              </div>
-            </div>
-          ))
+          games.map((game, index) => {
+            const gameKey = getSuggestedGameKey(game);
+            const selected = selectedGameKey === gameKey;
+
+            return (
+              <button
+                aria-label={`Selecionar e copiar sugestão ${game.numbers.join(" ")}`}
+                aria-pressed={selected}
+                className={`suggestion-game ${selected ? "active" : ""}`}
+                key={gameKey}
+                onClick={() => onSelectGame(game)}
+                title="Selecionar e copiar números"
+                type="button"
+              >
+                <div className="suggestion-game-meta">
+                  <strong>{index === 0 ? "Nova sugestão" : `Sugestão ${games.length - index}`}</strong>
+                  <span>{game.sourceLabel}</span>
+                </div>
+                <div className="suggestion-numbers">
+                  {game.numbers.map((number) => (
+                    <span key={`${game.combinationKey}-${number}`}>{number}</span>
+                  ))}
+                </div>
+              </button>
+            );
+          })
         ) : (
           <em>
             {activeView === "recent"
@@ -1581,9 +1681,12 @@ function DrawList({
 
         return (
           <button
+            aria-label={`Selecionar e copiar concurso ${draw.drawNumber}`}
+            aria-pressed={selectedDrawNumber === draw.drawNumber}
             className={`draw-row ${selectedDrawNumber === draw.drawNumber ? "active" : ""}`}
             key={`${draw.lottery}-${draw.drawNumber}`}
             onClick={() => onSelect(draw)}
+            title="Selecionar e copiar números"
             type="button"
           >
             <span className="draw-row-number">#{draw.drawNumber}</span>
