@@ -577,7 +577,7 @@ function ResultsChatPanelSession({
             rows={3}
             value={input}
           />
-          <button disabled={!canChat || isSending || !input.trim()} type="submit">
+          <button className={isSending ? "sending" : undefined} disabled={!canChat || isSending || !input.trim()} type="submit">
             {isSending ? "Enviando..." : "Enviar"}
           </button>
         </form>

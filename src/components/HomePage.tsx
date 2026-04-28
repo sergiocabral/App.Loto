@@ -1203,7 +1203,7 @@ function AnalysisPanel({
       <div className="analysis-body" aria-label="Análise rápida dos resultados">
         <details className="analysis-options" open>
           <summary>
-            <span>Ajustar análise</span>
+            <span>Ajustes</span>
             <strong>{getAnalysisViewLabel(activeView)}</strong>
           </summary>
 
@@ -1218,7 +1218,7 @@ function AnalysisPanel({
                     onClick={() => onPeriodChange(option.value)}
                     type="button"
                   >
-                    {option.label}
+                    <span className={option.value === "all" ? "period-option-range" : undefined}>{option.label}</span>
                   </button>
                 ))}
               </div>
@@ -1471,16 +1471,16 @@ function SuggestionPanel({
           <span className="eyebrow">Sugestão para jogar</span>
           <h3>{formatLotteryName(lottery.slug)}</h3>
         </div>
-        <div className="suggestion-actions">
-          {games.length ? (
-            <button className="clear-suggestions-button" onClick={onClear} type="button">
-              Limpar
-            </button>
-          ) : null}
-          <button className="lucky-button" onClick={onLucky} type="button">
-            Estou com sorte
+        <button className="lucky-button" onClick={onLucky} type="button">
+          Estou com sorte
+        </button>
+      </div>
+      <div className="suggestion-clear-row">
+        {games.length ? (
+          <button className="clear-suggestions-button" onClick={onClear} type="button">
+            Limpar
           </button>
-        </div>
+        ) : null}
       </div>
       <p className="suggestion-copy">{getSuggestionDescription(activeView, data)}</p>
       <div className="suggestion-list" aria-label="Sugestões baseadas na análise rápida">
