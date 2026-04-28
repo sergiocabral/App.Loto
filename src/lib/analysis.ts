@@ -143,7 +143,7 @@ export function getAnalysisDescription(view: AnalysisView, data: AnalysisData): 
 export function getAnalysisPeriodLabel(period: AnalysisPeriod, drawCount: number, requestedRange?: AnalysisDrawRange): string {
   if (period === "all") {
     if (requestedRange) {
-      return `Sorteios ${requestedRange.start} a ${requestedRange.end} do histórico`;
+      return `${drawCount} concursos selecionados`;
     }
 
     return `${drawCount} concursos`;

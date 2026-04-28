@@ -1286,20 +1286,24 @@ function RangeSliderCard({
   const start = Math.min(Math.max(range.start, 1), maximum);
   const end = Math.min(Math.max(range.end, 1), maximum);
   const selectedCount = Math.max(1, end - start + 1);
-  const startPercent = maximum > 1 ? ((start - 1) / (maximum - 1)) * 100 : 0;
-  const endPercent = maximum > 1 ? ((end - 1) / (maximum - 1)) * 100 : 100;
+  const visualStart = maximum - end + 1;
+  const visualEnd = maximum - start + 1;
+  const visualStartPercent = maximum > 1 ? ((visualStart - 1) / (maximum - 1)) * 100 : 0;
+  const visualEndPercent = maximum > 1 ? ((visualEnd - 1) / (maximum - 1)) * 100 : 100;
   const thumbSize = 20;
-  const startPosition = `calc(${startPercent}% + ${thumbSize / 2 - (thumbSize * startPercent) / 100}px)`;
-  const endPosition = `calc(${endPercent}% + ${thumbSize / 2 - (thumbSize * endPercent) / 100}px)`;
-  const startDraw = draws[start - 1] ?? null;
-  const endDraw = draws[end - 1] ?? null;
+  const visualStartPosition = `calc(${visualStartPercent}% + ${thumbSize / 2 - (thumbSize * visualStartPercent) / 100}px)`;
+  const visualEndPosition = `calc(${visualEndPercent}% + ${thumbSize / 2 - (thumbSize * visualEndPercent) / 100}px)`;
+  const newestDraw = draws[start - 1] ?? null;
+  const oldestDraw = draws[end - 1] ?? null;
 
-  function updateStart(value: number) {
-    onRangeChange({ end, start: maximum > 1 ? Math.min(value, end - 1) : 1 });
+  function updateOldestBoundary(value: number) {
+    const nextVisualStart = maximum > 1 ? Math.min(Math.max(value, 1), visualEnd - 1) : 1;
+    onRangeChange({ end: maximum - nextVisualStart + 1, start });
   }
 
-  function updateEnd(value: number) {
-    onRangeChange({ end: maximum > 1 ? Math.max(value, start + 1) : 1, start });
+  function updateNewestBoundary(value: number) {
+    const nextVisualEnd = maximum > 1 ? Math.max(Math.min(value, maximum), visualStart + 1) : 1;
+    onRangeChange({ end, start: maximum - nextVisualEnd + 1 });
   }
 
   return (
@@ -1307,48 +1311,48 @@ function RangeSliderCard({
       <div className="period-slider-meta">
         <span>Faixa no histórico</span>
         <strong>
-          {start} a {end} · {selectedCount} {selectedCount === 1 ? "concurso" : "concursos"}
+          {selectedCount} {selectedCount === 1 ? "concurso" : "concursos"}
         </strong>
       </div>
       <div
         className="range-slider-shell"
         style={{
-          "--range-end-position": endPosition,
-          "--range-start-position": startPosition,
+          "--range-end-position": visualEndPosition,
+          "--range-start-position": visualStartPosition,
           "--slider-thumb-size": `${thumbSize}px`,
         } as CSSProperties}
       >
         <div className="range-slider-track" aria-hidden="true" />
         <input
-          aria-label="Início da faixa analisada"
+          aria-label="Início mais antigo da faixa analisada"
           className="period-slider range-start"
           max={maximum}
           min={1}
-          onChange={(event) => updateStart(Number.parseInt(event.target.value, 10))}
+          onChange={(event) => updateOldestBoundary(Number.parseInt(event.target.value, 10))}
           type="range"
-          value={start}
+          value={visualStart}
         />
         <input
-          aria-label="Fim da faixa analisada"
+          aria-label="Fim mais recente da faixa analisada"
           className="period-slider range-end"
           max={maximum}
           min={1}
-          onChange={(event) => updateEnd(Number.parseInt(event.target.value, 10))}
+          onChange={(event) => updateNewestBoundary(Number.parseInt(event.target.value, 10))}
           type="range"
-          value={end}
+          value={visualEnd}
         />
       </div>
-      <div className="range-slider-values" aria-label="Limites da faixa analisada">
+      <div className="range-slider-values" aria-label="Limites cronológicos da faixa analisada">
         <div className="range-slider-value">
           <span>Início</span>
-          <strong>{startDraw ? `${start} · ${formatStatusDate(startDraw)}` : `${start} · Sem data`}</strong>
+          <strong>{oldestDraw ? `${formatStatusDate(oldestDraw)} · Concurso ${oldestDraw.drawNumber}` : "Sem data"}</strong>
         </div>
         <div className="range-slider-value">
           <span>Fim</span>
-          <strong>{endDraw ? `${end} · ${formatStatusDate(endDraw)}` : `${end} · Sem data`}</strong>
+          <strong>{newestDraw ? `${formatStatusDate(newestDraw)} · Concurso ${newestDraw.drawNumber}` : "Sem data"}</strong>
         </div>
       </div>
-      <p>Use os dois controles para analisar qualquer trecho do histórico carregado, inclusive concursos mais antigos.</p>
+      <p>À esquerda fica o início mais antigo; à direita, o fim mais recente da análise.</p>
     </div>
   );
 }
