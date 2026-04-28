@@ -60,7 +60,8 @@ describe("raw results page", () => {
     expect(serviceMocks.loadLotteryHistory).toHaveBeenCalledWith("Quina");
     expect(rendered).toContain("Quina");
     expect(rendered).toContain("Luckygames");
-    expect(rendered).toContain("Abrir TXT puro");
+    expect(rendered).toContain("Download");
+    expect(rendered).toContain("download\":\"luckygames-resultados-Quina-20260101.txt\"");
     expect(rendered).toContain("00002 | 01/01/2026");
     expect(rendered).toContain("/api/lotteries/Quina?format=legacy");
     expect(rendered).not.toContain("Visão crua dos resultados");
@@ -83,6 +84,7 @@ describe("raw results page", () => {
     expect(serviceMocks.loadLotteryHistory).not.toHaveBeenCalled();
     expect(rendered).toContain("Quina — concurso 1234");
     expect(rendered).toContain("/api/lotteries/Quina?format=legacy&draw=1234");
+    expect(rendered).toContain("download\":\"luckygames-resultados-Quina-20260101.txt\"");
   });
 
   it("renders empty state when no raw text exists", async () => {

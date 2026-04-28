@@ -20,6 +20,35 @@ function readSingleParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 }
 
+function formatDateForDownloadName(value: string | undefined): string | null {
+  const date = value?.trim();
+
+  if (!date) {
+    return null;
+  }
+
+  const brazilianDate = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(date);
+
+  if (brazilianDate) {
+    const [, day, month, year] = brazilianDate;
+    return `${year}${month.padStart(2, "0")}${day.padStart(2, "0")}`;
+  }
+
+  const isoDate = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(date);
+
+  if (isoDate) {
+    const [, year, month, day] = isoDate;
+    return `${year}${month.padStart(2, "0")}${day.padStart(2, "0")}`;
+  }
+
+  return null;
+}
+
+function buildDownloadFileName(lotterySlug: string, date: string | undefined): string {
+  const formattedDate = formatDateForDownloadName(date);
+  return `luckygames-resultados-${lotterySlug}${formattedDate ? `-${formattedDate}` : ""}.txt`;
+}
+
 export default async function RawLotteryPage({ params, searchParams }: RawPageProps) {
   const { lottery: lotteryParam } = await params;
   const lottery = getLottery(lotteryParam);
@@ -57,10 +86,9 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
       ? `${formatLotteryName(lottery.slug)} — concurso inválido`
       : formatLotteryName(lottery.slug);
   const totalDraws = hasValidDraw ? (draw ? 1 : 0) : history.length;
+  const latestDownloadDate = draw?.date || history[0]?.date;
   const legacyApiUrl = `/api/lotteries/${lottery.slug}?format=legacy${hasValidDraw && drawNumber ? `&draw=${drawNumber}` : ""}`;
-  const legacyDownloadName = hasValidDraw && drawNumber
-    ? `${lottery.slug}-concurso-${drawNumber}.txt`
-    : `${lottery.slug}-resultados.txt`;
+  const legacyDownloadName = buildDownloadFileName(lottery.slug, latestDownloadDate);
 
   return (
     <main className="raw-page-shell">
@@ -78,7 +106,7 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
               </span>
             </div>
             <a className="raw-page-link raw-page-link-download" download={legacyDownloadName} href={legacyApiUrl}>
-              Baixar texto
+              Download
             </a>
           </div>
         </header>
