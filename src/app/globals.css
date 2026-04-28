@@ -150,6 +150,18 @@ input:disabled {
   text-transform: uppercase;
 }
 
+.brand-home {
+  display: inline-block;
+  max-width: 100%;
+  text-decoration: none;
+}
+
+.brand-home:focus-visible {
+  border-radius: 14px;
+  outline: 3px solid rgba(56, 189, 248, 0.55);
+  outline-offset: 4px;
+}
+
 .hero-card h1 {
   background: linear-gradient(135deg, #f8fafc 0%, #7dd3fc 48%, #fbbf24 100%);
   background-clip: text;

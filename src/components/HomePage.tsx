@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import {
@@ -663,12 +664,36 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
     setStatusMessage("Sugestões limpas.");
   }
 
+  function returnToHome() {
+    syncStopRef.current = true;
+    syncSessionRef.current += 1;
+    autoSyncStartedRef.current.clear();
+    setSelectedLottery(null);
+    setDrawNumberInput("");
+    setActiveDrawNumber("");
+    setDraws([]);
+    setSelectedDraw(null);
+    setStatus("idle");
+    setStatusMessage("Escolha uma loteria.");
+    setLookupMode("numbers");
+    setNumberFilter([]);
+    setVisibleDrawState({ key: "", limit: DRAW_LIST_PAGE_SIZE });
+    setAnalysisPeriod(25);
+    setAnalysisView("most");
+    setDuplaSenaAnalysisScope("all");
+    setSyncInfo(INITIAL_SYNC_INFO);
+    setError(null);
+    updateLegacyUrl();
+  }
+
   return (
     <>
       <div className="dashboard">
       <section className="hero-card">
         <div>
-          <h1>Luckygames</h1>
+          <Link aria-label="Voltar para o início sem loteria selecionada" className="brand-home" href="/" onClick={returnToHome}>
+            <h1>Luckygames</h1>
+          </Link>
           <p className="hero-copy">
             Resultados das{" "}
             <a href="https://loterias.caixa.gov.br" rel="noreferrer" target="_blank">
