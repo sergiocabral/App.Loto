@@ -13,7 +13,7 @@ Aplicação Next.js para consultar resultados das Loterias da Caixa, carregar re
 Entre na pasta do app:
 
 ```bash
-cd app-loto-next
+cd App.Loto
 ```
 
 Instale as dependências:
@@ -68,11 +68,11 @@ O app lê variáveis destes arquivos, nessa ordem:
 1. `.env`
 2. `.env.local`, sobrescrevendo valores do `.env`
 
-Esses arquivos devem ficar na raiz do app `app-loto-next`, por exemplo:
+Esses arquivos devem ficar na raiz do app `App.Loto`, por exemplo:
 
 ```text
-app-loto-next/.env
-app-loto-next/.env.local
+App.Loto/.env
+App.Loto/.env.local
 ```
 
 O `.env` real não deve ser versionado. O arquivo versionado é apenas:
@@ -96,6 +96,8 @@ O `.env` real não deve ser versionado. O arquivo versionado é apenas:
 | `POSTGRES_IDLE_TIMEOUT_MS` | Não | `30000` | Tempo máximo de conexão ociosa no pool. |
 | `POSTGRES_QUERY_TIMEOUT_MS` | Não | `30000` | Timeout de queries no cliente PostgreSQL. |
 | `POSTGRES_STATEMENT_TIMEOUT_MS` | Não | `30000` | Timeout de statements no PostgreSQL. |
+| `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | Não | `https://umami.cabral.dev/script.js` | URL pública do script Umami usado para analytics. |
+| `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | Não | `ea4bd301-7337-44bd-9ec9-746074f3f4de` | Identificador do site no Umami. |
 
 ## Exemplo de `.env`
 
@@ -112,7 +114,22 @@ POSTGRES_CONNECTION_TIMEOUT_MS=5000
 POSTGRES_IDLE_TIMEOUT_MS=30000
 POSTGRES_QUERY_TIMEOUT_MS=30000
 POSTGRES_STATEMENT_TIMEOUT_MS=30000
+
+NEXT_PUBLIC_UMAMI_SCRIPT_URL=https://umami.cabral.dev/script.js
+NEXT_PUBLIC_UMAMI_WEBSITE_ID=ea4bd301-7337-44bd-9ec9-746074f3f4de
 ```
+
+## Analytics com Umami
+
+Quando `NEXT_PUBLIC_UMAMI_SCRIPT_URL` e `NEXT_PUBLIC_UMAMI_WEBSITE_ID` estiverem definidos no `.env`, o layout injeta automaticamente o script do Umami em todas as páginas.
+
+Exemplo gerado no HTML:
+
+```html
+<script defer src="https://umami.cabral.dev/script.js" data-website-id="ea4bd301-7337-44bd-9ec9-746074f3f4de"></script>
+```
+
+Se qualquer uma das duas variáveis estiver vazia, o script não é carregado.
 
 ## Banco de dados
 
@@ -178,7 +195,7 @@ npm run build
 Para um servidor Node/VPS:
 
 1. copie o projeto;
-2. crie `app-loto-next/.env` com os dados reais;
+2. crie `App.Loto/.env` com os dados reais;
 3. rode `npm install`;
 4. rode `npm run db:migrate`;
 5. rode `npm run build`;
