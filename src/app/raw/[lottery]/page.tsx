@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { getLottery } from "@/data/lotteries";
 import { loadLotteryHistory, getStoredDraw } from "@/lib/server/service";
@@ -33,7 +34,10 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
     return (
       <main className="raw-page-shell">
         <section className="raw-page-card">
-          <span className="eyebrow">Luckygames</span>
+          <Link aria-label="Voltar para o início" className="brand-home raw-page-brand" href="/">
+            <Image alt="Luckygames" className="brand-icon" height={56} priority src="/gohorse.png" width={56} />
+            <span>Luckygames</span>
+          </Link>
           <h1>Jogo não encontrado</h1>
           <p>Volte para a consulta principal e selecione uma loteria disponível.</p>
           <Link className="raw-page-link" href="/">
@@ -58,36 +62,23 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
   return (
     <main className="raw-page-shell">
       <section className="raw-page-card">
-        <div className="raw-page-header">
-          <div>
-            <span className="eyebrow">Luckygames</span>
-            <h1>Visão crua dos resultados</h1>
-            <p>
-              {title} em formato de texto, com espaçamento preservado para facilitar a leitura visual dos padrões. Dados gerados a partir do banco do Luckygames.
-            </p>
-          </div>
-          <div className="raw-page-actions">
+        <header className="raw-page-header">
+          <Link aria-label="Voltar para o início" className="brand-home raw-page-brand" href="/">
+            <Image alt="Luckygames" className="brand-icon" height={56} priority src="/gohorse.png" width={56} />
+            <span>Luckygames</span>
+          </Link>
+          <div className="raw-page-title-row">
+            <div>
+              <h1>{title}</h1>
+              <span>
+                {hasValidDraw ? (draw ? "1 concurso" : "0 concursos") : `${totalDraws} concurso${totalDraws === 1 ? "" : "s"}`}
+              </span>
+            </div>
             <a className="raw-page-link raw-page-link-download" href={legacyApiUrl} rel="noreferrer" target="_blank">
               Abrir TXT puro
-              <small>para salvar como .txt</small>
             </a>
           </div>
-        </div>
-
-        <div className="raw-page-meta" aria-label="Resumo da visão crua">
-          <div>
-            <span>Jogo</span>
-            <strong>{formatLotteryName(lottery.slug)}</strong>
-          </div>
-          <div>
-            <span>{hasValidDraw ? "Concurso" : "Concursos"}</span>
-            <strong>{hasValidDraw ? drawNumber : totalDraws}</strong>
-          </div>
-          <div>
-            <span>Formato</span>
-            <strong>Texto bruto</strong>
-          </div>
-        </div>
+        </header>
 
         {text ? (
           <pre className="raw-page-pre">{text}</pre>

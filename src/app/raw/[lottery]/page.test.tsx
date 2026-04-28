@@ -55,11 +55,17 @@ describe("raw results page", () => {
       searchParams: Promise.resolve({}),
     });
 
+    const rendered = stringifyElement(element);
+
     expect(serviceMocks.loadLotteryHistory).toHaveBeenCalledWith("Quina");
-    expect(stringifyElement(element)).toContain("Visão crua dos resultados");
-    expect(stringifyElement(element)).toContain("Abrir TXT puro");
-    expect(stringifyElement(element)).toContain("00002 | 01/01/2026");
-    expect(stringifyElement(element)).toContain("/api/lotteries/Quina?format=legacy");
+    expect(rendered).toContain("Quina");
+    expect(rendered).toContain("Luckygames");
+    expect(rendered).toContain("Abrir TXT puro");
+    expect(rendered).toContain("00002 | 01/01/2026");
+    expect(rendered).toContain("/api/lotteries/Quina?format=legacy");
+    expect(rendered).not.toContain("Visão crua dos resultados");
+    expect(rendered).not.toContain("Formato");
+    expect(rendered).not.toContain("Texto bruto");
   });
 
   it("renders a single draw raw page when draw query is valid", async () => {
@@ -71,10 +77,12 @@ describe("raw results page", () => {
       searchParams: Promise.resolve({ draw: "1234" }),
     });
 
+    const rendered = stringifyElement(element);
+
     expect(serviceMocks.getStoredDraw).toHaveBeenCalledWith("Quina", 1234);
     expect(serviceMocks.loadLotteryHistory).not.toHaveBeenCalled();
-    expect(stringifyElement(element)).toContain("Quina — concurso 1234");
-    expect(stringifyElement(element)).toContain("/api/lotteries/Quina?format=legacy&draw=1234");
+    expect(rendered).toContain("Quina — concurso 1234");
+    expect(rendered).toContain("/api/lotteries/Quina?format=legacy&draw=1234");
   });
 
   it("renders empty state when no raw text exists", async () => {
