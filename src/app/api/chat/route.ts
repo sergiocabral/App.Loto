@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getLottery } from "@/data/lotteries";
-import { getServerEnvValue } from "@/lib/server/env";
+import { getOpenAIChatConfig } from "@/lib/server/env";
 import { checkMutationRateLimit, readJsonObjectBody } from "@/lib/server/security";
 
 type ChatRole = "assistant" | "user";
@@ -321,22 +321,21 @@ function buildSystemPrompt(context: ChatContext): string {
 }
 
 async function requestOpenAI(messages: OpenAIChatMessage[]): Promise<string> {
-  const apiKey = getServerEnvValue("OPENAI_API_KEY");
+  const chatConfig = getOpenAIChatConfig();
 
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured.");
+  if (!chatConfig) {
+    throw new Error("OpenAI chat is not configured.");
   }
 
-  const model = getServerEnvValue("OPENAI_CHAT_MODEL") || "gpt-5-nano-2025-08-07";
   const body = {
     messages,
-    model,
-    ...(model.startsWith("gpt-5") ? {} : { temperature: 0.35 }),
+    model: chatConfig.model,
+    ...(chatConfig.model.startsWith("gpt-5") ? {} : { temperature: 0.35 }),
   };
   const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
     body: JSON.stringify(body),
     headers: {
-      authorization: `Bearer ${apiKey}`,
+      authorization: `Bearer ${chatConfig.apiKey}`,
       "content-type": "application/json",
     },
     method: "POST",
@@ -407,7 +406,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error && error.message.includes("OPENAI_API_KEY")
+          error instanceof Error && error.message.includes("OpenAI chat is not configured")
             ? "Chat GPT ainda não está configurado no servidor."
             : "Não consegui responder agora. Tente novamente em instantes.",
       },

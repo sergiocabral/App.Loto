@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/AppShell";
 import { HomePage } from "@/components/HomePage";
+import { isOpenAIChatConfigured } from "@/lib/server/env";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +35,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const lotterySlug = params[0];
   const drawNumber = params[1];
 
-  logPage("Home:start", { lotterySlug: lotterySlug ?? null, drawNumber: drawNumber ?? null, params });
+  const isChatEnabled = isOpenAIChatConfigured();
+
+  logPage("Home:start", { drawNumber: drawNumber ?? null, isChatEnabled, lotterySlug: lotterySlug ?? null, params });
 
   return (
     <AppShell>
-      <HomePage initialLotterySlug={lotterySlug} initialDrawNumber={drawNumber} />
+      <HomePage initialLotterySlug={lotterySlug} initialDrawNumber={drawNumber} isChatEnabled={isChatEnabled} />
     </AppShell>
   );
 }

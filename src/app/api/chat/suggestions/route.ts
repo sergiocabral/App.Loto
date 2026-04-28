@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { DEFAULT_CHAT_SUGGESTIONS, type ChatSuggestion } from "@/lib/chatSuggestions";
-import { getServerEnvValue } from "@/lib/server/env";
+import { getServerEnvValue, isOpenAIChatConfigured } from "@/lib/server/env";
 
 export const dynamic = "force-dynamic";
 
@@ -37,5 +37,9 @@ function getChatSuggestions(): ChatSuggestion[] {
 }
 
 export async function GET() {
-  return NextResponse.json({ suggestions: getChatSuggestions() });
+  if (!isOpenAIChatConfigured()) {
+    return NextResponse.json({ enabled: false, suggestions: [] });
+  }
+
+  return NextResponse.json({ enabled: true, suggestions: getChatSuggestions() });
 }

@@ -170,6 +170,7 @@ type LoadState = "idle" | "loading" | "syncing" | "loaded" | "error";
 type HomePageProps = {
   initialLotterySlug?: string;
   initialDrawNumber?: string;
+  isChatEnabled?: boolean;
 };
 
 function formatLotteryName(slug: string): string {
@@ -342,7 +343,7 @@ function buildUniqueLuckySuggestion(
   return null;
 }
 
-export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProps) {
+export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled = false }: HomePageProps) {
   const initialLottery = getInitialLottery(initialLotterySlug);
   const [selectedLottery, setSelectedLottery] = useState<LotteryDefinition | null>(initialLottery);
   const [drawNumberInput, setDrawNumberInput] = useState(initialDrawNumber ?? "");
@@ -925,15 +926,17 @@ export function HomePage({ initialLotterySlug, initialDrawNumber }: HomePageProp
             </div>
           </div>
 
-          <ResultsChatPanel
-            activeDrawNumber={activeDrawNumber}
-            analysisData={analysisData}
-            analysisViewLabel={getAnalysisViewLabel(analysisView)}
-            draws={analysisData?.selectedDraws ?? []}
-            isLoading={status === "loading"}
-            lottery={selectedLottery}
-            numberFilter={numberFilter}
-          />
+          {isChatEnabled ? (
+            <ResultsChatPanel
+              activeDrawNumber={activeDrawNumber}
+              analysisData={analysisData}
+              analysisViewLabel={getAnalysisViewLabel(analysisView)}
+              draws={analysisData?.selectedDraws ?? []}
+              isLoading={status === "loading"}
+              lottery={selectedLottery}
+              numberFilter={numberFilter}
+            />
+          ) : null}
         </aside>
 
         <section className="results-panel">
