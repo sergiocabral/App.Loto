@@ -2238,7 +2238,7 @@ button {
     gap: 10px;
     margin: 0 -10px;
     overflow-x: auto;
-    padding: 0 18px 14px;
+    padding: 8px 18px 16px;
     scroll-padding-left: 18px;
     scroll-snap-type: x proximity;
   }
@@ -2248,6 +2248,12 @@ button {
     min-height: 94px;
     padding: 12px;
     scroll-snap-align: start;
+  }
+
+  .lottery-card:hover,
+  .lottery-card.active {
+    box-shadow: 0 10px 20px var(--lottery-glow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transform: translateY(-1px);
   }
 
   .lottery-card strong {
