@@ -351,26 +351,95 @@ input:disabled {
 }
 
 .lottery-card {
-  background: rgba(15, 23, 42, 0.72);
-  border: 1px solid var(--border);
+  --lottery-a: #f97316;
+  --lottery-b: #fb7185;
+  --lottery-glow: rgba(249, 115, 22, 0.28);
+  background:
+    radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--lottery-b) 28%, transparent), transparent 38%),
+    linear-gradient(135deg, color-mix(in srgb, var(--lottery-a) 13%, rgba(15, 23, 42, 0.82)), rgba(15, 23, 42, 0.76));
+  border: 1px solid color-mix(in srgb, var(--lottery-a) 28%, var(--border));
   border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   color: var(--text);
   min-height: 86px;
+  overflow: hidden;
   padding: 12px;
+  position: relative;
   text-align: left;
-  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.lottery-card::after {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--lottery-a) 54%, transparent), color-mix(in srgb, var(--lottery-b) 34%, transparent));
+  border-radius: 999px;
+  content: '';
+  height: 72px;
+  opacity: 0.16;
+  position: absolute;
+  right: -28px;
+  top: -30px;
+  transform: rotate(-18deg);
+  width: 82px;
+}
+
+.lottery-card-megasena {
+  --lottery-a: #f97316;
+  --lottery-b: #facc15;
+  --lottery-glow: rgba(249, 115, 22, 0.28);
+}
+
+.lottery-card-lotofacil {
+  --lottery-a: #ec4899;
+  --lottery-b: #f97316;
+  --lottery-glow: rgba(236, 72, 153, 0.26);
+}
+
+.lottery-card-quina {
+  --lottery-a: #a855f7;
+  --lottery-b: #fb7185;
+  --lottery-glow: rgba(168, 85, 247, 0.26);
+}
+
+.lottery-card-lotomania {
+  --lottery-a: #ef4444;
+  --lottery-b: #f59e0b;
+  --lottery-glow: rgba(239, 68, 68, 0.24);
+}
+
+.lottery-card-duplasena {
+  --lottery-a: #f43f5e;
+  --lottery-b: #fbbf24;
+  --lottery-glow: rgba(244, 63, 94, 0.25);
+}
+
+.lottery-card-timemania {
+  --lottery-a: #22c55e;
+  --lottery-b: #f59e0b;
+  --lottery-glow: rgba(34, 197, 94, 0.22);
+}
+
+.lottery-card-diadesorte {
+  --lottery-a: #eab308;
+  --lottery-b: #fb923c;
+  --lottery-glow: rgba(234, 179, 8, 0.26);
 }
 
 .lottery-card:hover,
 .lottery-card.active {
-  background: rgba(14, 165, 233, 0.13);
-  border-color: var(--border-strong);
+  background:
+    radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--lottery-b) 40%, transparent), transparent 40%),
+    linear-gradient(135deg, color-mix(in srgb, var(--lottery-a) 24%, rgba(15, 23, 42, 0.82)), color-mix(in srgb, var(--lottery-b) 10%, rgba(15, 23, 42, 0.8)));
+  border-color: color-mix(in srgb, var(--lottery-a) 58%, rgba(255, 255, 255, 0.18));
+  box-shadow: 0 16px 34px var(--lottery-glow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transform: translateY(-2px);
 }
 
 .lottery-card span,
+.lottery-card strong,
 .lottery-card small {
   display: block;
+  position: relative;
+  z-index: 1;
 }
 
 .lottery-card span {

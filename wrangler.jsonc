@@ -13,6 +13,7 @@
   },
   "vars": {
     "NEXT_RUNTIME_PROVIDER": "cloudflare",
+    "OFFICIAL_SITE_URL": "https://luckygames.tips/",
     "POSTGRES_HOST": "postgresql.cabral.dev",
     "POSTGRES_PORT": "5432",
     "POSTGRES_USER": "luckygames",

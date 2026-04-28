@@ -859,7 +859,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
 
           return (
             <button
-              className={`lottery-card ${active ? "active" : ""}`}
+              className={`lottery-card lottery-card-${lottery.slug.toLowerCase()} ${active ? "active" : ""}`}
               key={lottery.slug}
               onClick={() => selectLottery(lottery)}
               type="button"

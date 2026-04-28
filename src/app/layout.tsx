@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { getOfficialSiteUrl } from "@/lib/siteUrl";
 import "./globals.css";
 
-const siteUrl = "https://luckygames.tips";
-const socialImageUrl = "https://raw.githubusercontent.com/sergiocabral/App.GoHorse/refs/heads/main/gohorse.png";
+const officialSiteUrl = getOfficialSiteUrl();
+const siteUrl = officialSiteUrl.origin;
+const socialImageUrl = "/site-card.svg";
+const iconUrl = "/site-icon.svg";
 const socialTitle = "Luckygames.tips | Resultados e palpites para loterias";
 const socialDescription =
   "Confira resultados das Loterias da Caixa, veja análises rápidas e escolha seus próximos números com mais praticidade.";
@@ -16,19 +19,24 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/",
   },
+  icons: {
+    icon: [{ url: iconUrl, type: "image/svg+xml" }],
+    shortcut: [{ url: iconUrl, type: "image/svg+xml" }],
+    apple: [{ url: iconUrl, type: "image/svg+xml" }],
+  },
   openGraph: {
     title: socialTitle,
     description: socialDescription,
-    url: siteUrl,
+    url: "/",
     siteName: "Luckygames.tips",
     locale: "pt_BR",
     type: "website",
     images: [
       {
         url: socialImageUrl,
-        width: 1024,
-        height: 1024,
-        type: "image/png",
+        width: 1200,
+        height: 630,
+        type: "image/svg+xml",
         alt: "Luckygames.tips: uma forma simples e rápida de acompanhar resultados e análises das loterias.",
       },
     ],
