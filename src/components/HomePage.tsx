@@ -1772,7 +1772,7 @@ function SuggestionPanel({
         ) : (
           <em>
             {activeView === "recent"
-              ? "Toque em “Estou com sorte” para usar o calor recente dos números."
+              ? "Toque em “Estou com sorte” para usar os números mais recentes."
               : activeView === "map"
                 ? "Toque em “Estou com sorte” para usar os números mais quentes do mapa."
                 : "Toque em “Estou com sorte” para gerar sugestões únicas."}
