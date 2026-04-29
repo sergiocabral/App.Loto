@@ -32,6 +32,6 @@ export const DEFAULT_CHAT_SUGGESTIONS: ChatSuggestion[] = [
     label: "Estratégia",
     message: "Monte uma estratégia de números.",
     prompt:
-      "Monte uma estratégia objetiva de números combinando frequência, atraso, calor recente e distribuição por faixas. Entregue Base, Complementares, Ousadia e Combinação sugerida compatível com a loteria. Use critérios curtos e diretos, sem introdução, conclusão ou alertas.",
+      "Monte uma estratégia objetiva de números combinando frequência, atraso, recência e distribuição por faixas. Entregue Base, Complementares, Ousadia e Combinação sugerida compatível com a loteria. Use critérios curtos e diretos, sem introdução, conclusão ou alertas.",
   },
 ];

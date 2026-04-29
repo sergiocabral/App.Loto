@@ -1607,7 +1607,7 @@ function RangeSliderCard({
 function AnalysisContent({ data, view }: { data: AnalysisData; view: AnalysisView }) {
   if (view === "map" || view === "recent") {
     return (
-      <div className="analysis-scroll-area">
+      <div className="analysis-scroll-area heat-map-scroll-area">
         <NumberHeatMap stats={data.stats} variant={view} />
       </div>
     );

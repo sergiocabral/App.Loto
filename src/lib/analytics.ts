@@ -14,6 +14,7 @@ export const ANALYTICS_EVENTS = {
   loadMoreDraws: "Carregou mais resultados",
   lotterySelected: "Selecionou loteria",
   luckyButtonClicked: "Clicou Estou com sorte",
+  newAccess: "Novo acesso",
   openRawResults: "Abriu todos sorteios",
   searchedDraw: "Consultou concurso",
   searchedNumbers: "Pesquisou números",
@@ -65,16 +66,16 @@ function sanitizeEventData(data?: AnalyticsEventData): Record<string, AnalyticsP
   return Object.fromEntries(entries);
 }
 
-export function trackEvent(eventName: string, data?: AnalyticsEventData): void {
+export function trackEvent(eventName: string, data?: AnalyticsEventData): boolean {
   if (typeof window === "undefined") {
-    return;
+    return false;
   }
 
   const name = eventName.trim().slice(0, 50);
   const umami = window.umami;
 
   if (!name || typeof umami?.track !== "function") {
-    return;
+    return false;
   }
 
   try {
@@ -82,11 +83,13 @@ export function trackEvent(eventName: string, data?: AnalyticsEventData): void {
 
     if (sanitizedData) {
       umami.track(name, sanitizedData);
-      return;
+      return true;
     }
 
     umami.track(name);
+    return true;
   } catch {
     // Analytics must never affect the app flow.
+    return false;
   }
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { AccessOriginTracker } from "@/components/AccessOriginTracker";
 import { getOfficialSiteUrl } from "@/lib/siteUrl";
 import "./globals.css";
 
@@ -61,6 +62,7 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body>
         {children}
+        <AccessOriginTracker />
         {umamiScriptUrl && umamiWebsiteId ? (
           <Script
             defer

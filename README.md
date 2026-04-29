@@ -16,13 +16,14 @@ Aplicação Next.js para consultar resultados das Loterias da Caixa, persistir c
   - Mais sorteados.
   - Menos sorteados.
   - Atrasados.
-  - Calor frequente: mapa de calor por frequência simples de aparições.
-  - Calor recente: mapa de calor ponderado por recorrência recente; o último concurso vale 1 ponto, o anterior 0,9 e os anteriores valem progressivamente menos.
+  - Mais frequentes: mapa de calor por frequência simples de aparições.
+  - Mais recentes: mapa de calor ponderado por recorrência recente; o último concurso vale 1 ponto, o anterior 0,9 e os anteriores valem progressivamente menos.
 - Sugestões "Estou com sorte" baseadas na visão ativa da análise rápida, sem garantia estatística.
 - Página raw em `/raw/[loteria]`, com opção de consultar concurso via `?draw=NUMERO`.
 - Página 404 personalizada com identidade visual do site.
 - Comentários via Remark42, quando configurado.
 - Analytics via Umami, quando configurado.
+- Evento de origem de acesso por query string `origin`, útil para links impressos/QR codes de campanhas físicas, com limpeza automática da URL no frontend após o app carregar.
 - Chat GPT opcional para conversar sobre o recorte carregado, quando OpenAI estiver configurado.
 - Redirect canônico opcional no Cloudflare Worker usando `OFFICIAL_DOMAIN_NAME`, entregue como uma página HTML leve que redireciona pelo navegador.
 
@@ -377,12 +378,31 @@ Eventos instrumentados:
 - seleção/cópia de sorteio;
 - geração pelo botão “Estou com sorte” e cópia de sugestão;
 - mudanças na análise rápida, período, faixa customizada e escopo da Dupla Sena;
+- novo acesso com origem informada por `origin` na URL;
 - abertura da página de todos os sorteios;
 - início, pausa, conclusão e falha de sincronização;
 - abertura, fechamento, uso de sugestão, envio de pergunta, resposta recebida e falha do chat;
 - clique no link `idontneedit.org` das áreas de doação.
 
-Por privacidade, os eventos não enviam combinações sugeridas, números digitados pelo usuário nem texto livre do chat. São enviados apenas metadados como loteria, tipo de análise, contagens e estados da interação.
+Por privacidade, os eventos não enviam combinações sugeridas, números digitados pelo usuário nem texto livre do chat. São enviados apenas metadados como loteria, tipo de análise, contagens, estados da interação e, no evento de origem, o identificador público informado em `origin`.
+
+### Origem de acesso por query string
+
+Para medir acessos vindos de cartazes, QR codes ou links de campanha, use o parâmetro público `origin` na URL. Exemplo:
+
+```text
+https://luckygames.tips/?origin=rj-macae-santosmoreira
+```
+
+Quando a página carrega no navegador, o app:
+
+1. lê e normaliza o valor de `origin`;
+2. tenta enviar ao Umami o evento `Novo acesso` com os metadados `origin` e `path`;
+3. remove apenas o parâmetro `origin` da barra de endereço com `history.replaceState`, preservando outros parâmetros e o hash.
+
+A limpeza acontece no frontend, depois do app carregar, para evitar cache/redirect agressivo e reduzir recompartilhamento com a origem original. O evento só é disparado quando o parâmetro está presente na URL de entrada. Use valores curtos, públicos e sem dados pessoais, por exemplo `rj-macae-santosmoreira`, `rj-centro-cartaz01` ou `qr-feira-domingo`.
+
+Se o Umami estiver bloqueado, ausente ou demorar a inicializar, o app aguarda por alguns segundos e depois limpa a URL mesmo assim para não prejudicar a navegação.
 
 ## Comentários com Remark42
 

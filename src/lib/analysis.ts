@@ -55,8 +55,8 @@ export const ANALYSIS_VIEW_OPTIONS: Array<{ value: AnalysisView; label: string }
   { value: "most", label: "Mais sorteados" },
   { value: "least", label: "Menos sorteados" },
   { value: "delayed", label: "Atrasados" },
-  { value: "map", label: "Calor frequente" },
-  { value: "recent", label: "Calor recente" },
+  { value: "map", label: "Mais frequentes" },
+  { value: "recent", label: "Mais recentes" },
 ];
 
 const RECENCY_DECAY_FACTOR = 0.9;

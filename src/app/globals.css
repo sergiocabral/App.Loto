@@ -1359,6 +1359,10 @@ button {
   padding-right: 4px;
 }
 
+.heat-map-scroll-area {
+  max-height: 520px;
+}
+
 .trend-groups {
   display: grid;
   gap: 10px;
@@ -2310,6 +2314,10 @@ button {
 
   .analysis-scroll-area {
     max-height: 300px;
+  }
+
+  .heat-map-scroll-area {
+    max-height: 420px;
   }
 
   .analysis-header {

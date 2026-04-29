@@ -5,6 +5,7 @@ import { isOpenAIChatConfigured } from "@/lib/server/env";
 export const dynamic = "force-dynamic";
 
 const PAGE_LOG_PREFIX = "[app-loto-next][page]";
+const ACCESS_ORIGIN_QUERY_PARAM = "origin";
 
 function logPage(message: string, details?: Record<string, unknown>): void {
   if (details) {
@@ -18,7 +19,7 @@ function logPage(message: string, details?: Record<string, unknown>): void {
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 function parseLegacyQuery(searchParams: Record<string, string | string[] | undefined>): string[] {
-  const entries = Object.entries(searchParams);
+  const entries = Object.entries(searchParams).filter(([key]) => key !== ACCESS_ORIGIN_QUERY_PARAM);
 
   if (!entries.length) {
     return [];
