@@ -85,7 +85,7 @@ type SyncInfo = {
   stopReason: string | null;
 };
 
-type SyncSource = "auto" | "manual";
+type SyncSource = "manual";
 
 type LotteryApiPayload = {
   lottery: string;
@@ -448,7 +448,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [selectedDraw, setSelectedDraw] = useState<Draw | null>(null);
   const [status, setStatus] = useState<LoadState>(initialLottery ? "loading" : "idle");
   const [statusMessage, setStatusMessage] = useState(
-    initialLottery ? "Carregando resultados..." : "Escolha uma loteria.",
+    initialDrawNumber ? "Consultando concurso..." : initialLottery ? "Carregando dados salvos..." : "Escolha uma loteria.",
   );
   const [lookupMode, setLookupMode] = useState<LookupMode>("numbers");
   const [numberFilter, setNumberFilter] = useState<string[]>([]);
@@ -458,13 +458,12 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
   const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
+  const [isSyncPanelVisible, setIsSyncPanelVisible] = useState(false);
   const [suggestedGames, setSuggestedGames] = useState<SuggestedGame[]>([]);
   const [selectedSuggestedGameKey, setSelectedSuggestedGameKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
-  const syncBaseFromCaixaRef = useRef<(source?: SyncSource) => void>(() => {});
-  const autoSyncStartedRef = useRef(new Set<string>());
 
   const isSyncing = syncInfo.running;
   const latestDraw = draws[0] ?? selectedDraw;
@@ -554,7 +553,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       if (!alreadyLoaded) {
         setStatus("loading");
         setError(null);
-        setStatusMessage(requestedDrawNumber ? `Consultando concurso ${requestedDrawNumber}...` : "Carregando resultados...");
+        setStatusMessage(requestedDrawNumber ? `Consultando concurso ${requestedDrawNumber}...` : "Carregando dados salvos...");
       }
 
       try {
@@ -597,10 +596,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setSelectedSuggestedGameKey(null);
     setError(null);
     setStatus("loading");
-    setStatusMessage("Preparando...");
+    setStatusMessage("Carregando dados salvos...");
     setLookupMode("numbers");
     setNumberFilter([]);
     setCustomAnalysisRange(null);
+    setIsSyncPanelVisible(false);
     setSyncInfo(INITIAL_SYNC_INFO);
     updateLegacyUrl(lottery.slug);
     trackEvent(ANALYTICS_EVENTS.lotterySelected, getLotteryAnalyticsData(lottery));
@@ -773,6 +773,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     const sessionId = syncSessionRef.current + 1;
     syncSessionRef.current = sessionId;
     syncStopRef.current = false;
+    setIsSyncPanelVisible(true);
     setActiveDrawNumber("");
     setDrawNumberInput("");
     setNumberFilter([]);
@@ -860,23 +861,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       syncStopRef.current = false;
     }
   }
-
-  useEffect(() => {
-    syncBaseFromCaixaRef.current = syncBaseFromCaixa;
-  });
-
-  useEffect(() => {
-    if (!selectedLottery || activeDrawNumber.trim() || status === "loading" || status === "error" || syncInfo.running) {
-      return;
-    }
-
-    if (autoSyncStartedRef.current.has(selectedLottery.slug)) {
-      return;
-    }
-
-    autoSyncStartedRef.current.add(selectedLottery.slug);
-    void syncBaseFromCaixaRef.current("auto");
-  }, [activeDrawNumber, selectedLottery, status, syncInfo.running]);
 
   function changeAnalysisPeriod(period: AnalysisPeriod) {
     setAnalysisPeriod(period);
@@ -1025,7 +1009,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   function returnToHome() {
     syncStopRef.current = true;
     syncSessionRef.current += 1;
-    autoSyncStartedRef.current.clear();
     setSelectedLottery(null);
     setDrawNumberInput("");
     setActiveDrawNumber("");
@@ -1039,6 +1022,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setVisibleDrawState({ increment: INITIAL_DRAW_LIST_PAGE_SIZE, key: "", limit: INITIAL_DRAW_LIST_PAGE_SIZE });
     setAnalysisPeriod(25);
     setCustomAnalysisRange(null);
+    setIsSyncPanelVisible(false);
     setAnalysisView("most");
     setDuplaSenaAnalysisScope("all");
     setSyncInfo(INITIAL_SYNC_INFO);
@@ -1137,20 +1121,27 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
             </div>
           </form>
 
-          <div className={`sync-panel ${syncInfo.running ? "running" : ""}`}>
-            <button
-              className="sync-button"
-              disabled={!canSyncFromCaixa || syncInfo.stopRequested}
-              onClick={syncInfo.running ? requestStopSyncFromCaixa : () => syncBaseFromCaixa("manual")}
-              type="button"
-            >
-              {syncInfo.running ? (syncInfo.stopRequested ? "Pausando..." : "Pausar carregamento") : "Carregar resultados"}
-            </button>
-            <div className="sync-latest-result">
-              <span>Último</span>
-              <strong>{latestDraw ? `${latestDraw.drawNumber} · ${formatStatusDate(latestDraw)}` : "nenhum resultado carregado"}</strong>
+          <details className="advanced-sync-panel" open={isSyncPanelVisible || syncInfo.running} onToggle={(event) => setIsSyncPanelVisible(event.currentTarget.open)}>
+            <summary className="advanced-sync-summary">
+              <span>Avançado</span>
+              <strong>Carregamento manual</strong>
+            </summary>
+            <div className={`sync-panel ${syncInfo.running ? "running" : ""}`}>
+              <p>Use apenas para manutenção pontual. O carregamento normal dos resultados deve vir do cron centralizado.</p>
+              <button
+                className="sync-button"
+                disabled={!canSyncFromCaixa || syncInfo.stopRequested}
+                onClick={syncInfo.running ? requestStopSyncFromCaixa : () => syncBaseFromCaixa("manual")}
+                type="button"
+              >
+                {syncInfo.running ? (syncInfo.stopRequested ? "Pausando..." : "Pausar carregamento") : "Carregar resultados"}
+              </button>
+              <div className="sync-latest-result">
+                <span>Último</span>
+                <strong>{latestDraw ? `${latestDraw.drawNumber} · ${formatStatusDate(latestDraw)}` : "nenhum resultado carregado"}</strong>
+              </div>
             </div>
-          </div>
+          </details>
 
           {isChatEnabled ? (
             <ResultsChatPanel
@@ -1203,7 +1194,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
           {status === "loading" ? <LoadingState /> : null}
           {status === "error" ? <ErrorState message={error ?? "Erro ao carregar."} /> : null}
           {status !== "loading" && status !== "error" && draws.length === 0 ? (
-            <NoResultsState isSyncing={isSyncing} onStartSync={() => syncBaseFromCaixa("manual")} />
+            <NoResultsState isSyncing={isSyncing} />
           ) : null}
           {status !== "loading" && status !== "error" && draws.length > 0 ? (
             <>
@@ -1381,16 +1372,15 @@ function EmptyState() {
   );
 }
 
-function NoResultsState({ isSyncing, onStartSync }: { isSyncing: boolean; onStartSync: () => void }) {
+function NoResultsState({ isSyncing }: { isSyncing: boolean }) {
   return (
     <div className="empty-state">
       <strong>{isSyncing ? "Carregando concursos" : "Nenhum resultado salvo"}</strong>
-      <p>{isSyncing ? "Os resultados aparecerão aqui conforme forem salvos." : "Sincronize para carregar os resultados."}</p>
-      {!isSyncing ? (
-        <button className="empty-action" onClick={onStartSync} type="button">
-          Sincronizar agora
-        </button>
-      ) : null}
+      <p>
+        {isSyncing
+          ? "Os resultados aparecerão aqui conforme forem salvos."
+          : "Quando o cron centralizado salvar concursos desta loteria, eles aparecerão aqui automaticamente."}
+      </p>
     </div>
   );
 }

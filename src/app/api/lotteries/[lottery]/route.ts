@@ -108,7 +108,7 @@ async function handleGet(request: Request, lotteryParam: string, startedAt: numb
     });
   }
 
-  const shouldCollect = url.searchParams.get("collect") !== "false";
+  const shouldCollect = url.searchParams.get("collect") === "true";
   logApi("GET:history-database-only", { lottery: lottery.slug, shouldCollect });
   const collection = shouldCollect ? await collectMissingDraws(lottery.slug) : null;
   const history = collection?.draws ?? (await loadLotteryHistory(lottery.slug));

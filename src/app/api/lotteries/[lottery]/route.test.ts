@@ -113,9 +113,8 @@ describe("lottery route handlers", () => {
     expect(serviceMocks.getStoredDraw).not.toHaveBeenCalled();
   });
 
-  it("returns history JSON and uses collectMissingDraws by default", async () => {
-    const history = [draw(2), draw(1)];
-    serviceMocks.collectMissingDraws.mockResolvedValueOnce({ draws: history, hasMore: false, nextDrawNumber: 3 });
+  it("loads history from database by default without collecting missing draws", async () => {
+    serviceMocks.loadLotteryHistory.mockResolvedValueOnce([draw(2), draw(1)]);
     const route = await import("@/app/api/lotteries/[lottery]/route");
 
     const response = await route.GET(new Request("http://localhost/api/lotteries/MegaSena"), {
@@ -124,10 +123,28 @@ describe("lottery route handlers", () => {
     const payload = await readJson(response);
 
     expect(response.status).toBe(200);
-    expect(serviceMocks.collectMissingDraws).toHaveBeenCalledWith("MegaSena");
-    expect(serviceMocks.loadLotteryHistory).not.toHaveBeenCalled();
+    expect(serviceMocks.collectMissingDraws).not.toHaveBeenCalled();
+    expect(serviceMocks.loadLotteryHistory).toHaveBeenCalledWith("MegaSena");
+    expect(payload.collection).toBeNull();
     expect(payload.draws).toHaveLength(2);
     expect(payload.text).toContain("00002 | 01/01/2026");
+  });
+
+  it("can explicitly collect missing draws from GET history", async () => {
+    const history = [draw(2), draw(1)];
+    serviceMocks.collectMissingDraws.mockResolvedValueOnce({ draws: history, hasMore: false, nextDrawNumber: 3 });
+    const route = await import("@/app/api/lotteries/[lottery]/route");
+
+    const response = await route.GET(new Request("http://localhost/api/lotteries/MegaSena?collect=true"), {
+      params: Promise.resolve({ lottery: "MegaSena" }),
+    });
+    const payload = await readJson(response);
+
+    expect(response.status).toBe(200);
+    expect(serviceMocks.collectMissingDraws).toHaveBeenCalledWith("MegaSena");
+    expect(serviceMocks.loadLotteryHistory).not.toHaveBeenCalled();
+    expect(payload.collection).toMatchObject({ hasMore: false, nextDrawNumber: 3 });
+    expect(payload.draws).toHaveLength(2);
   });
 
   it("can skip collection and load history only", async () => {
@@ -146,7 +163,7 @@ describe("lottery route handlers", () => {
   });
 
   it("returns legacy text for history", async () => {
-    serviceMocks.collectMissingDraws.mockResolvedValueOnce({ draws: [draw(2), draw(1)], hasMore: false, nextDrawNumber: 3 });
+    serviceMocks.loadLotteryHistory.mockResolvedValueOnce([draw(2), draw(1)]);
     const route = await import("@/app/api/lotteries/[lottery]/route");
 
     const response = await route.GET(new Request("http://localhost/api/lotteries/MegaSena?format=legacy"), {
@@ -154,6 +171,8 @@ describe("lottery route handlers", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(serviceMocks.collectMissingDraws).not.toHaveBeenCalled();
+    expect(serviceMocks.loadLotteryHistory).toHaveBeenCalledWith("MegaSena");
     expect(response.headers.get("content-type")).toContain("text/plain");
     expect(await response.text()).toContain("00002 | 01/01/2026");
   });
@@ -323,7 +342,7 @@ describe("lottery route handlers", () => {
   });
 
   it("returns a JSON error when GET service throws", async () => {
-    serviceMocks.collectMissingDraws.mockRejectedValueOnce(new Error("database unavailable"));
+    serviceMocks.loadLotteryHistory.mockRejectedValueOnce(new Error("database unavailable"));
     const route = await import("@/app/api/lotteries/[lottery]/route");
 
     const response = await route.GET(new Request("http://localhost/api/lotteries/MegaSena"), {

@@ -6,7 +6,7 @@ Aplicação Next.js para consultar resultados das Loterias da Caixa, persistir c
 
 - Consulta das loterias suportadas: Mega Sena, Lotofácil, Quina, Lotomania, Dupla Sena, Timemania e Dia de Sorte.
 - Persistência dos concursos em PostgreSQL.
-- Sincronização incremental com a API pública das Loterias da Caixa, com botão para carregar/pausar resultados.
+- Sincronização incremental com a API pública das Loterias da Caixa por cron centralizado, com opção manual avançada para carregar/pausar resultados quando necessário.
 - Consulta por número de concurso.
 - Filtro por números: exibe concursos que contenham todos os números informados.
 - Lista de resultados otimizada: começa com 25 concursos e o botão "Ver mais resultados" carrega blocos cada vez maiores, em sequência 50, 100, 200 e 400.
@@ -14,10 +14,10 @@ Aplicação Next.js para consultar resultados das Loterias da Caixa, persistir c
 - Análise específica da Dupla Sena por todos os sorteios, 1º sorteio ou 2º sorteio.
 - Visões da análise rápida:
   - Mais sorteados.
-  - Calor recente: mapa de calor ponderado por recorrência recente; o último concurso vale 1 ponto, o anterior 0,9 e os anteriores valem progressivamente menos.
-  - Mapa: mapa de calor por frequência simples.
   - Menos sorteados.
   - Atrasados.
+  - Calor frequente: mapa de calor por frequência simples de aparições.
+  - Calor recente: mapa de calor ponderado por recorrência recente; o último concurso vale 1 ponto, o anterior 0,9 e os anteriores valem progressivamente menos.
 - Sugestões "Estou com sorte" baseadas na visão ativa da análise rápida, sem garantia estatística.
 - Página raw em `/raw/[loteria]`, com opção de consultar concurso via `?draw=NUMERO`.
 - Página 404 personalizada com identidade visual do site.
@@ -162,6 +162,7 @@ O `wrangler.jsonc` usa `keep_vars: true`, então variáveis e secrets configurad
 | `HYPERDRIVE_CONNECTION_STRING` | Opcional | Opcional | Connection string quando usar Cloudflare Hyperdrive sem binding. |
 | `NEXT_RUNTIME_PROVIDER` | Opcional | `cloudflare` | Marca o runtime Cloudflare para ajustes seguros de pool. |
 | `OFFICIAL_DOMAIN_NAME` | Opcional | Recomendada | Domínio canônico sem protocolo, caminho ou porta, por exemplo `luckygames.tips`. Quando vazio ou inválido, não redireciona domínios alternativos. |
+| `SYNC_CRON_SECRET` | Opcional | Secret recomendado | Segredo exigido pelo endpoint GET de sincronização centralizada. Sem ele, o endpoint retorna `503`. |
 | `NEXT_PUBLIC_APP_VERSION` | Opcional em build time | Opcional em build time | Versão pública usada em saídas textuais. Padrão interno: `v1.3.x`. |
 | `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | Opcional em build time | Opcional em build time | URL pública do script Umami usado para analytics. |
 | `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | Opcional em build time | Opcional em build time | Identificador do site no Umami. |
@@ -182,6 +183,7 @@ Observações:
 - `POSTGRES_PASSWORD` precisa existir como secret no Worker quando a conexão usa `POSTGRES_*`. Se faltar, a API retorna erro de configuração antes de tentar conectar no banco.
 - `OPENAI_API_KEY` deve ser secret no Worker. Sem `OPENAI_API_KEY` e `OPENAI_CHAT_MODEL`, o chat não aparece para o usuário.
 - `OFFICIAL_DOMAIN_NAME` deve ser apenas domínio, como `luckygames.tips`. Não use `https://`, `/`, porta ou path.
+- `SYNC_CRON_SECRET` deve ser configurado como secret se você pretende usar o endpoint GET de sincronização por cron.
 
 ## Exemplo de `.env` para localhost
 
@@ -204,6 +206,7 @@ POSTGRES_POOL_MAX_USES=
 HYPERDRIVE_CONNECTION_STRING=
 NEXT_RUNTIME_PROVIDER=
 OFFICIAL_DOMAIN_NAME=
+SYNC_CRON_SECRET=
 
 NEXT_PUBLIC_APP_VERSION=v2.0.0
 NEXT_PUBLIC_UMAMI_SCRIPT_URL=
@@ -243,16 +246,68 @@ Para produção no Cloudflare Workers, rode a migração a partir de uma máquin
 
 ## Sincronização dos resultados
 
-A sincronização incremental com a API das Loterias da Caixa é pública e roda em lotes pequenos. Ela pode ser iniciada pela interface quando o usuário carrega uma loteria.
+A interface não sincroniza mais concursos automaticamente com a API da Caixa ao abrir ou selecionar uma loteria. Ela apenas carrega do banco os dados já salvos. O quadro **Carregar resultados** continua existindo, mas fica oculto por padrão em uma área avançada de manutenção.
+
+A estratégia recomendada é sincronizar de forma centralizada por cron, por exemplo no Cronicle, para evitar que vários usuários disparem consultas iguais à API da Caixa.
 
 Proteções atuais:
 
-- rate limit simples por IP e loteria;
-- validação de body JSON;
-- lote pequeno por chamada;
-- lock em memória por loteria para evitar duas sincronizações iguais no mesmo processo.
+- rate limit simples por IP e loteria no endpoint `POST` usado pela interface;
+- validação de body JSON no endpoint `POST`;
+- lote pequeno por chamada na interface;
+- lock em memória por loteria para evitar duas sincronizações iguais no mesmo processo;
+- endpoint `GET` de cron protegido por `SYNC_CRON_SECRET`.
 
 A API aceita apenas a ação pública `sync-caixa` para carregar resultados faltantes. Não há endpoint público para sobrescrever manualmente um concurso específico.
+
+### URLs úteis de API
+
+| Uso | Método e path | Observações |
+| --- | --- | --- |
+| Histórico salvo | `GET /api/lotteries/{loteria}` | Retorna somente concursos já salvos no banco. Não consulta a Caixa por padrão. |
+| Concurso específico | `GET /api/lotteries/{loteria}?draw={numero}` | Consulta um concurso específico e retorna JSON. |
+| Texto puro/Download | `GET /raw/{loteria}` | Página textual com botão de download. Aceita `?draw={numero}`. |
+| Sincronização por cron | `GET /api/lotteries/{loteria}/sync` | Protegido por `SYNC_CRON_SECRET`. Recomendado para Cronicle. |
+| Sincronização manual da interface | `POST /api/lotteries/{loteria}` | Usado internamente pela área avançada **Carregar resultados**. |
+
+Use `{loteria}` com os slugs suportados, por exemplo: `MegaSena`, `LotoFacil`, `Quina`, `LotoMania`, `DuplaSena`, `TimeMania` ou `DiaDeSorte`.
+
+### Endpoint GET para cron
+
+Para sincronizar uma loteria por uma ferramenta externa, como Cronicle, use:
+
+```text
+GET /api/lotteries/{loteria}/sync
+```
+
+Exemplo recomendado com header:
+
+```bash
+curl -H "Authorization: Bearer $SYNC_CRON_SECRET" "https://luckygames.tips/api/lotteries/MegaSena/sync?batchSize=25"
+```
+
+Também é aceito o header `x-sync-cron-secret`. Como fallback para ferramentas que só permitem URL, dá para usar `?token=...`, mas prefira header para não registrar o segredo em logs de URL.
+
+Parâmetros opcionais:
+
+- `batchSize`: quantidade de concursos tentados por chamada, de `1` a `25`. Padrão: `25`.
+- `startAt`: concurso inicial para procurar faltantes. Quando omitido, o app procura o próximo concurso faltante a partir do banco.
+
+A resposta JSON traz `sync.hasMore`, `sync.nextDrawNumber` e `nextUrl`. Se quiser avançar mais concursos no mesmo agendamento, chame novamente usando `nextUrl` enquanto `sync.hasMore` for `true`.
+
+Exemplo de fluxo para o Cronicle:
+
+1. Configure `SYNC_CRON_SECRET` como secret no Worker.
+2. Crie um job por loteria, ou um job que percorra os slugs suportados.
+3. Chame `GET /api/lotteries/{loteria}/sync?batchSize=25` com header `Authorization: Bearer ...`.
+4. Se a resposta tiver `sync.hasMore: true`, chame novamente usando `nextUrl` até o lote planejado terminar.
+5. Mantenha intervalos razoáveis entre execuções para não pressionar a API pública da Caixa.
+
+### Sincronização manual no app
+
+A área **Carregar resultados** fica escondida por padrão em **Avançado > Carregamento manual**. Ela continua útil para manutenção pontual, testes locais ou correção manual, mas não deve ser o fluxo principal dos visitantes.
+
+O botão manual usa o endpoint `POST /api/lotteries/{loteria}` em lotes pequenos e pode ser pausado pela interface.
 
 ## Analytics com Umami
 
@@ -337,6 +392,12 @@ Se o chat for usado, configure também:
 
 ```text
 OPENAI_API_KEY
+```
+
+Se o cron centralizado for usado, configure também:
+
+```text
+SYNC_CRON_SECRET
 ```
 
 As variáveis não secretas principais já estão versionadas em `wrangler.jsonc`, incluindo:

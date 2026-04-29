@@ -26,6 +26,10 @@ export function getServerEnvValue(name: string): string | undefined {
   return typeof cloudflareValue === "string" ? cloudflareValue : undefined;
 }
 
+export function getCronSyncSecret(): string | undefined {
+  return getServerEnvValue("SYNC_CRON_SECRET")?.trim() || undefined;
+}
+
 type OpenAIChatConfig = {
   apiKey: string;
   model: string;
