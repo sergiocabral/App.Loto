@@ -1132,41 +1132,32 @@ button {
 }
 
 .results-sync-trigger {
-  align-items: center;
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px solid rgba(125, 211, 252, 0.16);
-  border-radius: 999px;
-  color: var(--muted-strong);
-  cursor: pointer;
-  display: inline-flex;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  cursor: default;
+  display: inline;
   font: inherit;
   font-size: 13px;
-  font-weight: 800;
-  min-height: 32px;
-  padding: 6px 12px;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
+  font-weight: 600;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
 }
 
 .results-sync-trigger:not(:disabled):hover {
-  background: rgba(56, 189, 248, 0.14);
-  border-color: rgba(125, 211, 252, 0.3);
-  color: var(--text);
-  transform: translateY(-1px);
+  color: var(--muted);
 }
 
 .results-sync-trigger.running {
-  background: rgba(251, 191, 36, 0.12);
-  border-color: rgba(251, 191, 36, 0.26);
   color: var(--warning);
 }
 
 .results-sync-trigger:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
+  cursor: default;
+  opacity: 1;
 }
 
 .results-list-heading strong {

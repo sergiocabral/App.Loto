@@ -1214,7 +1214,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                       title={syncInfo.running ? "Pausar carregamento" : "Carregar resultados manualmente"}
                       type="button"
                     >
-                      {syncInfo.running ? (syncInfo.stopRequested ? "Pausando..." : "Pausar resultados") : "Resultados"}
+                      {syncInfo.running ? (syncInfo.stopRequested ? "Interrompendo carregamento..." : "Carregando resultados...") : "Resultados"}
                     </button>
                     <strong>
                       {filteredDraws.length} concurso{filteredDraws.length === 1 ? "" : "s"}
