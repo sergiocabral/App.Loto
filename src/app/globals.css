@@ -587,7 +587,6 @@ button {
 .lookup-row button,
 .lookup-buttons button,
 .lookup-actions button,
-.sync-button,
 .empty-action {
   align-items: center;
   background: linear-gradient(135deg, var(--primary), var(--accent));
@@ -619,140 +618,6 @@ button {
   background: rgba(56, 189, 248, 0.16);
   border-color: var(--border-strong);
   color: var(--text);
-}
-
-.advanced-sync-panel {
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 18px;
-  overflow: hidden;
-}
-
-.advanced-sync-panel[open] {
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.advanced-sync-summary {
-  align-items: center;
-  color: var(--muted-strong);
-  cursor: pointer;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  list-style: none;
-  min-height: 44px;
-  padding: 10px 12px;
-}
-
-.advanced-sync-summary::-webkit-details-marker {
-  display: none;
-}
-
-.advanced-sync-summary::after {
-  align-items: center;
-  background: rgba(148, 163, 184, 0.08);
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 999px;
-  color: var(--primary);
-  content: '+';
-  display: inline-flex;
-  font-size: 16px;
-  font-weight: 900;
-  height: 26px;
-  justify-content: center;
-  line-height: 1;
-  width: 26px;
-}
-
-.advanced-sync-panel[open] .advanced-sync-summary::after {
-  content: '−';
-}
-
-.advanced-sync-summary span {
-  color: var(--primary);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.advanced-sync-summary strong {
-  color: var(--muted-strong);
-  font-size: 13px;
-  font-weight: 850;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.advanced-sync-summary:hover strong,
-.advanced-sync-panel[open] .advanced-sync-summary strong {
-  color: var(--text);
-}
-
-.sync-panel {
-  background: rgba(2, 6, 23, 0.28);
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-}
-
-.sync-panel.running {
-  border-color: rgba(251, 191, 36, 0.34);
-}
-
-.sync-button {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.9), rgba(167, 139, 250, 0.88));
-  border: 1px solid var(--border-strong);
-  border-radius: 16px;
-  color: #020617;
-  font-size: 14px;
-  font-weight: 900;
-  min-height: 48px;
-  padding: 13px 16px;
-  width: 100%;
-}
-
-.sync-panel.running .sync-button {
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.92), rgba(251, 113, 133, 0.88));
-  border-color: rgba(251, 191, 36, 0.42);
-}
-
-.sync-latest-result {
-  align-items: center;
-  background: rgba(2, 6, 23, 0.32);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  min-width: 0;
-  padding: 10px 12px;
-}
-
-.sync-latest-result span {
-  color: var(--muted);
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.sync-latest-result strong {
-  color: var(--text);
-  font-size: 14px;
-  min-width: 0;
-  overflow: hidden;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sync-panel p {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .results-chat-panel {
@@ -1264,6 +1129,44 @@ button {
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 0;
+}
+
+.results-sync-trigger {
+  align-items: center;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 999px;
+  color: var(--muted-strong);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  min-height: 32px;
+  padding: 6px 12px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.results-sync-trigger:not(:disabled):hover {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(125, 211, 252, 0.3);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.results-sync-trigger.running {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.26);
+  color: var(--warning);
+}
+
+.results-sync-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .results-list-heading strong {
@@ -2369,19 +2272,6 @@ button {
   .lookup-row,
   .draw-row,
   .loading-state {
-    grid-template-columns: 1fr;
-  }
-
-  .sync-panel-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .sync-button {
-    width: 100%;
-  }
-
-  .sync-progress-grid {
     grid-template-columns: 1fr;
   }
 

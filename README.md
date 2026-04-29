@@ -305,9 +305,9 @@ Exemplo de fluxo para o Cronicle:
 
 ### Sincronização manual no app
 
-A área **Carregar resultados** fica escondida por padrão em **Avançado > Carregamento manual**. Ela continua útil para manutenção pontual, testes locais ou correção manual, mas não deve ser o fluxo principal dos visitantes.
+A sincronização manual continua disponível para manutenção pontual, testes locais ou correção manual, mas não aparece mais como um quadro próprio na interface.
 
-O botão manual usa o endpoint `POST /api/lotteries/{loteria}` em lotes pequenos e pode ser pausado pela interface.
+Para acionar pelo app, clique no título discreto **Resultados** acima da lista de concursos. Durante a sincronização, o mesmo controle muda para pausar o carregamento. Esse fluxo usa `POST /api/lotteries/{loteria}` em lotes pequenos e não deve ser o caminho principal dos visitantes.
 
 ## Analytics com Umami
 
