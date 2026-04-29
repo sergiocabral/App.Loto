@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   ANALYSIS_PERIOD_OPTIONS,
   ANALYSIS_VIEW_OPTIONS,
@@ -83,6 +84,8 @@ type SyncInfo = {
   skippedInBatch: number;
   stopReason: string | null;
 };
+
+type SyncSource = "auto" | "manual";
 
 type LotteryApiPayload = {
   lottery: string;
@@ -288,6 +291,37 @@ function getSuggestionSourceLabel(view: AnalysisView, data: AnalysisData): strin
   return `${getAnalysisViewLabel(view)} · ${data.periodLabel}${data.scopeLabel === "Todos os sorteios" ? "" : ` · ${data.scopeLabel}`}`;
 }
 
+function getLotteryAnalyticsData(lottery: LotteryDefinition) {
+  return {
+    lottery: lottery.slug,
+    numbersPerDraw: lottery.numbersPerDraw,
+    totalNumbers: lottery.countNumbers,
+  };
+}
+
+function getPeriodAnalyticsValue(period: AnalysisPeriod): string | number {
+  return period === "all" ? "ajustar" : period;
+}
+
+function getAnalysisAnalyticsData(
+  lottery: LotteryDefinition,
+  view: AnalysisView,
+  period: AnalysisPeriod,
+  data: AnalysisData | null,
+  scope: DuplaSenaAnalysisScope,
+) {
+  return {
+    ...getLotteryAnalyticsData(lottery),
+    analysisView: view,
+    analysisViewLabel: getAnalysisViewLabel(view),
+    drawCount: data?.drawCount ?? 0,
+    period: getPeriodAnalyticsValue(period),
+    periodLabel: data?.periodLabel ?? String(getPeriodAnalyticsValue(period)),
+    scope,
+    scopeLabel: data?.scopeLabel ?? "",
+  };
+}
+
 function getGroupedNumbersClipboardText(groups: string[][]): string {
   if (groups.length <= 1) {
     return (groups[0] ?? []).join(" ");
@@ -429,7 +463,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
-  const syncBaseFromCaixaRef = useRef<() => void>(() => {});
+  const syncBaseFromCaixaRef = useRef<(source?: SyncSource) => void>(() => {});
   const autoSyncStartedRef = useRef(new Set<string>());
 
   const isSyncing = syncInfo.running;
@@ -569,6 +603,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setCustomAnalysisRange(null);
     setSyncInfo(INITIAL_SYNC_INFO);
     updateLegacyUrl(lottery.slug);
+    trackEvent(ANALYTICS_EVENTS.lotterySelected, getLotteryAnalyticsData(lottery));
   }
 
   function submitDrawLookup(event: React.FormEvent<HTMLFormElement>) {
@@ -594,12 +629,22 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       setActiveDrawNumber("");
       updateLegacyUrl(selectedLottery.slug);
       setStatusMessage(`Filtro aplicado: ${parsedNumbers.join(", ")}.`);
+      trackEvent(ANALYTICS_EVENTS.searchedNumbers, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        count: parsedNumbers.length,
+      });
       return;
     }
 
     setNumberFilter([]);
     setActiveDrawNumber(trimmed);
     updateLegacyUrl(selectedLottery.slug, trimmed || undefined);
+    if (lookupMode === "draw" && trimmed) {
+      trackEvent(ANALYTICS_EVENTS.searchedDraw, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        hasDrawNumber: true,
+      });
+    }
   }
 
   function changeLookupMode(mode: LookupMode) {
@@ -622,25 +667,42 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     if (selectedLottery) {
       updateLegacyUrl(selectedLottery.slug);
       setStatusMessage(getHistoryStatusMessage(draws));
+      trackEvent(ANALYTICS_EVENTS.clearedFilter, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        mode: lookupMode,
+      });
     }
   }
 
   function loadMoreDraws() {
-    setVisibleDrawState((current) => {
-      const currentLimit = current.key === drawListKey ? current.limit : INITIAL_DRAW_LIST_PAGE_SIZE;
-      const currentIncrement = current.key === drawListKey ? current.increment : INITIAL_DRAW_LIST_PAGE_SIZE;
-      const nextIncrement = Math.min(currentIncrement * 2, MAX_DRAW_LIST_INCREMENT);
+    const currentLimit = visibleDrawState.key === drawListKey ? visibleDrawState.limit : INITIAL_DRAW_LIST_PAGE_SIZE;
+    const currentIncrement = visibleDrawState.key === drawListKey ? visibleDrawState.increment : INITIAL_DRAW_LIST_PAGE_SIZE;
+    const nextIncrement = Math.min(currentIncrement * 2, MAX_DRAW_LIST_INCREMENT);
 
-      return {
-        increment: nextIncrement,
-        key: drawListKey,
-        limit: currentLimit + nextIncrement,
-      };
+    setVisibleDrawState({
+      increment: nextIncrement,
+      key: drawListKey,
+      limit: currentLimit + nextIncrement,
     });
+
+    if (selectedLottery) {
+      trackEvent(ANALYTICS_EVENTS.loadMoreDraws, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        currentVisibleCount: currentLimit,
+        nextIncrement,
+        totalCount: filteredDraws.length,
+      });
+    }
   }
 
   function requestStopSyncFromCaixa() {
     syncStopRef.current = true;
+    if (selectedLottery) {
+      trackEvent(ANALYTICS_EVENTS.syncPaused, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        totalStoredDraws: syncInfo.totalStoredDraws,
+      });
+    }
     setSyncInfo((current) => ({
       ...current,
       stopRequested: true,
@@ -702,7 +764,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     return payload.sync;
   }
 
-  async function syncBaseFromCaixa() {
+  async function syncBaseFromCaixa(source: SyncSource = "manual") {
     if (!selectedLottery || syncInfo.running) {
       return;
     }
@@ -725,12 +787,19 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       message: "Iniciando...",
       totalStoredDraws: drawCount,
     });
+    trackEvent(ANALYTICS_EVENTS.syncStarted, {
+      ...getLotteryAnalyticsData(lottery),
+      source,
+      totalStoredDraws: drawCount,
+    });
 
+    let lastTotalStoredDraws = drawCount;
     let nextStart: number | undefined = undefined;
 
     try {
       while (!syncStopRef.current && syncSessionRef.current === sessionId) {
         const sync = await runSyncBatch(lottery, sessionId, nextStart);
+        lastTotalStoredDraws = sync.totalStoredDraws || lastTotalStoredDraws;
         nextStart = sync.nextDrawNumber ?? undefined;
 
         if (!sync.hasMore || !sync.nextDrawNumber || sync.stopReason !== "batch_completed") {
@@ -757,6 +826,13 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
           ? "Sincronização pausada."
           : "Resultados atualizados.",
       );
+      if (!stoppedByUser) {
+        trackEvent(ANALYTICS_EVENTS.syncFinished, {
+          ...getLotteryAnalyticsData(lottery),
+          source,
+          totalStoredDraws: lastTotalStoredDraws,
+        });
+      }
     } catch (syncError) {
       if (syncSessionRef.current !== sessionId) {
         return;
@@ -775,6 +851,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
         stopReason: "error",
         message,
       }));
+      trackEvent(ANALYTICS_EVENTS.syncFailed, {
+        ...getLotteryAnalyticsData(lottery),
+        hasVisibleDraws: Boolean(hasVisibleDraws),
+        source,
+      });
     } finally {
       syncStopRef.current = false;
     }
@@ -794,22 +875,27 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     }
 
     autoSyncStartedRef.current.add(selectedLottery.slug);
-    void syncBaseFromCaixaRef.current();
+    void syncBaseFromCaixaRef.current("auto");
   }, [activeDrawNumber, selectedLottery, status, syncInfo.running]);
 
   function changeAnalysisPeriod(period: AnalysisPeriod) {
     setAnalysisPeriod(period);
+    if (selectedLottery) {
+      trackEvent(
+        ANALYTICS_EVENTS.updatedAnalysisPeriod,
+        getAnalysisAnalyticsData(selectedLottery, analysisView, period, analysisData, duplaSenaAnalysisScope),
+      );
+    }
   }
 
   function changeCustomAnalysisRange(nextRange: AnalysisDrawRange) {
-    setCustomAnalysisRange((current) => {
-      const maximum = availableAnalysisDrawCount;
-      const currentRange = current ?? { end: maximum, start: 1 };
-      const start = Number.isFinite(nextRange.start) ? Math.round(nextRange.start) : currentRange.start;
-      const end = Number.isFinite(nextRange.end) ? Math.round(nextRange.end) : currentRange.end;
-      const normalizedStart = Math.min(Math.max(start, 1), maximum);
-      const normalizedEnd = Math.min(Math.max(end, 1), maximum);
-
+    const maximum = availableAnalysisDrawCount;
+    const currentRange = customAnalysisRange ?? { end: maximum, start: 1 };
+    const start = Number.isFinite(nextRange.start) ? Math.round(nextRange.start) : currentRange.start;
+    const end = Number.isFinite(nextRange.end) ? Math.round(nextRange.end) : currentRange.end;
+    const normalizedStart = Math.min(Math.max(start, 1), maximum);
+    const normalizedEnd = Math.min(Math.max(end, 1), maximum);
+    const trackedRange = (() => {
       if (maximum <= 1) {
         return { end: 1, start: 1 };
       }
@@ -821,15 +907,36 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       }
 
       return { end: normalizedEnd, start: normalizedStart };
-    });
+    })();
+
+    setCustomAnalysisRange(trackedRange);
+
+    if (selectedLottery) {
+      trackEvent(ANALYTICS_EVENTS.updatedAnalysisRange, {
+        ...getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+        selectedCount: Math.max(1, trackedRange.end - trackedRange.start + 1),
+      });
+    }
   }
 
   function changeAnalysisView(view: AnalysisView) {
     setAnalysisView(view);
+    if (selectedLottery) {
+      trackEvent(
+        ANALYTICS_EVENTS.updatedAnalysisView,
+        getAnalysisAnalyticsData(selectedLottery, view, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+      );
+    }
   }
 
   function changeDuplaSenaAnalysisScope(scope: DuplaSenaAnalysisScope) {
     setDuplaSenaAnalysisScope(scope);
+    if (selectedLottery) {
+      trackEvent(
+        ANALYTICS_EVENTS.updatedAnalysisScope,
+        getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, scope),
+      );
+    }
   }
 
   function generateLuckySuggestion() {
@@ -863,6 +970,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     ]);
     setSelectedSuggestedGameKey(null);
     setStatusMessage("Nova sugestão adicionada.");
+    trackEvent(ANALYTICS_EVENTS.generatedSuggestion, {
+      ...getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+      suggestionSize: numbers.length,
+      variantIndex,
+    });
   }
 
   function clearSuggestedGames() {
@@ -885,11 +997,25 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   function selectDrawAndCopy(draw: Draw) {
     setSelectedDraw(draw);
     void copySelectionToClipboard(getDrawClipboardText(draw), `Números do concurso ${draw.drawNumber} copiados.`);
+    if (selectedLottery) {
+      trackEvent(ANALYTICS_EVENTS.copyDraw, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        drawNumber: draw.drawNumber,
+        grouped: getDisplayGroups(draw).length > 1,
+      });
+    }
   }
 
   function selectSuggestedGame(game: SuggestedGame) {
     setSelectedSuggestedGameKey(getSuggestedGameKey(game));
     void copySelectionToClipboard(game.numbers.join(" "), "Sugestão copiada.");
+    if (selectedLottery) {
+      trackEvent(ANALYTICS_EVENTS.copySuggestion, {
+        ...getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+        suggestionSize: game.numbers.length,
+        variantIndex: game.variantIndex,
+      });
+    }
   }
 
   function returnToHome() {
@@ -1007,7 +1133,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
             <button
               className="sync-button"
               disabled={!canSyncFromCaixa || syncInfo.stopRequested}
-              onClick={syncInfo.running ? requestStopSyncFromCaixa : syncBaseFromCaixa}
+              onClick={syncInfo.running ? requestStopSyncFromCaixa : () => syncBaseFromCaixa("manual")}
               type="button"
             >
               {syncInfo.running ? (syncInfo.stopRequested ? "Pausando..." : "Pausar carregamento") : "Carregar resultados"}
@@ -1047,7 +1173,20 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
               {statusMessage ? <p className={`status-badge ${status}`}>{statusMessage}</p> : null}
             </div>
             <div className="results-actions">
-              <a className="legacy-link results-link" href={legacyHref} rel="noreferrer" target="_blank">
+              <a
+                className="legacy-link results-link"
+                href={legacyHref}
+                onClick={() => {
+                  if (selectedLottery) {
+                    trackEvent(ANALYTICS_EVENTS.openRawResults, {
+                      ...getLotteryAnalyticsData(selectedLottery),
+                      hasDrawNumber: Boolean(activeDrawNumber.trim()),
+                    });
+                  }
+                }}
+                rel="noreferrer"
+                target="_blank"
+              >
                 Ver todos os sorteios
               </a>
             </div>
@@ -1056,7 +1195,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
           {status === "loading" ? <LoadingState /> : null}
           {status === "error" ? <ErrorState message={error ?? "Erro ao carregar."} /> : null}
           {status !== "loading" && status !== "error" && draws.length === 0 ? (
-            <NoResultsState isSyncing={isSyncing} onStartSync={syncBaseFromCaixa} />
+            <NoResultsState isSyncing={isSyncing} onStartSync={() => syncBaseFromCaixa("manual")} />
           ) : null}
           {status !== "loading" && status !== "error" && draws.length > 0 ? (
             <>

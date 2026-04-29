@@ -2,6 +2,7 @@
 
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { LotteryDefinition } from "@/data/lotteries";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { DEFAULT_CHAT_SUGGESTIONS, type ChatSuggestion } from "@/lib/chatSuggestions";
 import { getDisplayGroups, type AnalysisData } from "@/lib/analysis";
 import type { Draw } from "@/lib/types";
@@ -202,6 +203,37 @@ function buildContextCardText(
   }
 
   return `${contextLabel} · ${parts.join(" · ")}`;
+}
+
+function getChatAnalyticsData({
+  activeDrawNumber,
+  analysisSummary,
+  contextDrawCount,
+  contextDrawsSent,
+  contextLabel,
+  lottery,
+  numberFilter,
+}: {
+  activeDrawNumber: string;
+  analysisSummary: ChatAnalysisSummary | null;
+  contextDrawCount: number;
+  contextDrawsSent: number;
+  contextLabel: string;
+  lottery: LotteryDefinition;
+  numberFilter: string[];
+}) {
+  return {
+    analysisViewLabel: analysisSummary?.viewLabel ?? "",
+    contextDrawCount,
+    contextDrawsSent,
+    contextLabel,
+    hasDrawNumber: Boolean(activeDrawNumber.trim()),
+    hasNumberFilter: numberFilter.length > 0,
+    lottery: lottery.slug,
+    numberFilterCount: numberFilter.length,
+    numbersPerDraw: lottery.numbersPerDraw,
+    totalNumbers: lottery.countNumbers,
+  };
 }
 
 type MarkdownBlock =
@@ -412,6 +444,18 @@ function ResultsChatPanelSession({
   const [chatError, setChatError] = useState<ChatError | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
 
+  function getCurrentChatAnalyticsData() {
+    return getChatAnalyticsData({
+      activeDrawNumber,
+      analysisSummary,
+      contextDrawCount,
+      contextDrawsSent: contextDraws.length,
+      contextLabel,
+      lottery,
+      numberFilter,
+    });
+  }
+
   useEffect(() => {
     let isMounted = true;
 
@@ -453,8 +497,9 @@ function ResultsChatPanelSession({
       return;
     }
 
+    const matchedSuggestion = suggestions.find((suggestion) => suggestion.message === question);
     const requestContextKey = contextKey;
-    const promptForModel = resolvePromptForSubmission(question);
+    const promptForModel = matchedSuggestion?.prompt ?? question;
     const userMessage = createMessage("user", question, requestContextKey);
     const apiUserMessage = createMessage("user", promptForModel, requestContextKey);
     const nextMessages = [...messages, userMessage];
@@ -467,6 +512,11 @@ function ResultsChatPanelSession({
     setInput("");
     setChatError(null);
     setIsSending(true);
+    trackEvent(ANALYTICS_EVENTS.chatQuestionSent, {
+      ...getCurrentChatAnalyticsData(),
+      questionLength: question.length,
+      source: matchedSuggestion ? "suggestion" : "manual",
+    });
 
     try {
       const response = await fetch("/api/chat", {
@@ -496,10 +546,15 @@ function ResultsChatPanelSession({
         throw new Error(payload.error || `Falha HTTP ${response.status}`);
       }
 
+      const reply = payload.reply || "Não recebi uma resposta do Chat GPT agora.";
       setMessages((current) => [
         ...current,
-        createMessage("assistant", payload.reply || "Não recebi uma resposta do Chat GPT agora.", requestContextKey),
+        createMessage("assistant", reply, requestContextKey),
       ]);
+      trackEvent(ANALYTICS_EVENTS.chatAnswerReceived, {
+        ...getCurrentChatAnalyticsData(),
+        replyLength: reply.length,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não consegui conversar com o Chat GPT agora.";
       setChatError({ contextKey: requestContextKey, message });
@@ -507,6 +562,10 @@ function ResultsChatPanelSession({
         ...current,
         createMessage("assistant", "Não consegui responder agora. Tente novamente em instantes ou ajuste o filtro de resultados.", requestContextKey),
       ]);
+      trackEvent(ANALYTICS_EVENTS.chatFailed, {
+        ...getCurrentChatAnalyticsData(),
+        source: matchedSuggestion ? "suggestion" : "manual",
+      });
     } finally {
       setIsSending(false);
     }
@@ -518,14 +577,26 @@ function ResultsChatPanelSession({
     }
 
     setInput(suggestion.message);
-  }
-
-  function resolvePromptForSubmission(question: string): string {
-    return suggestions.find((suggestion) => suggestion.message === question)?.prompt ?? question;
+    trackEvent(ANALYTICS_EVENTS.chatSuggestionUsed, {
+      ...getCurrentChatAnalyticsData(),
+      suggestionId: suggestion.id,
+      suggestionLabel: suggestion.label,
+    });
   }
 
   return (
-    <details className="results-chat-panel" onToggle={(event) => onOpenChange(event.currentTarget.open)} open={isOpen}>
+    <details
+      className="results-chat-panel"
+      onToggle={(event) => {
+        const nextIsOpen = event.currentTarget.open;
+        onOpenChange(nextIsOpen);
+
+        if (nextIsOpen) {
+          trackEvent(ANALYTICS_EVENTS.chatOpened, getCurrentChatAnalyticsData());
+        }
+      }}
+      open={isOpen}
+    >
       <summary className="results-chat-summary">
         <strong>Chat GPT</strong>
       </summary>

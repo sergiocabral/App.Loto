@@ -260,6 +260,24 @@ Quando `NEXT_PUBLIC_UMAMI_SCRIPT_URL` e `NEXT_PUBLIC_UMAMI_WEBSITE_ID` estão de
 
 Se qualquer uma das duas variáveis estiver vazia, o script não é carregado.
 
+Além dos pageviews automáticos, o app envia eventos compatíveis com `window.umami.track(eventName, data)`, disponível no Umami 3.x. As chamadas são centralizadas e defensivas: se o script estiver bloqueado, ausente ou lento, a navegação e os botões continuam funcionando.
+
+Eventos instrumentados:
+
+- seleção de loteria;
+- pesquisa por números, enviando apenas a quantidade pesquisada;
+- consulta por concurso, sem enviar o número digitado;
+- limpeza de filtro;
+- carregamento incremental de resultados;
+- seleção/cópia de sorteio;
+- geração e cópia de sugestão;
+- mudanças na análise rápida, período, faixa customizada e escopo da Dupla Sena;
+- abertura da página de todos os sorteios;
+- início, pausa, conclusão e falha de sincronização;
+- abertura do chat, uso de sugestão, envio de pergunta, resposta recebida e falha do chat.
+
+Por privacidade, os eventos não enviam combinações sugeridas, números digitados pelo usuário nem texto livre do chat. São enviados apenas metadados como loteria, tipo de análise, contagens e estados da interação.
+
 ## Comentários com Remark42
 
 A seção de comentários é carregada no cliente via Remark42. Por padrão, o app usa:

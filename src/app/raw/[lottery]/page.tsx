@@ -105,7 +105,15 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
                 {hasValidDraw ? (draw ? "1 concurso" : "0 concursos") : `${totalDraws} concurso${totalDraws === 1 ? "" : "s"}`}
               </span>
             </div>
-            <a className="raw-page-link raw-page-link-download" download={legacyDownloadName} href={legacyApiUrl}>
+            <a
+              className="raw-page-link raw-page-link-download"
+              data-umami-event="Download resultados"
+              data-umami-event-has-draw-number={String(hasValidDraw)}
+              data-umami-event-lottery={lottery.slug}
+              data-umami-event-total-draws={String(totalDraws)}
+              download={legacyDownloadName}
+              href={legacyApiUrl}
+            >
               Download
             </a>
           </div>
