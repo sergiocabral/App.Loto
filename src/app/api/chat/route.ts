@@ -54,14 +54,35 @@ type OpenAIChatMessage = {
 
 type OpenAIChatCompletionResponse = {
   choices?: Array<{
+    finish_reason?: string;
     message?: {
       content?: string;
     };
   }>;
   error?: {
+    code?: string;
     message?: string;
+    param?: string;
+    type?: string;
   };
 };
+
+type OpenAIChatConfig = {
+  apiKey: string;
+  model: string;
+};
+
+type OpenAIRequestBody = {
+  max_completion_tokens?: number;
+  max_tokens?: number;
+  messages: OpenAIChatMessage[];
+  model: string;
+  reasoning_effort?: "minimal";
+  temperature?: number;
+  verbosity?: "low";
+};
+
+type TokenLimitParameter = "max_completion_tokens" | "max_tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +92,10 @@ const MAX_CONTEXT_DRAWS = 120;
 const MAX_MESSAGES = 12;
 const MAX_MESSAGE_CHARS = 900;
 const MAX_REPLY_CHARS = 600;
-const MAX_COMPLETION_TOKENS = 180;
+const DEFAULT_COMPLETION_TOKENS = 360;
+const DEFAULT_RETRY_COMPLETION_TOKENS = 720;
+const REASONING_COMPLETION_TOKENS = 4_096;
+const REASONING_RETRY_COMPLETION_TOKENS = 8_192;
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
 function logChat(message: string, details?: Record<string, unknown>): void {
@@ -334,19 +358,83 @@ function clampReplyLength(reply: string): string {
   return `${clipped}…`;
 }
 
-async function requestOpenAI(messages: OpenAIChatMessage[]): Promise<string> {
-  const chatConfig = getOpenAIChatConfig();
-
-  if (!chatConfig) {
-    throw new Error("OpenAI chat is not configured.");
+class ChatConfigurationError extends Error {
+  constructor() {
+    super("OpenAI chat is not configured.");
+    this.name = "ChatConfigurationError";
   }
+}
 
-  const body = {
-    max_completion_tokens: MAX_COMPLETION_TOKENS,
+class OpenAIUpstreamError extends Error {
+  reason?: "token_limit_without_content";
+  status: number;
+
+  constructor(status: number, message: string, reason?: OpenAIUpstreamError["reason"]) {
+    super(message);
+    this.name = "OpenAIUpstreamError";
+    this.reason = reason;
+    this.status = status;
+  }
+}
+
+function isReasoningModel(model: string): boolean {
+  const normalizedModel = model.trim().toLowerCase();
+  return normalizedModel.startsWith("gpt-5") || /^o\d/.test(normalizedModel);
+}
+
+function shouldSendTemperature(model: string): boolean {
+  return !isReasoningModel(model);
+}
+
+function getCompletionTokenLimit(model: string): number {
+  return isReasoningModel(model) ? REASONING_COMPLETION_TOKENS : DEFAULT_COMPLETION_TOKENS;
+}
+
+function getRetryCompletionTokenLimit(model: string): number {
+  return isReasoningModel(model) ? REASONING_RETRY_COMPLETION_TOKENS : DEFAULT_RETRY_COMPLETION_TOKENS;
+}
+
+function buildOpenAIRequestBody(
+  chatConfig: OpenAIChatConfig,
+  messages: OpenAIChatMessage[],
+  tokenLimitParameter: TokenLimitParameter,
+  tokenLimit: number,
+  includeTemperature: boolean,
+  includeReasoningOptions: boolean,
+): OpenAIRequestBody {
+  return {
+    [tokenLimitParameter]: tokenLimit,
     messages,
     model: chatConfig.model,
-    ...(chatConfig.model.startsWith("gpt-5") ? {} : { temperature: 0.35 }),
+    ...(includeReasoningOptions ? { reasoning_effort: "minimal" as const, verbosity: "low" as const } : {}),
+    ...(includeTemperature ? { temperature: 0.35 } : {}),
   };
+}
+
+function parseOpenAIPayload(text: string): OpenAIChatCompletionResponse {
+  if (!text.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as OpenAIChatCompletionResponse;
+  } catch {
+    return {};
+  }
+}
+
+function getOpenAIErrorMessage(status: number, payload: OpenAIChatCompletionResponse, responseText: string): string {
+  const upstreamMessage = payload.error?.message?.trim();
+
+  if (upstreamMessage) {
+    return upstreamMessage;
+  }
+
+  const plainText = responseText.replace(/\s+/g, " ").trim();
+  return plainText ? `OpenAI request failed with status ${status}: ${plainText.slice(0, 240)}` : `OpenAI request failed with status ${status}`;
+}
+
+async function sendOpenAIChatCompletion(chatConfig: OpenAIChatConfig, body: OpenAIRequestBody): Promise<string> {
   const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
     body: JSON.stringify(body),
     headers: {
@@ -355,19 +443,95 @@ async function requestOpenAI(messages: OpenAIChatMessage[]): Promise<string> {
     },
     method: "POST",
   });
-  const payload = (await response.json()) as OpenAIChatCompletionResponse;
+  const responseText = await response.text();
+  const payload = parseOpenAIPayload(responseText);
 
   if (!response.ok) {
-    throw new Error(`OpenAI request failed with status ${response.status}`);
+    throw new OpenAIUpstreamError(response.status, getOpenAIErrorMessage(response.status, payload, responseText));
   }
 
+  const finishReason = payload.choices?.[0]?.finish_reason;
   const content = payload.choices?.[0]?.message?.content?.trim();
 
   if (!content) {
-    throw new Error("OpenAI response did not include a message.");
+    throw new OpenAIUpstreamError(
+      response.status,
+      finishReason === "length"
+        ? "OpenAI response did not include a message because the completion token limit was reached."
+        : "OpenAI response did not include a message.",
+      finishReason === "length" ? "token_limit_without_content" : undefined,
+    );
   }
 
   return clampReplyLength(content);
+}
+
+function shouldRetryWithMaxTokens(error: OpenAIUpstreamError): boolean {
+  return error.status === 400 && /max_completion_tokens|unsupported parameter|unrecognized request argument/i.test(error.message);
+}
+
+function shouldRetryWithoutTemperature(error: OpenAIUpstreamError): boolean {
+  return error.status === 400 && /temperature/i.test(error.message) && /(unsupported|not support|does not support|only default)/i.test(error.message);
+}
+
+function shouldRetryWithoutReasoningOptions(error: OpenAIUpstreamError): boolean {
+  return error.status === 400 && /reasoning_effort|verbosity/i.test(error.message) && /unsupported|unrecognized|not support|unknown/i.test(error.message);
+}
+
+function shouldRetryWithLargerTokenBudget(error: OpenAIUpstreamError): boolean {
+  return error.reason === "token_limit_without_content";
+}
+
+async function requestOpenAI(messages: OpenAIChatMessage[]): Promise<string> {
+  const chatConfig = getOpenAIChatConfig();
+
+  if (!chatConfig) {
+    throw new ChatConfigurationError();
+  }
+
+  let tokenLimit = getCompletionTokenLimit(chatConfig.model);
+  let tokenLimitParameter: TokenLimitParameter = "max_completion_tokens";
+  let includeTemperature = shouldSendTemperature(chatConfig.model);
+  let includeReasoningOptions = isReasoningModel(chatConfig.model);
+  let didRetryTokenBudget = false;
+  let didRetryTokenParameter = false;
+  let didRetryTemperature = false;
+  let didRetryReasoningOptions = false;
+
+  for (;;) {
+    try {
+      return await sendOpenAIChatCompletion(
+        chatConfig,
+        buildOpenAIRequestBody(chatConfig, messages, tokenLimitParameter, tokenLimit, includeTemperature, includeReasoningOptions),
+      );
+    } catch (error) {
+      if (error instanceof OpenAIUpstreamError && !didRetryTokenParameter && shouldRetryWithMaxTokens(error)) {
+        tokenLimitParameter = "max_tokens";
+        didRetryTokenParameter = true;
+        continue;
+      }
+
+      if (error instanceof OpenAIUpstreamError && includeTemperature && !didRetryTemperature && shouldRetryWithoutTemperature(error)) {
+        includeTemperature = false;
+        didRetryTemperature = true;
+        continue;
+      }
+
+      if (error instanceof OpenAIUpstreamError && includeReasoningOptions && !didRetryReasoningOptions && shouldRetryWithoutReasoningOptions(error)) {
+        includeReasoningOptions = false;
+        didRetryReasoningOptions = true;
+        continue;
+      }
+
+      if (error instanceof OpenAIUpstreamError && !didRetryTokenBudget && shouldRetryWithLargerTokenBudget(error)) {
+        tokenLimit = getRetryCompletionTokenLimit(chatConfig.model);
+        didRetryTokenBudget = true;
+        continue;
+      }
+
+      throw error;
+    }
+  }
 }
 
 export async function POST(request: Request) {
@@ -418,14 +582,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ reply });
   } catch (error) {
     logChatError("POST:error", error, { elapsedMs: Date.now() - startedAt, lottery: context.lotterySlug });
+    const status = error instanceof ChatConfigurationError ? 503 : error instanceof OpenAIUpstreamError ? 502 : 500;
+
     return NextResponse.json(
       {
         error:
-          error instanceof Error && error.message.includes("OpenAI chat is not configured")
+          error instanceof ChatConfigurationError
             ? "Chat GPT ainda não está configurado no servidor."
             : "Não consegui responder agora. Tente novamente em instantes.",
       },
-      { status: 500 },
+      { status },
     );
   }
 }
