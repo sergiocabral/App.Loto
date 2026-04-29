@@ -6,7 +6,7 @@ Aplicação Next.js para consultar resultados das Loterias da Caixa, persistir c
 
 - Consulta das loterias suportadas: Mega Sena, Lotofácil, Quina, Lotomania, Dupla Sena, Timemania e Dia de Sorte.
 - Persistência dos concursos em PostgreSQL.
-- Sincronização incremental com a API pública das Loterias da Caixa por cron centralizado, com opção manual avançada para carregar/pausar resultados quando necessário.
+- Sincronização incremental com a API pública das Loterias da Caixa por cron centralizado, com acionamento manual discreto no título **Resultados** para manutenção pontual.
 - Consulta por número de concurso.
 - Filtro por números: exibe concursos que contenham todos os números informados.
 - Lista de resultados otimizada: começa com 25 concursos e o botão "Ver mais resultados" carrega blocos cada vez maiores, em sequência 50, 100, 200 e 400.
@@ -172,6 +172,9 @@ O `wrangler.jsonc` usa `keep_vars: true`, então variáveis e secrets configurad
 | `NEXT_PUBLIC_REMARK42_NO_FOOTER` | Opcional em build time | Opcional em build time | Remove footer do Remark42 quando diferente de `false`. |
 | `OPENAI_API_KEY` | Opcional | Secret opcional | Chave da OpenAI. Habilita o chat somente quando usada junto com `OPENAI_CHAT_MODEL`. |
 | `OPENAI_CHAT_MODEL` | Opcional | Opcional/secret | Modelo usado pelo chat. Habilita o chat somente quando usado junto com `OPENAI_API_KEY`. |
+| `OPENAI_CHAT_MAX_REPLY_CHARS` | Opcional | Opcional | Limite máximo de caracteres retornados ao usuário no Chat GPT. Padrão: `4000`. Aceita de `400` a `6000`. |
+| `OPENAI_CHAT_COMPLETION_TOKENS` | Opcional | Opcional | Orçamento inicial de tokens da resposta da OpenAI. Se vazio, usa padrão por modelo: `1200` para modelos comuns e `8192` para `gpt-5*`/`o*`. |
+| `OPENAI_CHAT_RETRY_COMPLETION_TOKENS` | Opcional | Opcional | Orçamento de retry quando a OpenAI encerra por limite sem conteúdo. Se vazio, usa padrão por modelo: `2400` para modelos comuns e `12000` para `gpt-5*`/`o*`. |
 | `CHATGPT_BUTTON1` | Opcional | Opcional | Sobrescreve o 1º botão de sugestão do chat no formato `Rótulo|Mensagem|Prompt`. |
 | `CHATGPT_BUTTON2` | Opcional | Opcional | Sobrescreve o 2º botão de sugestão do chat no formato `Rótulo|Mensagem|Prompt`. |
 | `CHATGPT_BUTTON3` | Opcional | Opcional | Sobrescreve o 3º botão de sugestão do chat no formato `Rótulo|Mensagem|Prompt`. |
@@ -182,6 +185,7 @@ Observações:
 - Variáveis `NEXT_PUBLIC_*` são incorporadas no bundle durante o build. Defina esses valores antes do build se quiser algo diferente dos padrões.
 - `POSTGRES_PASSWORD` precisa existir como secret no Worker quando a conexão usa `POSTGRES_*`. Se faltar, a API retorna erro de configuração antes de tentar conectar no banco.
 - `OPENAI_API_KEY` deve ser secret no Worker. Sem `OPENAI_API_KEY` e `OPENAI_CHAT_MODEL`, o chat não aparece para o usuário.
+- `OPENAI_CHAT_MAX_REPLY_CHARS`, `OPENAI_CHAT_COMPLETION_TOKENS` e `OPENAI_CHAT_RETRY_COMPLETION_TOKENS` permitem ajustar capacidade/custo do Chat GPT sem alterar código. Para respostas mais completas, aumente primeiro `OPENAI_CHAT_MAX_REPLY_CHARS`; aumente tokens apenas se a OpenAI encerrar por limite.
 - `OFFICIAL_DOMAIN_NAME` deve ser apenas domínio, como `luckygames.tips`. Não use `https://`, `/`, porta ou path.
 - `SYNC_CRON_SECRET` deve ser configurado como secret se você pretende usar o endpoint GET de sincronização por cron.
 
@@ -206,7 +210,7 @@ POSTGRES_POOL_MAX_USES=
 HYPERDRIVE_CONNECTION_STRING=
 NEXT_RUNTIME_PROVIDER=
 OFFICIAL_DOMAIN_NAME=
-SYNC_CRON_SECRET=
+SYNC_CRON_SECRET=change-this-random-cron-secret
 
 NEXT_PUBLIC_APP_VERSION=v2.0.0
 NEXT_PUBLIC_UMAMI_SCRIPT_URL=
@@ -219,6 +223,9 @@ NEXT_PUBLIC_REMARK42_NO_FOOTER=true
 
 OPENAI_API_KEY=
 OPENAI_CHAT_MODEL=
+OPENAI_CHAT_MAX_REPLY_CHARS=4000
+OPENAI_CHAT_COMPLETION_TOKENS=
+OPENAI_CHAT_RETRY_COMPLETION_TOKENS=
 CHATGPT_BUTTON1=Mapa quente|Mostre o mapa quente desse filtro.|Analise os concursos filtrados como um mapa quente da loteria.
 CHATGPT_BUTTON2=Surpresas|Quais surpresas aparecem aqui?|Procure achados contraintuitivos nos resultados filtrados.
 CHATGPT_BUTTON3=Ciclos|Analise ciclos e atrasos.|Faça uma análise de ciclos, atrasos e recorrência nos concursos filtrados.
@@ -246,7 +253,7 @@ Para produção no Cloudflare Workers, rode a migração a partir de uma máquin
 
 ## Sincronização dos resultados
 
-A interface não sincroniza mais concursos automaticamente com a API da Caixa ao abrir ou selecionar uma loteria. Ela apenas carrega do banco os dados já salvos. O quadro **Carregar resultados** continua existindo, mas fica oculto por padrão em uma área avançada de manutenção.
+A interface não sincroniza mais concursos automaticamente com a API da Caixa ao abrir ou selecionar uma loteria. Ela apenas carrega do banco os dados já salvos.
 
 A estratégia recomendada é sincronizar de forma centralizada por cron, por exemplo no Cronicle, para evitar que vários usuários disparem consultas iguais à API da Caixa.
 
@@ -268,9 +275,9 @@ A API aceita apenas a ação pública `sync-caixa` para carregar resultados falt
 | Concurso específico | `GET /api/lotteries/{loteria}?draw={numero}` | Consulta um concurso específico e retorna JSON. |
 | Texto puro/Download | `GET /raw/{loteria}` | Página textual com botão de download. Aceita `?draw={numero}`. |
 | Sincronização por cron | `GET /api/lotteries/{loteria}/sync` | Protegido por `SYNC_CRON_SECRET`. Recomendado para Cronicle. |
-| Sincronização manual da interface | `POST /api/lotteries/{loteria}` | Usado internamente pela área avançada **Carregar resultados**. |
+| Sincronização manual da interface | `POST /api/lotteries/{loteria}` | Usado internamente pelo clique discreto no título **Resultados**. |
 
-Use `{loteria}` com os slugs suportados, por exemplo: `MegaSena`, `LotoFacil`, `Quina`, `LotoMania`, `DuplaSena`, `TimeMania` ou `DiaDeSorte`.
+Use `{loteria}` com os slugs suportados: `MegaSena`, `LotoFacil`, `Quina`, `LotoMania`, `DuplaSena`, `TimeMania` ou `DiaDeSorte`.
 
 ### Endpoint GET para cron
 
@@ -288,19 +295,62 @@ curl -H "Authorization: Bearer $SYNC_CRON_SECRET" "https://luckygames.tips/api/l
 
 Também é aceito o header `x-sync-cron-secret`. Como fallback para ferramentas que só permitem URL, dá para usar `?token=...`, mas prefira header para não registrar o segredo em logs de URL.
 
+O endpoint responde `text/plain` para manter o retorno pequeno. Em sucesso, o corpo começa com `OK` e traz apenas um resumo da chamada atual, por exemplo:
+
+```text
+OK lottery=MegaSena attempted=25 saved=1 skipped=0 batchSize=25 hasMore=false nextStartAt=none stopReason=next_missing_not_found elapsedMs=1234
+```
+
+Campos principais:
+
+- `attempted`: quantos concursos esta chamada tentou consultar.
+- `saved`: quantos concursos esta chamada salvou.
+- `skipped`: quantos concursos esta chamada ignorou porque já existiam ou não precisaram ser salvos.
+- `hasMore`: indica se há próximo concurso provável para continuar em outra chamada.
+- `nextStartAt`: quando existir, pode ser usado como `startAt` na próxima chamada.
+- `stopReason`: motivo de parada desta chamada.
+
+Em erro, a resposta também é `text/plain` e começa com `ERROR`.
+
+### URLs completas para jobs de cron
+
+Use estas URLs para criar um job por loteria no Cronicle ou em outra ferramenta de agendamento. O exemplo usa `batchSize=25`, que é o máximo permitido por chamada:
+
+```text
+https://luckygames.tips/api/lotteries/MegaSena/sync?batchSize=25
+https://luckygames.tips/api/lotteries/LotoFacil/sync?batchSize=25
+https://luckygames.tips/api/lotteries/Quina/sync?batchSize=25
+https://luckygames.tips/api/lotteries/LotoMania/sync?batchSize=25
+https://luckygames.tips/api/lotteries/DuplaSena/sync?batchSize=25
+https://luckygames.tips/api/lotteries/TimeMania/sync?batchSize=25
+https://luckygames.tips/api/lotteries/DiaDeSorte/sync?batchSize=25
+```
+
+Se o agendador não permitir header, adicione o token na query string:
+
+```text
+https://luckygames.tips/api/lotteries/MegaSena/sync?batchSize=25&token=SEU_SYNC_CRON_SECRET
+```
+
+Prefira header `Authorization: Bearer ...` sempre que possível, porque query string costuma aparecer em logs.
+
 Parâmetros opcionais:
 
 - `batchSize`: quantidade de concursos tentados por chamada, de `1` a `25`. Padrão: `25`.
 - `startAt`: concurso inicial para procurar faltantes. Quando omitido, o app procura o próximo concurso faltante a partir do banco.
 
-A resposta JSON traz `sync.hasMore`, `sync.nextDrawNumber` e `nextUrl`. Se quiser avançar mais concursos no mesmo agendamento, chame novamente usando `nextUrl` enquanto `sync.hasMore` for `true`.
+Para continuar depois de uma resposta com `hasMore=true`, faça nova chamada usando `startAt` com o valor de `nextStartAt`:
+
+```text
+https://luckygames.tips/api/lotteries/MegaSena/sync?batchSize=25&startAt=2850
+```
 
 Exemplo de fluxo para o Cronicle:
 
 1. Configure `SYNC_CRON_SECRET` como secret no Worker.
-2. Crie um job por loteria, ou um job que percorra os slugs suportados.
+2. Crie um job por loteria usando as URLs completas acima, ou um job que percorra os slugs suportados.
 3. Chame `GET /api/lotteries/{loteria}/sync?batchSize=25` com header `Authorization: Bearer ...`.
-4. Se a resposta tiver `sync.hasMore: true`, chame novamente usando `nextUrl` até o lote planejado terminar.
+4. Se a resposta tiver `hasMore=true`, chame novamente adicionando `startAt={nextStartAt}` até o lote planejado terminar.
 5. Mantenha intervalos razoáveis entre execuções para não pressionar a API pública da Caixa.
 
 ### Sincronização manual no app

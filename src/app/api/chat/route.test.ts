@@ -1,8 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetSecurityRateLimitsForTests } from "@/lib/server/security";
 
+type ChatConfigMock = {
+  apiKey: string;
+  completionTokens?: number;
+  maxReplyChars?: number;
+  model: string;
+  retryCompletionTokens?: number;
+};
+
 const envMocks = vi.hoisted(() => ({
-  getOpenAIChatConfig: vi.fn<() => { apiKey: string; model: string } | null>(),
+  getOpenAIChatConfig: vi.fn<() => ChatConfigMock | null>(),
 }));
 
 vi.mock("@/lib/server/env", () => envMocks);
@@ -74,7 +82,7 @@ describe("chat route", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(requestHeaders.authorization).toBe("Bearer sk-test-secret");
-    expect(requestBody).toMatchObject({ max_completion_tokens: 360, model: "gpt-4.1-mini", temperature: 0.35 });
+    expect(requestBody).toMatchObject({ max_completion_tokens: 1_200, model: "gpt-4.1-mini", temperature: 0.35 });
     expect(requestBody).not.toHaveProperty("max_tokens");
   });
 
@@ -91,12 +99,37 @@ describe("chat route", () => {
 
     expect(response.status).toBe(200);
     expect(requestBody).toMatchObject({
-      max_completion_tokens: 4_096,
+      max_completion_tokens: 8_192,
       model: "gpt-5-nano-2025-08-07",
       reasoning_effort: "minimal",
       verbosity: "low",
     });
     expect(requestBody).not.toHaveProperty("temperature");
+  });
+
+  it("uses token and reply limits from the server configuration", async () => {
+    envMocks.getOpenAIChatConfig.mockReturnValue({
+      apiKey: "sk-test-secret",
+      completionTokens: 2_000,
+      maxReplyChars: 80,
+      model: "gpt-4.1-mini",
+      retryCompletionTokens: 3_000,
+    });
+    const longReply = "A".repeat(120);
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: longReply } }] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const route = await import("@/app/api/chat/route");
+
+    const response = await route.POST(createChatRequest());
+    const payload = await readJson(response);
+    const requestBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(requestBody).toMatchObject({ max_completion_tokens: 2_000 });
+    expect(String(payload.reply)).toHaveLength(81);
+    expect(String(payload.reply)).toMatch(/…$/);
   });
 
   it("retries with max_tokens when the model rejects max_completion_tokens", async () => {
@@ -121,9 +154,9 @@ describe("chat route", () => {
     expect(response.status).toBe(200);
     expect(payload).toEqual({ reply: "Resposta após retry." });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(firstBody).toHaveProperty("max_completion_tokens", 360);
+    expect(firstBody).toHaveProperty("max_completion_tokens", 1_200);
     expect(firstBody).not.toHaveProperty("max_tokens");
-    expect(secondBody).toHaveProperty("max_tokens", 360);
+    expect(secondBody).toHaveProperty("max_tokens", 1_200);
     expect(secondBody).not.toHaveProperty("max_completion_tokens");
   });
 
@@ -195,8 +228,31 @@ describe("chat route", () => {
     expect(response.status).toBe(200);
     expect(payload).toEqual({ reply: "Resposta após aumentar limite." });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(firstBody).toMatchObject({ max_completion_tokens: 4_096 });
-    expect(secondBody).toMatchObject({ max_completion_tokens: 8_192 });
+    expect(firstBody).toMatchObject({ max_completion_tokens: 8_192 });
+    expect(secondBody).toMatchObject({ max_completion_tokens: 12_000 });
+  });
+
+  it("retries with the configured larger budget when a response ends by length", async () => {
+    envMocks.getOpenAIChatConfig.mockReturnValue({
+      apiKey: "sk-test-secret",
+      completionTokens: 2_000,
+      model: "gpt-4.1-mini",
+      retryCompletionTokens: 5_000,
+    });
+    const fetchMock = vi
+      .fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "" } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "Resposta configurada." } }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const route = await import("@/app/api/chat/route");
+
+    const response = await route.POST(createChatRequest());
+    const firstBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>;
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(firstBody).toMatchObject({ max_completion_tokens: 2_000 });
+    expect(secondBody).toMatchObject({ max_completion_tokens: 5_000 });
   });
 
   it("returns a safe 502 when OpenAI uses the whole token budget without content twice", async () => {

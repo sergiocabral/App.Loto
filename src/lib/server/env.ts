@@ -32,8 +32,27 @@ export function getCronSyncSecret(): string | undefined {
 
 type OpenAIChatConfig = {
   apiKey: string;
+  completionTokens?: number;
+  maxReplyChars?: number;
   model: string;
+  retryCompletionTokens?: number;
 };
+
+function getOptionalServerEnvInteger(name: string, min: number, max: number): number | undefined {
+  const rawValue = getServerEnvValue(name)?.trim();
+
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const value = Number(rawValue);
+
+  if (!Number.isSafeInteger(value)) {
+    return undefined;
+  }
+
+  return Math.min(Math.max(value, min), max);
+}
 
 export function getOpenAIChatConfig(): OpenAIChatConfig | null {
   const apiKey = getServerEnvValue("OPENAI_API_KEY")?.trim();
@@ -43,7 +62,13 @@ export function getOpenAIChatConfig(): OpenAIChatConfig | null {
     return null;
   }
 
-  return { apiKey, model };
+  return {
+    apiKey,
+    completionTokens: getOptionalServerEnvInteger("OPENAI_CHAT_COMPLETION_TOKENS", 120, 32_000),
+    maxReplyChars: getOptionalServerEnvInteger("OPENAI_CHAT_MAX_REPLY_CHARS", 400, 6_000),
+    model,
+    retryCompletionTokens: getOptionalServerEnvInteger("OPENAI_CHAT_RETRY_COMPLETION_TOKENS", 120, 32_000),
+  };
 }
 
 export function isOpenAIChatConfigured(): boolean {

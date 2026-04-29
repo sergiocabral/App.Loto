@@ -1,9 +1,7 @@
-import { NextResponse } from "next/server";
 import { getLottery } from "@/data/lotteries";
 import { getCronSyncSecret } from "@/lib/server/env";
 import { syncMissingDrawsFromCaixa } from "@/lib/server/service";
 import { getSafeErrorDetails, parsePositiveInteger } from "@/lib/server/security";
-import type { Draw } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -11,22 +9,17 @@ const CRON_SYNC_LOG_PREFIX = "[app-loto-next][cron-sync]";
 const DEFAULT_CRON_SYNC_BATCH_SIZE = 25;
 const MAX_CRON_SYNC_BATCH_SIZE = 25;
 
-type PublicDraw = Omit<Draw, "raw">;
+type CronSyncResult = Awaited<ReturnType<typeof syncMissingDrawsFromCaixa>>;
 
-function toPublicDraw(draw: Draw): PublicDraw {
-  return {
-    lottery: draw.lottery,
-    drawNumber: draw.drawNumber,
-    date: draw.date,
-    numbers: draw.numbers,
-    numberGroups: draw.numberGroups,
-    previousDrawNumber: draw.previousDrawNumber,
-    nextDrawNumber: draw.nextDrawNumber,
-  };
-}
+function textResponse(body: string, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("Cache-Control", "no-store");
+  headers.set("Content-Type", "text/plain; charset=utf-8");
 
-function toPublicDraws(draws: Draw[]): PublicDraw[] {
-  return draws.map(toPublicDraw);
+  return new Response(`${body.trim()}\n`, {
+    ...init,
+    headers,
+  });
 }
 
 function logCronSync(message: string, details?: Record<string, unknown>): void {
@@ -120,17 +113,21 @@ function parseSyncOptions(url: URL): { ok: true; batchSize: number; startAt?: nu
   return { ok: true, batchSize };
 }
 
-function buildNextSyncUrl(request: Request, lotterySlug: string, batchSize: number, nextDrawNumber: number | null): string | null {
-  if (!nextDrawNumber) {
-    return null;
-  }
+function buildSyncSummaryText(lotterySlug: string, sync: CronSyncResult, batchSize: number, elapsed: number): string {
+  const nextStartAt = sync.hasMore && sync.nextDrawNumber ? String(sync.nextDrawNumber) : "none";
 
-  const url = new URL(request.url);
-  url.pathname = `/api/lotteries/${lotterySlug}/sync`;
-  url.searchParams.set("batchSize", String(batchSize));
-  url.searchParams.set("startAt", String(nextDrawNumber));
-  url.searchParams.delete("token");
-  return `${url.pathname}${url.search}`;
+  return [
+    "OK",
+    `lottery=${lotterySlug}`,
+    `attempted=${sync.attemptedDrawNumbers.length}`,
+    `saved=${sync.savedDraws.length}`,
+    `skipped=${sync.skippedDrawNumbers.length}`,
+    `batchSize=${batchSize}`,
+    `hasMore=${sync.hasMore ? "true" : "false"}`,
+    `nextStartAt=${nextStartAt}`,
+    `stopReason=${sync.stopReason}`,
+    `elapsedMs=${elapsed}`,
+  ].join(" ");
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ lottery: string }> }) {
@@ -149,21 +146,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ lott
 
   if (!lottery) {
     logCronSync("GET:unknown-lottery", { lotteryParam, elapsedMs: elapsedMs(startedAt) });
-    return NextResponse.json({ error: "Unknown lottery" }, { status: 404 });
+    return textResponse("ERROR Unknown lottery", { status: 404 });
   }
 
   const access = checkCronAccess(request, url);
 
   if (!access.ok) {
     logCronSync("GET:unauthorized", { lottery: lottery.slug, status: access.status, elapsedMs: elapsedMs(startedAt) });
-    return NextResponse.json({ error: access.error }, { status: access.status });
+    return textResponse(`ERROR ${access.error}`, { status: access.status });
   }
 
   const syncOptions = parseSyncOptions(url);
 
   if (!syncOptions.ok) {
     logCronSync("GET:invalid-options", { lottery: lottery.slug, elapsedMs: elapsedMs(startedAt) });
-    return NextResponse.json({ error: syncOptions.error }, { status: 400 });
+    return textResponse(`ERROR ${syncOptions.error}`, { status: 400 });
   }
 
   try {
@@ -178,11 +175,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ lott
       batchSize: syncOptions.batchSize,
       ...(typeof syncOptions.startAt === "number" ? { startAt: syncOptions.startAt } : {}),
     });
-    const publicSync = {
-      ...sync,
-      draws: toPublicDraws(sync.draws),
-      savedDraws: toPublicDraws(sync.savedDraws),
-    };
+    const elapsed = elapsedMs(startedAt);
 
     logCronSync("GET:sync-caixa-done", {
       lottery: lottery.slug,
@@ -191,25 +184,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ lott
       nextDrawNumber: sync.nextDrawNumber,
       hasMore: sync.hasMore,
       stopReason: sync.stopReason,
-      elapsedMs: elapsedMs(startedAt),
+      elapsedMs: elapsed,
     });
 
-    return NextResponse.json(
-      {
-        lottery: lottery.slug,
-        source: "cron",
-        sync: publicSync,
-        draws: publicSync.draws,
-        nextUrl: sync.hasMore ? buildNextSyncUrl(request, lottery.slug, syncOptions.batchSize, sync.nextDrawNumber) : null,
-      },
-      {
-        headers: {
-          "Cache-Control": "no-store",
-        },
-      },
-    );
+    return textResponse(buildSyncSummaryText(lottery.slug, sync, syncOptions.batchSize, elapsed));
   } catch (error) {
     logCronSyncError("GET:error", error, { lottery: lottery.slug, elapsedMs: elapsedMs(startedAt) });
-    return NextResponse.json({ error: "Não foi possível sincronizar os dados agora." }, { status: 500 });
+    return textResponse("ERROR Não foi possível sincronizar os dados agora.", { status: 500 });
   }
 }

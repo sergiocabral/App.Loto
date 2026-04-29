@@ -47,8 +47,8 @@ function syncResult(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readJson(response: Response) {
-  return (await response.json()) as Record<string, unknown>;
+async function readText(response: Response) {
+  return response.text();
 }
 
 describe("lottery sync cron route", () => {
@@ -99,14 +99,22 @@ describe("lottery sync cron route", () => {
         params: Promise.resolve({ lottery: "MegaSena" }),
       },
     );
-    const payload = await readJson(response);
+    const body = await readText(response);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("content-type")).toContain("text/plain");
     expect(serviceMocks.syncMissingDrawsFromCaixa).toHaveBeenCalledWith("MegaSena", { batchSize: 25 });
-    expect(payload.lottery).toBe("MegaSena");
-    expect(payload.source).toBe("cron");
-    expect(payload.nextUrl).toBe("/api/lotteries/MegaSena/sync?batchSize=25&startAt=3");
+    expect(body).toContain("OK lottery=MegaSena");
+    expect(body).toContain("attempted=1");
+    expect(body).toContain("saved=1");
+    expect(body).toContain("skipped=0");
+    expect(body).toContain("batchSize=25");
+    expect(body).toContain("hasMore=true");
+    expect(body).toContain("nextStartAt=3");
+    expect(body).toContain("stopReason=batch_completed");
+    expect(body).not.toContain("numbers");
+    expect(body).not.toContain("raw");
   });
 
   it("accepts custom batch size and start draw", async () => {
@@ -122,11 +130,14 @@ describe("lottery sync cron route", () => {
         params: Promise.resolve({ lottery: "MegaSena" }),
       },
     );
-    const payload = await readJson(response);
+    const body = await readText(response);
 
     expect(response.status).toBe(200);
     expect(serviceMocks.syncMissingDrawsFromCaixa).toHaveBeenCalledWith("MegaSena", { batchSize: 10, startAt: 50 });
-    expect(payload.nextUrl).toBeNull();
+    expect(body).toContain("OK lottery=MegaSena");
+    expect(body).toContain("batchSize=10");
+    expect(body).toContain("hasMore=false");
+    expect(body).toContain("nextStartAt=none");
   });
 
   it("supports token query fallback without echoing it in nextUrl", async () => {
@@ -137,10 +148,13 @@ describe("lottery sync cron route", () => {
     const response = await route.GET(new Request("http://localhost/api/lotteries/MegaSena/sync?token=secret-value&batchSize=5"), {
       params: Promise.resolve({ lottery: "MegaSena" }),
     });
-    const payload = await readJson(response);
+    const body = await readText(response);
 
     expect(response.status).toBe(200);
-    expect(payload.nextUrl).toBe("/api/lotteries/MegaSena/sync?batchSize=5&startAt=3");
+    expect(body).toContain("OK lottery=MegaSena");
+    expect(body).toContain("batchSize=5");
+    expect(body).toContain("nextStartAt=3");
+    expect(body).not.toContain("secret-value");
   });
 
   it("rejects invalid batch or start values", async () => {
