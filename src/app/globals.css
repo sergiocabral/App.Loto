@@ -117,13 +117,11 @@ input:disabled {
 }
 
 .status-badge {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--border);
-  border-radius: 999px;
   color: var(--muted-strong);
   font-size: 12px;
   font-weight: 700;
-  padding: 8px 12px;
+  line-height: 1.45;
+  margin: 6px 0 0;
 }
 
 .app-main {
@@ -357,17 +355,14 @@ input:disabled {
 
 .status-badge.loading,
 .status-badge.syncing {
-  border-color: rgba(251, 191, 36, 0.35);
   color: var(--warning);
 }
 
 .status-badge.loaded {
-  border-color: rgba(52, 211, 153, 0.35);
   color: var(--success);
 }
 
 .status-badge.error {
-  border-color: rgba(251, 113, 133, 0.35);
   color: var(--danger);
 }
 
@@ -1010,17 +1005,14 @@ button {
 }
 
 .results-actions {
-  align-items: stretch;
+  align-items: flex-start;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
   justify-content: flex-start;
   min-width: 180px;
 }
 
-.results-actions .status-badge {
-  text-align: center;
-  width: 100%;
+.results-title-block {
+  min-width: 0;
 }
 
 .results-link {
@@ -1032,7 +1024,7 @@ button {
   font-weight: 900;
   min-height: 48px;
   padding: 13px 16px;
-  width: 100%;
+  width: auto;
 }
 
 .results-link:hover {
@@ -2404,10 +2396,6 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .range-slider-value strong {
-    text-align: left;
-  }
-
   .number-heat-map {
     grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
   }
@@ -2469,8 +2457,7 @@ button {
   }
 
   .status-badge {
-    border-radius: 16px;
-    line-height: 1.35;
+    line-height: 1.45;
     white-space: normal;
   }
 

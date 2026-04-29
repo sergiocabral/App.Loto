@@ -1033,7 +1033,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
 
         <section className="results-panel">
           <div className="results-header">
-            <div>
+            <div className="results-title-block">
               <span className="eyebrow">Resultados</span>
               <h2>
                 {selectedLottery
@@ -1044,12 +1044,12 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                       : `Histórico de ${formatLotteryName(selectedLottery.slug)}`
                   : "Aguardando seleção"}
               </h2>
+              {statusMessage ? <p className={`status-badge ${status}`}>{statusMessage}</p> : null}
             </div>
             <div className="results-actions">
               <a className="legacy-link results-link" href={legacyHref} rel="noreferrer" target="_blank">
                 Ver todos os sorteios
               </a>
-              {statusMessage ? <div className={`status-badge ${status}`}>{statusMessage}</div> : null}
             </div>
           </div>
 
