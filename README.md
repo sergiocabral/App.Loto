@@ -226,10 +226,10 @@ OPENAI_CHAT_MODEL=
 OPENAI_CHAT_MAX_REPLY_CHARS=4000
 OPENAI_CHAT_COMPLETION_TOKENS=
 OPENAI_CHAT_RETRY_COMPLETION_TOKENS=
-CHATGPT_BUTTON1=Mapa quente|Mostre o mapa quente desse filtro.|Analise os concursos filtrados como um mapa quente da loteria.
-CHATGPT_BUTTON2=Surpresas|Quais surpresas aparecem aqui?|Procure achados contraintuitivos nos resultados filtrados.
-CHATGPT_BUTTON3=Ciclos|Analise ciclos e atrasos.|Faça uma análise de ciclos, atrasos e recorrência nos concursos filtrados.
-CHATGPT_BUTTON4=Estratégia|Monte uma estratégia de leitura dos dados.|Crie uma estratégia de leitura dos dados filtrados.
+CHATGPT_BUTTON1=Mapa quente|Identifique números pelo mapa quente.|Use o mapa de calor/frequência do recorte para identificar números candidatos. Responda direto em tópicos: Quentes, Apoio, Fracos/evitar e Combinação sugerida compatível com a loteria. Foque em números e chance relativa no recorte, sem introdução, conclusão ou alertas.
+CHATGPT_BUTTON2=Surpresas|Aponte números surpresa.|Identifique números surpresa no recorte: pouco óbvios, frios retomando, atrasados com sinal recente ou faixas fora do padrão. Responda direto com números, motivo curto e uma combinação surpresa compatível com a loteria. Sem introdução, conclusão ou alertas.
+CHATGPT_BUTTON3=Ciclos|Mostre números por ciclos e atrasos.|Analise ciclos, atrasos e recorrência para identificar números candidatos. Separe em Recorrentes, Atrasados úteis, Retomada recente e Combinação sugerida compatível com a loteria. Foque em números e critérios curtos, sem introdução, conclusão ou alertas.
+CHATGPT_BUTTON4=Estratégia|Monte uma estratégia de números.|Monte uma estratégia objetiva de números combinando frequência, atraso, calor recente e distribuição por faixas. Entregue Base, Complementares, Ousadia e Combinação sugerida compatível com a loteria. Use critérios curtos e diretos, sem introdução, conclusão ou alertas.
 ```
 
 ## Banco de dados
@@ -408,6 +408,8 @@ Rótulo|Mensagem enviada ao chat|Prompt interno para orientar a resposta
 ```
 
 O chat recebe apenas o contexto de loteria, filtros, concursos e análise rápida enviados pelo app. Ele possui limites de tamanho, rate limit simples e guardrails para não revelar instruções internas ou segredos.
+
+Por padrão, o wrapper de IA orienta respostas objetivas, sem introduções, conclusões ou alertas genéricos, focadas em identificar números candidatos, combinações sugeridas e critérios curtos a partir dos dados enviados.
 
 ## Redirect canônico por domínio
 

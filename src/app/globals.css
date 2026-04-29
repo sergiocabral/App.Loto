@@ -1152,7 +1152,7 @@ button {
 }
 
 .results-sync-trigger.running {
-  color: var(--warning);
+  color: var(--muted);
 }
 
 .results-sync-trigger:disabled {
