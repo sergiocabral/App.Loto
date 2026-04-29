@@ -1,5 +1,6 @@
 import { getLottery, type LotteryDefinition } from "@/data/lotteries";
 import { normalizeNumbers } from "@/lib/format";
+import { getSafeErrorDetails } from "@/lib/server/security";
 import type { CaixaLotteryResponse, Draw } from "@/lib/types";
 
 const CAIXA_BASE_URL = "https://servicebus2.caixa.gov.br/portaldeloterias/api";
@@ -94,7 +95,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
     warnCaixa("fetch:error", {
       url,
       elapsedMs: elapsedMs(startedAt),
-      error: error instanceof Error ? { name: error.name, message: error.message } : error,
+      error: getSafeErrorDetails(error),
     });
     throw error;
   } finally {
@@ -155,7 +156,7 @@ async function loadRawDraw(lottery: LotteryDefinition, drawNumber: number): Prom
         drawNumber,
         attempt,
         elapsedMs: elapsedMs(attemptStartedAt),
-        error: error instanceof Error ? { name: error.name, message: error.message } : error,
+        error: getSafeErrorDetails(error),
       });
     }
   }

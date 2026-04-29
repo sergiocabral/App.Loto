@@ -6,7 +6,7 @@ import {
   loadLotteryHistory,
   syncMissingDrawsFromCaixa,
 } from "@/lib/server/service";
-import { checkMutationRateLimit, parsePositiveInteger, readJsonObjectBody } from "@/lib/server/security";
+import { checkMutationRateLimit, getSafeErrorDetails, parsePositiveInteger, readJsonObjectBody } from "@/lib/server/security";
 import { renderDrawText, renderHistoryText } from "@/lib/render";
 import type { Draw } from "@/lib/types";
 
@@ -45,19 +45,15 @@ function toPublicDraws(draws: Draw[]): PublicDraw[] {
   return draws.map(toPublicDraw);
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unexpected server error";
-}
-
 function logApiError(message: string, error: unknown, details?: Record<string, unknown>): void {
   console.error(API_LOG_PREFIX, message, {
     ...details,
-    error: error instanceof Error ? { name: error.name, message: error.message } : error,
+    error: getSafeErrorDetails(error),
   });
 }
 
-function databaseErrorResponse(error: unknown) {
-  return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
+function databaseErrorResponse() {
+  return NextResponse.json({ error: "Não foi possível acessar os dados agora." }, { status: 500 });
 }
 
 async function handleGet(request: Request, lotteryParam: string, startedAt: number) {
@@ -157,7 +153,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ lott
     return await handleGet(request, lotteryParam, startedAt);
   } catch (error) {
     logApiError("GET:error", error, { lotteryParam, elapsedMs: elapsedMs(startedAt) });
-    return databaseErrorResponse(error);
+    return databaseErrorResponse();
   }
 }
 
@@ -251,6 +247,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ lot
     return await handlePost(request, lotteryParam, startedAt);
   } catch (error) {
     logApiError("POST:error", error, { lotteryParam, elapsedMs: elapsedMs(startedAt) });
-    return databaseErrorResponse(error);
+    return databaseErrorResponse();
   }
 }

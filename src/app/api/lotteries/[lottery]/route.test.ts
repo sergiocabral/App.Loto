@@ -332,7 +332,7 @@ describe("lottery route handlers", () => {
     const payload = await readJson(response);
 
     expect(response.status).toBe(500);
-    expect(payload.error).toBe("database unavailable");
+    expect(payload.error).toBe("Não foi possível acessar os dados agora.");
   });
 
   it("returns a JSON error when POST service throws", async () => {
@@ -350,7 +350,7 @@ describe("lottery route handlers", () => {
     const payload = await readJson(response);
 
     expect(response.status).toBe(500);
-    expect(payload.error).toBe("database unavailable");
+    expect(payload.error).toBe("Não foi possível acessar os dados agora.");
   });
 
   it("uses empty body when POST JSON is invalid", async () => {

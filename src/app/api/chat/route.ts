@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLottery } from "@/data/lotteries";
 import { getOpenAIChatConfig } from "@/lib/server/env";
-import { checkMutationRateLimit, readJsonObjectBody } from "@/lib/server/security";
+import { checkMutationRateLimit, getSafeErrorDetails, readJsonObjectBody } from "@/lib/server/security";
 
 type ChatRole = "assistant" | "user";
 
@@ -86,7 +86,7 @@ function logChat(message: string, details?: Record<string, unknown>): void {
 function logChatError(message: string, error: unknown, details?: Record<string, unknown>): void {
   console.error(CHAT_LOG_PREFIX, message, {
     ...details,
-    error: error instanceof Error ? { name: error.name, message: error.message } : error,
+    error: getSafeErrorDetails(error),
   });
 }
 
@@ -358,7 +358,7 @@ async function requestOpenAI(messages: OpenAIChatMessage[]): Promise<string> {
   const payload = (await response.json()) as OpenAIChatCompletionResponse;
 
   if (!response.ok) {
-    throw new Error(payload.error?.message || `OpenAI request failed with status ${response.status}`);
+    throw new Error(`OpenAI request failed with status ${response.status}`);
   }
 
   const content = payload.choices?.[0]?.message?.content?.trim();

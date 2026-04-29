@@ -1,6 +1,7 @@
 import { getLottery, LOTTERIES } from "@/data/lotteries";
 import type { Draw } from "@/lib/types";
 import { getDatabasePool } from "@/lib/server/db";
+import { getSafeErrorDetails } from "@/lib/server/security";
 
 const REPOSITORY_LOG_PREFIX = "[app-loto-next][repository]";
 
@@ -504,7 +505,7 @@ export async function saveDraw(draw: Draw): Promise<StoredDraw> {
       lottery: draw.lottery,
       drawNumber: draw.drawNumber,
       elapsedMs: elapsedMs(startedAt),
-      error: error instanceof Error ? { name: error.name, message: error.message } : error,
+      error: getSafeErrorDetails(error),
     });
     throw error;
   } finally {
@@ -569,7 +570,7 @@ export async function saveDraws(draws: Draw[]): Promise<StoredDraw[]> {
       lottery,
       savedBeforeError: storedDraws.length,
       elapsedMs: elapsedMs(startedAt),
-      error: error instanceof Error ? { name: error.name, message: error.message } : error,
+      error: getSafeErrorDetails(error),
     });
     throw error;
   } finally {

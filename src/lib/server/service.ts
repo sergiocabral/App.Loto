@@ -8,6 +8,7 @@ import {
   saveDraw,
   type StoredDraw,
 } from "@/lib/server/repository";
+import { getSafeErrorDetails } from "@/lib/server/security";
 
 const SERVICE_LOG_PREFIX = "[app-loto-next][service]";
 
@@ -29,24 +30,10 @@ function warnService(message: string, details?: Record<string, unknown>): void {
   console.warn(SERVICE_LOG_PREFIX, message);
 }
 
-function getErrorDetails(error: unknown): unknown {
-  if (!(error instanceof Error)) {
-    return error;
-  }
-
-  const details: Record<string, unknown> = { name: error.name, message: error.message };
-
-  if (process.env.NODE_ENV !== "production") {
-    details.stack = error.stack;
-  }
-
-  return details;
-}
-
 function errorService(message: string, error: unknown, details?: Record<string, unknown>): void {
   console.error(SERVICE_LOG_PREFIX, message, {
     ...details,
-    error: getErrorDetails(error),
+    error: getSafeErrorDetails(error, { includeStack: process.env.NODE_ENV !== "production" }),
   });
 }
 

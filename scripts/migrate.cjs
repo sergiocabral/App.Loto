@@ -14,8 +14,13 @@ const password = process.env.POSTGRES_PASSWORD;
 const database = process.env.POSTGRES_DATABASE || process.env.POSTGRES_USER;
 const port = Number.parseInt(process.env.POSTGRES_PORT || "5432", 10);
 const ssl = ["1", "true", "yes", "on"].includes(String(process.env.POSTGRES_SSL || "").toLowerCase())
-  ? { rejectUnauthorized: false }
+  ? { rejectUnauthorized: !["1", "true", "yes", "on"].includes(String(process.env.POSTGRES_SSL_ALLOW_INSECURE || "").toLowerCase()) }
   : undefined;
+
+if (process.env.NODE_ENV === "production" && process.env.POSTGRES_SSL_ALLOW_INSECURE === "true") {
+  console.error("POSTGRES_SSL_ALLOW_INSECURE cannot be enabled in production.");
+  process.exit(1);
+}
 
 if (!host || !user || !password || !database) {
   console.error("Missing PostgreSQL configuration. Check POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DATABASE.");
