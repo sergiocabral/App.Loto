@@ -224,7 +224,7 @@ function getHistoryStatusMessage(draws: Draw[]): string {
 function cacheHistoryData(lotterySlug: string, draws: Draw[], rawText: string, statusMessage = getHistoryStatusMessage(draws)): LoadedLotteryData {
   const loadedData: LoadedLotteryData = {
     draws,
-    selectedDraw: draws[0] ?? null,
+    selectedDraw: null,
     rawText,
     statusMessage,
   };
@@ -259,7 +259,7 @@ async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Pro
       const loadedData: LoadedLotteryData = drawNumber
         ? {
             draws: payload.draw ? [asClientDraw(payload.draw)] : [],
-            selectedDraw: payload.draw ? asClientDraw(payload.draw) : null,
+            selectedDraw: null,
             rawText: payload.text ?? "",
             statusMessage: payload.draw ? "Concurso encontrado." : "Concurso não encontrado.",
           }
@@ -617,7 +617,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setDrawNumberInput("");
     setActiveDrawNumber("");
     setNumberFilter([]);
-    setSelectedDraw(draws[0] ?? null);
+    setSelectedDraw(null);
 
     if (selectedLottery) {
       updateLegacyUrl(selectedLottery.slug);
@@ -672,10 +672,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setDraws(loadedData.draws);
     setSelectedDraw((current) => {
       if (!current) {
-        return loadedData.selectedDraw;
+        return null;
       }
 
-      return loadedData.draws.find((draw) => draw.drawNumber === current.drawNumber) ?? loadedData.selectedDraw;
+      return loadedData.draws.find((draw) => draw.drawNumber === current.drawNumber) ?? null;
     });
 
     setSyncInfo((current) => ({
@@ -714,6 +714,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setActiveDrawNumber("");
     setDrawNumberInput("");
     setNumberFilter([]);
+    setSelectedDraw(null);
     updateLegacyUrl(lottery.slug);
     setStatus("syncing");
     setError(null);
