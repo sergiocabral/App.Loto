@@ -944,6 +944,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       return;
     }
 
+    const analyticsData = getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope);
+
+    trackEvent(ANALYTICS_EVENTS.luckyButtonClicked, analyticsData);
+
     const suggestionVariantKey = getSuggestionVariantKey(selectedLottery, analysisView, analysisData);
     const existingGamesForContext = suggestedGames.filter(
       (game) => game.lotterySlug === selectedLottery.slug && game.filterKey === suggestionVariantKey,
@@ -971,7 +975,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setSelectedSuggestedGameKey(null);
     setStatusMessage("Nova sugestão adicionada.");
     trackEvent(ANALYTICS_EVENTS.generatedSuggestion, {
-      ...getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+      ...analyticsData,
       suggestionSize: numbers.length,
       variantIndex,
     });
@@ -1042,6 +1046,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     updateLegacyUrl();
   }
 
+  function trackDonationLinkClick(placement: "hero" | "footer") {
+    trackEvent(ANALYTICS_EVENTS.donationLinkClicked, { placement });
+  }
+
   return (
     <>
       <div className="dashboard">
@@ -1062,7 +1070,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
             <strong>Ganhou ou o serviço ajudou?</strong>
             <span>
               Apoie com um PIX para <strong className="pix-key">contato@luckygames.tips</strong> ou cartão em{" "}
-              <a href="https://idontneedit.org" rel="noreferrer" target="_blank">
+              <a href="https://idontneedit.org" onClick={() => trackDonationLinkClick("hero")} rel="noreferrer" target="_blank">
                 idontneedit.org
               </a>
               .
@@ -1259,7 +1267,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       <div className="donation-callout donation-callout-bottom">
         <span>
           Se o Luckygames ajudou, apoie com um PIX para <strong className="pix-key">contato@luckygames.tips</strong> ou cartão em{" "}
-          <a href="https://idontneedit.org" rel="noreferrer" target="_blank">
+          <a href="https://idontneedit.org" onClick={() => trackDonationLinkClick("footer")} rel="noreferrer" target="_blank">
             idontneedit.org
           </a>
           .

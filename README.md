@@ -270,11 +270,12 @@ Eventos instrumentados:
 - limpeza de filtro;
 - carregamento incremental de resultados;
 - seleção/cópia de sorteio;
-- geração e cópia de sugestão;
+- geração pelo botão “Estou com sorte” e cópia de sugestão;
 - mudanças na análise rápida, período, faixa customizada e escopo da Dupla Sena;
 - abertura da página de todos os sorteios;
 - início, pausa, conclusão e falha de sincronização;
-- abertura do chat, uso de sugestão, envio de pergunta, resposta recebida e falha do chat.
+- abertura, fechamento, uso de sugestão, envio de pergunta, resposta recebida e falha do chat;
+- clique no link `idontneedit.org` das áreas de doação.
 
 Por privacidade, os eventos não enviam combinações sugeridas, números digitados pelo usuário nem texto livre do chat. São enviados apenas metadados como loteria, tipo de análise, contagens e estados da interação.
 

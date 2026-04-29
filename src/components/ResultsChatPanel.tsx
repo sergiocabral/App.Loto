@@ -593,6 +593,8 @@ function ResultsChatPanelSession({
 
         if (nextIsOpen) {
           trackEvent(ANALYTICS_EVENTS.chatOpened, getCurrentChatAnalyticsData());
+        } else {
+          trackEvent(ANALYTICS_EVENTS.chatClosed, getCurrentChatAnalyticsData());
         }
       }}
       open={isOpen}
