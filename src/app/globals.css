@@ -249,7 +249,9 @@ input:disabled {
 
 .donation-callout {
   align-items: center;
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(56, 189, 248, 0.1));
+  background: rgba(251, 191, 36, 0.1);
+  background-image: linear-gradient(120deg, rgba(251, 191, 36, 0.16) 0%, rgba(56, 189, 248, 0.1) 100%);
+  background-repeat: no-repeat;
   border: 1px solid rgba(251, 191, 36, 0.28);
   border-radius: 18px;
   color: var(--muted-strong);
