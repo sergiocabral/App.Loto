@@ -2127,22 +2127,18 @@ function TrendGroups({
   );
 }
 
-function getHeatNumberStyle(intensity: number, isActive: boolean, isSelected: boolean) {
+function getHeatNumberStyle(intensity: number, isSelected: boolean) {
   const relativeIntensity = Math.min(Math.max(intensity, 0), 1);
   const hue = 222 - relativeIntensity * 184;
   const saturation = 72 + relativeIntensity * 18;
   const lightness = 14 + relativeIntensity * 48;
   const borderLightness = 34 + relativeIntensity * 32;
-  const glow = 0.08 + relativeIntensity * 0.22;
+  const selectedGlow = 0.18 + relativeIntensity * 0.2;
 
   return {
     background: `linear-gradient(135deg, hsl(${hue} ${saturation}% ${lightness}%), hsl(${Math.max(18, hue - 18)} ${Math.min(95, saturation + 4)}% ${Math.max(18, lightness - 6)}%))`,
     borderColor: isSelected ? "var(--number-border-active)" : `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
-    boxShadow: isSelected
-      ? "0 0 0 2px rgba(251, 191, 36, 0.24)"
-      : isActive
-        ? `0 10px 24px rgba(56, 189, 248, ${glow})`
-        : "none",
+    boxShadow: isSelected ? `0 10px 24px rgba(251, 191, 36, ${selectedGlow})` : "none",
     color: relativeIntensity > 0.52 ? "#020617" : "#f8fafc",
   };
 }
@@ -2192,7 +2188,7 @@ function NumberHeatMap({
             className={`heat-number ${isSelected ? "heat-number-selected" : ""}`}
             key={`${variant}-${item.number}`}
             onClick={() => onToggleNumber(item.number)}
-            style={getHeatNumberStyle(relativeIntensity, score > 0, isSelected)}
+            style={getHeatNumberStyle(relativeIntensity, isSelected)}
             role="button"
             tabIndex={0}
             onKeyDown={(event) => {

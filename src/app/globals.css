@@ -2211,6 +2211,10 @@ button {
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
 }
 
+.heat-number-selected {
+  border-width: 0;
+}
+
 .heat-number-selected::before,
 .heat-number-selected::after {
   content: "";
