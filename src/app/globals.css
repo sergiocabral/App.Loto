@@ -1216,9 +1216,9 @@ button {
 }
 
 .draw-row-content {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  grid-template-columns: 92px minmax(0, 1fr) 120px;
   min-width: 0;
   width: 100%;
 }
@@ -2522,7 +2522,6 @@ button {
 
   .draw-row-content {
     gap: 6px;
-    grid-template-columns: 1fr;
   }
 
   .draw-row-meta {
