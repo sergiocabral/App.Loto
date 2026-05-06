@@ -848,7 +848,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setStatusMessage(`Números adicionados: ${groupNumbers.join(", ")}.`);
   }
 
-  function replaceOrClearNumberGroupSelection(numbers: string[]) {
+  function replaceNumberGroupSelection(numbers: string[]) {
     const groupNumbers = sortNumbersForDisplay([...new Set(numbers)]);
 
     if (!groupNumbers.length) {
@@ -857,12 +857,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
 
     clearPendingSelectionClick();
     setSelectedSuggestedGameKey(null);
-
-    if (groupNumbers.every((number) => selectedNumbers.has(number))) {
-      setSelectedNumbers(new Set());
-      setStatusMessage("Seleção de números limpa.");
-      return;
-    }
 
     setSelectedNumbers(new Set(groupNumbers));
     setStatusMessage(`Seleção atualizada: ${groupNumbers.join(", ")}.`);
@@ -1470,7 +1464,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 onClear={clearSuggestedGames}
                 onAddNumberGroup={addNumberGroupToSelection}
                 onLucky={generateLuckySuggestion}
-                onReplaceOrClearNumberGroup={replaceOrClearNumberGroupSelection}
+                onReplaceNumberGroup={replaceNumberGroupSelection}
                 onSelectGame={selectSuggestedGame}
                 selectedGameKey={selectedSuggestedGameKey}
                 onToggleNumber={toggleSelectedNumber}
@@ -1518,7 +1512,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                     onLoadMore={loadMoreDraws}
                     onSelect={selectDrawAndCopy}
                     onAddNumberGroup={addNumberGroupToSelection}
-                    onReplaceOrClearNumberGroup={replaceOrClearNumberGroupSelection}
+                    onReplaceNumberGroup={replaceNumberGroupSelection}
                     selectedDrawNumber={selectedDraw?.drawNumber ?? null}
                     totalCount={filteredDraws.length}
                     visibleCount={visibleDraws.length}
@@ -2215,7 +2209,7 @@ function SuggestionPanel({
   onClear,
   onAddNumberGroup,
   onLucky,
-  onReplaceOrClearNumberGroup,
+  onReplaceNumberGroup,
   onSelectGame,
   selectedGameKey,
   onToggleNumber,
@@ -2228,7 +2222,7 @@ function SuggestionPanel({
   onClear: () => void;
   onAddNumberGroup: (numbers: string[]) => void;
   onLucky: () => void;
-  onReplaceOrClearNumberGroup: (numbers: string[]) => void;
+  onReplaceNumberGroup: (numbers: string[]) => void;
   onSelectGame: (game: SuggestedGame) => void;
   selectedGameKey: string | null;
   onToggleNumber: (number: string) => void;
@@ -2275,7 +2269,7 @@ function SuggestionPanel({
                 onDoubleClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  onReplaceOrClearNumberGroup(game.numbers);
+                  onReplaceNumberGroup(game.numbers);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -2341,7 +2335,7 @@ function DrawList({
   onLoadMore,
   onSelect,
   onAddNumberGroup,
-  onReplaceOrClearNumberGroup,
+  onReplaceNumberGroup,
   onToggleNumber,
   selectedDrawNumber,
   selectedNumbers,
@@ -2353,7 +2347,7 @@ function DrawList({
   onLoadMore: () => void;
   onSelect: (draw: Draw) => void;
   onAddNumberGroup: (numbers: string[]) => void;
-  onReplaceOrClearNumberGroup: (numbers: string[]) => void;
+  onReplaceNumberGroup: (numbers: string[]) => void;
   onToggleNumber: (number: string) => void;
   selectedDrawNumber: number | null;
   selectedNumbers: Set<string>;
@@ -2379,7 +2373,7 @@ function DrawList({
             onDoubleClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onReplaceOrClearNumberGroup(drawGroupNumbers);
+              onReplaceNumberGroup(drawGroupNumbers);
             }}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
