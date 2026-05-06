@@ -138,6 +138,15 @@ type Remark42Api = {
   destroy?: () => void;
 };
 
+type NavigatorConnection = {
+  saveData?: boolean;
+  effectiveType?: string;
+};
+
+type NavigatorWithConnection = Navigator & {
+  connection?: NavigatorConnection;
+};
+
 declare global {
   interface Window {
     REMARK42?: Remark42Api;
@@ -228,11 +237,12 @@ function getHistoryStatusMessage(draws: Draw[]): string {
 }
 
 function shouldPrefetchLotteryHistory(): boolean {
-  if (typeof navigator === "undefined" || !navigator.connection) {
+  const connection = typeof navigator === "undefined" ? null : (navigator as NavigatorWithConnection).connection;
+
+  if (!connection) {
     return true;
   }
 
-  const { connection } = navigator;
   const isSaveData = connection.saveData;
   const connectionType = connection.effectiveType;
 
