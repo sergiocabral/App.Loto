@@ -1648,6 +1648,10 @@ function RangeSliderCard({
   const visualEndPosition = `calc(${visualEndPercent}% + ${thumbSize / 2 - (thumbSize * visualEndPercent) / 100}px)`;
   const newestDraw = draws[start - 1] ?? null;
   const oldestDraw = draws[end - 1] ?? null;
+  const canMoveOldestBackward = maximum > 1 && end < maximum;
+  const canMoveOldestForward = maximum > 1 && end > start + 1;
+  const canMoveNewestBackward = maximum > 1 && start < end - 1;
+  const canMoveNewestForward = maximum > 1 && start > 1;
 
   function updateOldestBoundary(value: number) {
     const nextVisualStart = maximum > 1 ? Math.min(Math.max(value, 1), visualEnd - 1) : 1;
@@ -1657,6 +1661,14 @@ function RangeSliderCard({
   function updateNewestBoundary(value: number) {
     const nextVisualEnd = maximum > 1 ? Math.max(Math.min(value, maximum), visualStart + 1) : 1;
     onRangeChange({ end, start: maximum - nextVisualEnd + 1 });
+  }
+
+  function moveOldestBoundary(offset: number) {
+    onRangeChange({ end: end + offset, start });
+  }
+
+  function moveNewestBoundary(offset: number) {
+    onRangeChange({ end, start: start + offset });
   }
 
   return (
@@ -1682,6 +1694,7 @@ function RangeSliderCard({
           max={maximum}
           min={1}
           onChange={(event) => updateOldestBoundary(Number.parseInt(event.target.value, 10))}
+          step={1}
           type="range"
           value={visualStart}
         />
@@ -1691,36 +1704,81 @@ function RangeSliderCard({
           max={maximum}
           min={1}
           onChange={(event) => updateNewestBoundary(Number.parseInt(event.target.value, 10))}
+          step={1}
           type="range"
           value={visualEnd}
         />
       </div>
       <div className="range-slider-values" aria-label="Limites cronológicos da faixa analisada">
         <div className="range-slider-value">
-          <span>Início</span>
-          <strong>
-            {oldestDraw ? (
-              <>
-                <span>{formatStatusDate(oldestDraw)}</span>
-                <span>Concurso {oldestDraw.drawNumber}</span>
-              </>
-            ) : (
-              "Sem data"
-            )}
-          </strong>
+          <div className="range-slider-value-copy">
+            <span>Início</span>
+            <strong>
+              {oldestDraw ? (
+                <>
+                  <span>{formatStatusDate(oldestDraw)}</span>
+                  <span>Concurso {oldestDraw.drawNumber}</span>
+                </>
+              ) : (
+                "Sem data"
+              )}
+            </strong>
+          </div>
+          <div className="range-precision-controls" aria-label="Ajuste fino do início">
+            <button
+              aria-label="Recuar início em 1 concurso"
+              disabled={!canMoveOldestBackward}
+              onClick={() => moveOldestBoundary(1)}
+              title="Recuar início em 1 concurso"
+              type="button"
+            >
+              -1
+            </button>
+            <button
+              aria-label="Avançar início em 1 concurso"
+              disabled={!canMoveOldestForward}
+              onClick={() => moveOldestBoundary(-1)}
+              title="Avançar início em 1 concurso"
+              type="button"
+            >
+              +1
+            </button>
+          </div>
         </div>
         <div className="range-slider-value">
-          <span>Fim</span>
-          <strong>
-            {newestDraw ? (
-              <>
-                <span>{formatStatusDate(newestDraw)}</span>
-                <span>Concurso {newestDraw.drawNumber}</span>
-              </>
-            ) : (
-              "Sem data"
-            )}
-          </strong>
+          <div className="range-slider-value-copy">
+            <span>Fim</span>
+            <strong>
+              {newestDraw ? (
+                <>
+                  <span>{formatStatusDate(newestDraw)}</span>
+                  <span>Concurso {newestDraw.drawNumber}</span>
+                </>
+              ) : (
+                "Sem data"
+              )}
+            </strong>
+          </div>
+          <div className="range-precision-controls" aria-label="Ajuste fino do fim">
+            <button
+              aria-label="Recuar fim em 1 concurso"
+              disabled={!canMoveNewestBackward}
+              onClick={() => moveNewestBoundary(1)}
+              title="Recuar fim em 1 concurso"
+              type="button"
+            >
+              -1
+            </button>
+            <button
+              aria-label="Avançar fim em 1 concurso"
+              disabled={!canMoveNewestForward}
+              onClick={() => moveNewestBoundary(-1)}
+              title="Avançar fim em 1 concurso"
+              type="button"
+            >
+              +1
+            </button>
+          </div>
         </div>
       </div>
     </div>
