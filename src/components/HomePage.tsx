@@ -2292,7 +2292,7 @@ function SuggestionPanel({
                 title="Selecionar e copiar números"
               >
                 <div className="suggestion-game-meta">
-                  <strong>{index === 0 ? "Nova sugestão" : `Sugestão ${games.length - index}`}</strong>
+                  <strong>{`Sugestão ${index + 1}`}</strong>
                   <span>{game.sourceLabel}</span>
                 </div>
                 <div className="suggestion-numbers">
