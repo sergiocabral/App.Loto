@@ -858,6 +858,12 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     clearPendingSelectionClick();
     setSelectedSuggestedGameKey(null);
 
+    if (selectedNumbers.size === groupNumbers.length && groupNumbers.every((number) => selectedNumbers.has(number))) {
+      setSelectedNumbers(new Set());
+      setStatusMessage("Seleção de números limpa.");
+      return;
+    }
+
     setSelectedNumbers(new Set(groupNumbers));
     setStatusMessage(`Seleção atualizada: ${groupNumbers.join(", ")}.`);
   }
