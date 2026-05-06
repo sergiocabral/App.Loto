@@ -1323,7 +1323,10 @@ button {
   gap: 12px;
   padding: 14px;
   text-align: left;
+  touch-action: manipulation;
   transition: border-color 160ms ease, background 160ms ease;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .draw-row:hover,
@@ -2111,6 +2114,7 @@ button {
   touch-action: manipulation;
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
   user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .suggestion-game:hover,

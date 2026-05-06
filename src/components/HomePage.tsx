@@ -170,6 +170,7 @@ const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
 const historyLoadQueue = createSequentialLoadQueue<LoadedLotteryData>((lotterySlug) => loadLotteryDataOnce(lotterySlug, ""));
 const CAIXA_SYNC_BATCH_SIZE = 1;
 const NUMBER_GROUP_LONG_PRESS_MS = 1000;
+const NUMBER_GROUP_LONG_PRESS_MOVE_TOLERANCE = 10;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
   running: false,
@@ -186,6 +187,8 @@ const INITIAL_SYNC_INFO: SyncInfo = {
 
 function createNumberGroupLongPressHandlers(onLongPress: () => void) {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let handledCleanupId: ReturnType<typeof setTimeout> | null = null;
+  let touchStartPoint: { x: number; y: number } | null = null;
 
   function clearLongPressTimer() {
     if (!timeoutId) {
@@ -196,6 +199,52 @@ function createNumberGroupLongPressHandlers(onLongPress: () => void) {
     timeoutId = null;
   }
 
+  function clearHandledCleanup() {
+    if (!handledCleanupId) {
+      return;
+    }
+
+    clearTimeout(handledCleanupId);
+    handledCleanupId = null;
+  }
+
+  function consumeHandledLongPress(target: HTMLElement) {
+    delete target.dataset.longPressHandled;
+    clearHandledCleanup();
+  }
+
+  function scheduleHandledCleanup(target: HTMLElement) {
+    clearHandledCleanup();
+    handledCleanupId = setTimeout(() => {
+      handledCleanupId = null;
+      delete target.dataset.longPressHandled;
+    }, 800);
+  }
+
+  function markLongPressHandled(target: HTMLElement) {
+    clearHandledCleanup();
+    target.dataset.longPressHandled = "true";
+  }
+
+  function startLongPressTimer(target: HTMLElement) {
+    clearLongPressTimer();
+    consumeHandledLongPress(target);
+    timeoutId = setTimeout(() => {
+      timeoutId = null;
+      markLongPressHandled(target);
+      onLongPress();
+    }, NUMBER_GROUP_LONG_PRESS_MS);
+  }
+
+  function clearActiveLongPressTimer(target: HTMLElement) {
+    touchStartPoint = null;
+    clearLongPressTimer();
+
+    if (target.dataset.longPressHandled === "true") {
+      scheduleHandledCleanup(target);
+    }
+  }
+
   return {
     onClickCapture(event: React.MouseEvent<HTMLElement>) {
       if (event.currentTarget.dataset.longPressHandled !== "true") {
@@ -204,34 +253,80 @@ function createNumberGroupLongPressHandlers(onLongPress: () => void) {
 
       event.preventDefault();
       event.stopPropagation();
-      delete event.currentTarget.dataset.longPressHandled;
+      consumeHandledLongPress(event.currentTarget);
     },
     onContextMenu(event: React.MouseEvent<HTMLElement>) {
+      event.preventDefault();
+
       if (event.currentTarget.dataset.longPressHandled !== "true") {
         return;
       }
 
-      event.preventDefault();
       event.stopPropagation();
-      delete event.currentTarget.dataset.longPressHandled;
+      consumeHandledLongPress(event.currentTarget);
     },
-    onPointerCancel: clearLongPressTimer,
+    onTouchCancel(event: React.TouchEvent<HTMLElement>) {
+      clearActiveLongPressTimer(event.currentTarget);
+    },
+    onTouchEnd(event: React.TouchEvent<HTMLElement>) {
+      clearActiveLongPressTimer(event.currentTarget);
+    },
+    onTouchMove(event: React.TouchEvent<HTMLElement>) {
+      const touch = event.touches[0];
+
+      if (!touchStartPoint || !touch) {
+        return;
+      }
+
+      const movedX = Math.abs(touch.clientX - touchStartPoint.x);
+      const movedY = Math.abs(touch.clientY - touchStartPoint.y);
+
+      if (movedX > NUMBER_GROUP_LONG_PRESS_MOVE_TOLERANCE || movedY > NUMBER_GROUP_LONG_PRESS_MOVE_TOLERANCE) {
+        clearActiveLongPressTimer(event.currentTarget);
+      }
+    },
+    onTouchStart(event: React.TouchEvent<HTMLElement>) {
+      if (event.touches.length !== 1) {
+        clearActiveLongPressTimer(event.currentTarget);
+        return;
+      }
+
+      const touch = event.touches[0];
+      touchStartPoint = { x: touch.clientX, y: touch.clientY };
+      startLongPressTimer(event.currentTarget);
+    },
+    onPointerCancel(event: React.PointerEvent<HTMLElement>) {
+      if (event.pointerType === "touch") {
+        return;
+      }
+
+      clearActiveLongPressTimer(event.currentTarget);
+    },
     onPointerDown(event: React.PointerEvent<HTMLElement>) {
       if (event.button !== 0) {
         return;
       }
 
-      const target = event.currentTarget;
-      clearLongPressTimer();
-      delete target.dataset.longPressHandled;
-      timeoutId = setTimeout(() => {
-        timeoutId = null;
-        target.dataset.longPressHandled = "true";
-        onLongPress();
-      }, NUMBER_GROUP_LONG_PRESS_MS);
+      if (event.pointerType === "touch") {
+        return;
+      }
+
+      startLongPressTimer(event.currentTarget);
     },
-    onPointerLeave: clearLongPressTimer,
-    onPointerUp: clearLongPressTimer,
+    onPointerLeave(event: React.PointerEvent<HTMLElement>) {
+      if (event.pointerType === "touch") {
+        return;
+      }
+
+      clearActiveLongPressTimer(event.currentTarget);
+    },
+    onPointerUp(event: React.PointerEvent<HTMLElement>) {
+      if (event.pointerType === "touch") {
+        return;
+      }
+
+      clearActiveLongPressTimer(event.currentTarget);
+    },
   };
 }
 
