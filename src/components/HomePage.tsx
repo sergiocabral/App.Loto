@@ -6,7 +6,6 @@ import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { createSequentialLoadQueue } from "@/lib/client/sequentialLoadQueue";
 import {
   ANALYSIS_PERIOD_OPTIONS,
   ANALYSIS_VIEW_OPTIONS,
@@ -156,7 +155,6 @@ const INITIAL_DRAW_LIST_PAGE_SIZE = 25;
 const MAX_DRAW_LIST_INCREMENT = 400;
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
-const historyLoadQueue = createSequentialLoadQueue<LoadedLotteryData>((lotterySlug) => loadLotteryDataOnce(lotterySlug, ""));
 const CAIXA_SYNC_BATCH_SIZE = 1;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
@@ -283,23 +281,6 @@ async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Pro
 
   pendingDataRequests.set(cacheKey, request);
   return request;
-}
-
-function queueHistoryDataLoad(lotterySlug: string, options: { priority?: boolean } = {}): Promise<LoadedLotteryData> {
-  const cacheKey = getDataCacheKey(lotterySlug, "");
-  const cachedData = loadedDataCache.get(cacheKey);
-
-  if (cachedData) {
-    return Promise.resolve(cachedData);
-  }
-
-  const pendingRequest = pendingDataRequests.get(cacheKey);
-
-  if (pendingRequest) {
-    return pendingRequest;
-  }
-
-  return historyLoadQueue.load(lotterySlug, options);
 }
 
 function getCombinationKey(numbers: string[]): string {
@@ -574,9 +555,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       }
 
       try {
-        const loadedData = requestedDrawNumber
-          ? await loadLotteryDataOnce(lottery.slug, requestedDrawNumber)
-          : await queueHistoryDataLoad(lottery.slug, { priority: true });
+        const loadedData = await loadLotteryDataOnce(lottery.slug, requestedDrawNumber);
 
         if (ignoreResult) {
           return;
@@ -604,18 +583,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     };
   }, [selectedLottery, activeDrawNumber, syncInfo.running]);
 
-  useEffect(() => {
-    for (const lottery of LOTTERIES) {
-      void queueHistoryDataLoad(lottery.slug).catch(() => undefined);
-    }
-  }, []);
-
   function selectLottery(lottery: LotteryDefinition) {
     const cachedHistory = loadedDataCache.get(getDataCacheKey(lottery.slug, ""));
 
     syncStopRef.current = true;
     syncSessionRef.current += 1;
-    void queueHistoryDataLoad(lottery.slug, { priority: true }).catch(() => undefined);
     setSelectedLottery(lottery);
     setDrawNumberInput("");
     setActiveDrawNumber("");
@@ -1777,9 +1749,18 @@ function getHeatNumberStyle(intensity: number, isActive: boolean, isSelected: bo
   const borderLightness = 34 + relativeIntensity * 32;
   const glow = 0.08 + relativeIntensity * 0.22;
 
+  if (isSelected) {
+    return {
+      background: "linear-gradient(135deg, var(--number-border-active), #f59e0b)",
+      borderColor: "var(--primary-strong)",
+      boxShadow: isActive ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "0 0 0 2px rgba(251, 191, 36, 0.24)",
+      color: "#020617",
+    };
+  }
+
   return {
     background: `linear-gradient(135deg, hsl(${hue} ${saturation}% ${lightness}%), hsl(${Math.max(18, hue - 18)} ${Math.min(95, saturation + 4)}% ${Math.max(18, lightness - 6)}%))`,
-    borderColor: isSelected ? "var(--number-border-active)" : `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
+    borderColor: `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
     boxShadow: isActive ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "none",
     color: relativeIntensity > 0.52 ? "#020617" : "#f8fafc",
   };
@@ -1898,14 +1879,21 @@ function SuggestionPanel({
             const selected = selectedGameKey === gameKey;
 
             return (
-              <button
+              <div
                 aria-label={`Selecionar e copiar sugestão ${game.numbers.join(" ")}`}
                 aria-pressed={selected}
                 className={`suggestion-game ${selected ? "active" : ""}`}
                 key={gameKey}
                 onClick={() => onSelectGame(game)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelectGame(game);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
                 title="Selecionar e copiar números"
-                type="button"
               >
                 <div className="suggestion-game-meta">
                   <strong>{index === 0 ? "Nova sugestão" : `Sugestão ${games.length - index}`}</strong>
@@ -1916,24 +1904,14 @@ function SuggestionPanel({
                     const isSelected = selectedNumbers.has(number);
 
                     return (
-                      <span
-                        aria-label={`Selecionar número ${number}`}
-                        aria-pressed={isSelected}
-                        className={`suggestion-number ${isSelected ? "number-selected" : ""}`}
-                        key={`${game.combinationKey}-${number}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onToggleNumber(number);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            onToggleNumber(number);
-                          }
-                        }}
-                        role="button"
-                        tabIndex={0}
+                    <span
+                      aria-label={`Selecionar número ${number}`}
+                      className={`suggestion-number ${isSelected ? "number-selected" : ""}`}
+                      key={`${game.combinationKey}-${number}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleNumber(number);
+                      }}
                         title={isSelected ? "Desmarcar número" : "Selecionar número"}
                       >
                         {number}
@@ -1941,7 +1919,7 @@ function SuggestionPanel({
                     );
                   })}
                 </div>
-              </button>
+              </div>
             );
           })
         ) : (
@@ -1986,14 +1964,21 @@ function DrawList({
         const groups = getDisplayGroups(draw);
 
         return (
-          <button
+          <div
             aria-label={`Selecionar e copiar concurso ${draw.drawNumber}`}
             aria-pressed={selectedDrawNumber === draw.drawNumber}
             className={`draw-row ${selectedDrawNumber === draw.drawNumber ? "active" : ""}`}
             key={`${draw.lottery}-${draw.drawNumber}`}
             onClick={() => onSelect(draw)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(draw);
+              }
+            }}
             title="Selecionar e copiar números"
-            type="button"
+            role="button"
+            tabIndex={0}
           >
             <span className="draw-row-number">#{draw.drawNumber}</span>
             <strong className="draw-row-groups" aria-label={formatDrawNumbers(draw)}>
@@ -2005,28 +1990,18 @@ function DrawList({
                       const isSelected = selectedNumbers.has(number);
 
                       return (
-                        <span
-                          aria-label={`Selecionar número ${number}`}
-                          aria-pressed={isSelected}
-                          className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
-                          key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onToggleNumber(number);
+                      <span
+                        aria-label={`Selecionar número ${number}`}
+                        className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
+                        key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onToggleNumber(number);
                           }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              onToggleNumber(number);
-                            }
-                          }}
-                          role="button"
-                          tabIndex={0}
                           title={isSelected ? "Desmarcar número" : "Selecionar número"}
                         >
-                          {number}
-                        </span>
+                        {number}
+                      </span>
                       );
                     })}
                   </span>
@@ -2034,7 +2009,7 @@ function DrawList({
               ))}
             </strong>
             <small className="draw-row-date">{draw.date}</small>
-          </button>
+          </div>
         );
       })}
       {hasMore ? (
