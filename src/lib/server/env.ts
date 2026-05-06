@@ -2,9 +2,13 @@ import path from "node:path";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { config } from "dotenv";
 
-if (process.env.NODE_ENV !== "production") {
-  config({ path: path.resolve(process.cwd(), ".env") });
-  config({ path: path.resolve(process.cwd(), ".env.local"), override: true });
+function shouldLoadLocalEnvFiles(): boolean {
+  return process.env.NEXT_RUNTIME_PROVIDER !== "cloudflare";
+}
+
+if (shouldLoadLocalEnvFiles()) {
+  config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
+  config({ path: path.resolve(process.cwd(), ".env.local"), override: true, quiet: true });
 }
 
 export function getCloudflareEnv(): Record<string, unknown> | null {
