@@ -1711,6 +1711,14 @@ button {
   color: #020617;
 }
 
+.analysis-view-mode-indicator {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 900;
+  margin-left: 4px;
+  opacity: 0.76;
+}
+
 .period-option-range {
   display: inline-block;
   font-size: 10px;

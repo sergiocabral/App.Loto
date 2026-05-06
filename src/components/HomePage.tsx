@@ -678,6 +678,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setLookupMode("numbers");
     setNumberFilter([]);
     setCustomAnalysisRange(null);
+    setRecentScoreMode(1);
     setSyncInfo(INITIAL_SYNC_INFO);
     updateLegacyUrl(lottery.slug);
     trackEvent(ANALYTICS_EVENTS.lotterySelected, getLotteryAnalyticsData(lottery));
@@ -1068,14 +1069,22 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   }
 
   function changeAnalysisView(view: AnalysisView) {
-    setRecentWeightDisplayMode((current) =>
-      view === "recent" && analysisView === "recent" ? (current === "float" ? "rounded" : "float") : "float",
-    );
+    const nextRecentWeightDisplayMode =
+      view === "recent" && analysisView === "recent"
+        ? recentWeightDisplayMode === "float"
+          ? "rounded"
+          : "float"
+        : "float";
+
+    setRecentWeightDisplayMode(nextRecentWeightDisplayMode);
     setAnalysisView(view);
     if (selectedLottery) {
       trackEvent(
         ANALYTICS_EVENTS.updatedAnalysisView,
-        getAnalysisAnalyticsData(selectedLottery, view, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+        {
+          ...getAnalysisAnalyticsData(selectedLottery, view, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+          recentScoreMode: view === "recent" ? (nextRecentWeightDisplayMode === "float" ? 1 : 2) : undefined,
+        },
       );
     }
   }
@@ -1746,7 +1755,10 @@ function AnalysisPanel({
                     onClick={() => onViewChange(option.value)}
                     type="button"
                   >
-                    {option.label}
+                    <span>{option.label}</span>
+                    {option.value === "recent" && activeView === "recent" ? (
+                      <span className="analysis-view-mode-indicator">({recentWeightDisplayMode === "float" ? 1 : 2})</span>
+                    ) : null}
                   </button>
                 ))}
               </div>
