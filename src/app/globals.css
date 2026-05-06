@@ -1196,9 +1196,8 @@ button {
   border: 1px solid var(--border);
   border-radius: 18px;
   color: var(--text);
-  display: grid;
+  display: flex;
   gap: 12px;
-  grid-template-columns: 36px 92px minmax(0, 1fr) 120px;
   padding: 14px;
   text-align: left;
   transition: border-color 160ms ease, background 160ms ease;
@@ -1214,6 +1213,14 @@ button {
 .draw-row-groups,
 .draw-row-date {
   min-width: 0;
+}
+
+.draw-row-content {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 92px minmax(0, 1fr) 120px;
+  min-width: 0;
+  width: 100%;
 }
 
 .draw-row-number {
@@ -1236,6 +1243,13 @@ button {
   font-family: 'JetBrains Mono', monospace;
   font-size: 14px;
   gap: 8px;
+}
+
+.draw-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
 }
 
 .draw-number-group {
@@ -2503,7 +2517,16 @@ button {
   }
 
   .draw-row-date {
-    text-align: left;
+    text-align: right;
+  }
+
+  .draw-row-content {
+    gap: 6px;
+    grid-template-columns: 1fr;
+  }
+
+  .draw-row-meta {
+    justify-content: space-between;
   }
 
   .draw-number-pill {

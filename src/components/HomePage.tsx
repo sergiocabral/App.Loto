@@ -2042,43 +2042,47 @@ function DrawList({
             tabIndex={0}
           >
             <span className="draw-row-index">{drawIndex + 1}</span>
-            <span className="draw-row-number">#{draw.drawNumber}</span>
-            <strong className="draw-row-groups" aria-label={formatDrawNumbers(draw)}>
-              {groups.map((group, groupIndex) => (
-                <span className="draw-number-group" key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}`}>
-                  {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
-                  <span className="draw-group-values">
-                    {group.map((number) => {
-                      const isSelected = selectedNumbers.has(number);
+            <div className="draw-row-content">
+              <div className="draw-row-meta">
+                <span className="draw-row-number">#{draw.drawNumber}</span>
+                <small className="draw-row-date">{draw.date}</small>
+              </div>
+              <strong className="draw-row-groups" aria-label={formatDrawNumbers(draw)}>
+                {groups.map((group, groupIndex) => (
+                  <span className="draw-number-group" key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}`}>
+                    {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
+                    <span className="draw-group-values">
+                      {group.map((number) => {
+                        const isSelected = selectedNumbers.has(number);
 
-                      return (
-                        <button
-                          aria-label={`Selecionar número ${number}`}
-                          className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
-                          key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onToggleNumber(number);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
+                        return (
+                          <button
+                            aria-label={`Selecionar número ${number}`}
+                            className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
+                            key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
+                            onClick={(event) => {
                               event.stopPropagation();
                               onToggleNumber(number);
-                            }
-                          }}
-                          title={isSelected ? "Desmarcar número" : "Selecionar número"}
-                          type="button"
-                        >
-                          {number}
-                        </button>
-                      );
-                    })}
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onToggleNumber(number);
+                              }
+                            }}
+                            title={isSelected ? "Desmarcar número" : "Selecionar número"}
+                            type="button"
+                          >
+                            {number}
+                          </button>
+                        );
+                      })}
+                    </span>
                   </span>
-                </span>
-              ))}
-            </strong>
-            <small className="draw-row-date">{draw.date}</small>
+                ))}
+              </strong>
+            </div>
           </div>
         );
       })}
