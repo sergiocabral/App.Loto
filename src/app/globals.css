@@ -1282,7 +1282,7 @@ button {
 
 .number-selected {
   border-color: var(--primary-strong) !important;
-  background-color: var(--number-border-active) !important;
+  background: linear-gradient(135deg, rgb(240, 140, 200), rgb(255, 255, 255)) !important;
   color: black !important;
 }
 
