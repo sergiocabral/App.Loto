@@ -6,6 +6,7 @@ import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { createSequentialLoadQueue } from "@/lib/client/sequentialLoadQueue";
 import {
   ANALYSIS_PERIOD_OPTIONS,
   ANALYSIS_VIEW_OPTIONS,
@@ -153,8 +154,10 @@ const REMARK42_SCRIPT_ID = "remark42-embed-script";
 
 const INITIAL_DRAW_LIST_PAGE_SIZE = 25;
 const MAX_DRAW_LIST_INCREMENT = 400;
+const SAVE_DATA_CONNECTION_TYPES = ["slow-2g", "2g", "3g"] as const;
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
+const historyLoadQueue = createSequentialLoadQueue<LoadedLotteryData>((lotterySlug) => loadLotteryDataOnce(lotterySlug, ""));
 const CAIXA_SYNC_BATCH_SIZE = 1;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
@@ -222,6 +225,35 @@ function buildRawPageUrl(lotterySlug: string, drawNumber: string): string {
 
 function getHistoryStatusMessage(draws: Draw[]): string {
   return draws.length ? `${draws.length} concursos encontrados.` : "Nenhum resultado encontrado.";
+}
+
+function shouldPrefetchLotteryHistory(): boolean {
+  if (typeof navigator === "undefined" || !navigator.connection) {
+    return true;
+  }
+
+  const { connection } = navigator;
+  const isSaveData = connection.saveData;
+  const connectionType = connection.effectiveType;
+
+  return !isSaveData && !SAVE_DATA_CONNECTION_TYPES.includes(connectionType as (typeof SAVE_DATA_CONNECTION_TYPES)[number]);
+}
+
+function queueHistoryDataLoad(lotterySlug: string, options: { priority?: boolean } = {}): Promise<LoadedLotteryData> {
+  const cacheKey = getDataCacheKey(lotterySlug, "");
+  const cachedData = loadedDataCache.get(cacheKey);
+
+  if (cachedData) {
+    return Promise.resolve(cachedData);
+  }
+
+  const pendingRequest = pendingDataRequests.get(cacheKey);
+
+  if (pendingRequest) {
+    return pendingRequest;
+  }
+
+  return historyLoadQueue.load(lotterySlug, options);
 }
 
 function cacheHistoryData(lotterySlug: string, draws: Draw[], rawText: string, statusMessage = getHistoryStatusMessage(draws)): LoadedLotteryData {
@@ -555,7 +587,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       }
 
       try {
-        const loadedData = await loadLotteryDataOnce(lottery.slug, requestedDrawNumber);
+        const loadedData = requestedDrawNumber
+          ? await loadLotteryDataOnce(lottery.slug, requestedDrawNumber)
+          : await queueHistoryDataLoad(lottery.slug, { priority: true });
 
         if (ignoreResult) {
           return;
@@ -583,11 +617,22 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     };
   }, [selectedLottery, activeDrawNumber, syncInfo.running]);
 
+  useEffect(() => {
+    if (!shouldPrefetchLotteryHistory()) {
+      return;
+    }
+
+    for (const lottery of LOTTERIES) {
+      void queueHistoryDataLoad(lottery.slug).catch(() => undefined);
+    }
+  }, []);
+
   function selectLottery(lottery: LotteryDefinition) {
     const cachedHistory = loadedDataCache.get(getDataCacheKey(lottery.slug, ""));
 
     syncStopRef.current = true;
     syncSessionRef.current += 1;
+    void queueHistoryDataLoad(lottery.slug, { priority: true }).catch(() => undefined);
     setSelectedLottery(lottery);
     setDrawNumberInput("");
     setActiveDrawNumber("");
