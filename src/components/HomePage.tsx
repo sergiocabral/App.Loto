@@ -2267,7 +2267,7 @@ function SuggestionPanel({
           games.map((game, index) => {
             const gameKey = getSuggestedGameKey(game);
             const selected = selectedGameKey === gameKey;
-            const longPressHandlers = createNumberGroupLongPressHandlers(() => onReplaceOrClearNumberGroup(game.numbers));
+            const longPressHandlers = createNumberGroupLongPressHandlers(() => onAddNumberGroup(game.numbers));
 
             return (
               <div
@@ -2280,7 +2280,7 @@ function SuggestionPanel({
                 onDoubleClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  onAddNumberGroup(game.numbers);
+                  onReplaceOrClearNumberGroup(game.numbers);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -2289,7 +2289,7 @@ function SuggestionPanel({
                   }
                 }}
                 tabIndex={0}
-                title="Selecionar e copiar números"
+                title="Clique para copiar; clique duas vezes para selecionar só esta sugestão; segure para adicionar"
               >
                 <div className="suggestion-game-meta">
                   <strong>{`Sugestão ${games.length - index}`}</strong>
@@ -2395,7 +2395,7 @@ function DrawList({
               </div>
               <strong className="draw-row-groups" aria-label={formatDrawNumbers(draw)}>
                 {groups.map((group, groupIndex) => {
-                  const longPressHandlers = createNumberGroupLongPressHandlers(() => onReplaceOrClearNumberGroup(group));
+                  const longPressHandlers = createNumberGroupLongPressHandlers(() => onAddNumberGroup(group));
 
                   return (
                     <span
@@ -2405,9 +2405,9 @@ function DrawList({
                       onDoubleClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        onAddNumberGroup(group);
+                        onReplaceOrClearNumberGroup(group);
                       }}
-                      title="Clique duas vezes para adicionar; segure para selecionar só este grupo"
+                      title="Clique duas vezes para selecionar só este grupo; segure para adicionar"
                     >
                       {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
                       <span className="draw-group-values">
