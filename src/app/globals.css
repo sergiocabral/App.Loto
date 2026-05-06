@@ -2211,10 +2211,6 @@ button {
   transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
-.heat-number-selected {
-  border-width: 0;
-}
-
 .heat-number-selected::before,
 .heat-number-selected::after {
   content: "";
@@ -2232,7 +2228,7 @@ button {
 }
 
 .heat-number-selected::after {
-  border: 1px solid rgba(254, 243, 199, 0.9);
+  border: 3px solid rgba(254, 243, 199, 0.9);
   border-radius: 12px;
   inset: 3px;
   z-index: 0;
