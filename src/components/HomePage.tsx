@@ -1891,7 +1891,6 @@ function SuggestionPanel({
                     onSelectGame(game);
                   }
                 }}
-                role="button"
                 tabIndex={0}
                 title="Selecionar e copiar números"
               >
@@ -1904,18 +1903,26 @@ function SuggestionPanel({
                     const isSelected = selectedNumbers.has(number);
 
                     return (
-                    <span
-                      aria-label={`Selecionar número ${number}`}
-                      className={`suggestion-number ${isSelected ? "number-selected" : ""}`}
-                      key={`${game.combinationKey}-${number}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onToggleNumber(number);
-                      }}
+                      <button
+                        aria-label={`Selecionar número ${number}`}
+                        className={`suggestion-number ${isSelected ? "number-selected" : ""}`}
+                        key={`${game.combinationKey}-${number}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onToggleNumber(number);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onToggleNumber(number);
+                          }
+                        }}
                         title={isSelected ? "Desmarcar número" : "Selecionar número"}
+                        type="button"
                       >
                         {number}
-                      </span>
+                      </button>
                     );
                   })}
                 </div>
@@ -1977,7 +1984,6 @@ function DrawList({
               }
             }}
             title="Selecionar e copiar números"
-            role="button"
             tabIndex={0}
           >
             <span className="draw-row-number">#{draw.drawNumber}</span>
@@ -1990,18 +1996,26 @@ function DrawList({
                       const isSelected = selectedNumbers.has(number);
 
                       return (
-                      <span
-                        aria-label={`Selecionar número ${number}`}
-                        className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
-                        key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onToggleNumber(number);
+                        <button
+                          aria-label={`Selecionar número ${number}`}
+                          className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
+                          key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onToggleNumber(number);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onToggleNumber(number);
+                            }
                           }}
                           title={isSelected ? "Desmarcar número" : "Selecionar número"}
+                          type="button"
                         >
-                        {number}
-                      </span>
+                          {number}
+                        </button>
                       );
                     })}
                   </span>

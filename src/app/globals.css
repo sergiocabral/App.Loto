@@ -1946,9 +1946,10 @@ button {
   gap: 10px;
 }
 
-.suggestion-numbers span {
+.suggestion-number {
   align-items: center;
   background: #dcfce7;
+  border: 1px solid var(--number-border);
   border-radius: 50%;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.28);
   color: #052e16;
@@ -1960,11 +1961,6 @@ button {
   justify-content: center;
   min-width: 42px;
   padding: 0;
-  width: 42px;
-  border: 1px solid var(--number-border);
-}
-
-.suggestion-number {
   min-height: 42px;
   min-width: 42px;
   width: 42px;
