@@ -169,7 +169,7 @@ const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
 const historyLoadQueue = createSequentialLoadQueue<LoadedLotteryData>((lotterySlug) => loadLotteryDataOnce(lotterySlug, ""));
 const CAIXA_SYNC_BATCH_SIZE = 1;
-const NUMBER_GROUP_LONG_PRESS_MS = 1000;
+const NUMBER_GROUP_LONG_PRESS_MS = 300;
 const NUMBER_GROUP_LONG_PRESS_MOVE_TOLERANCE = 10;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
