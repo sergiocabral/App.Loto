@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getLottery, type LotteryDefinition } from "@/data/lotteries";
 import {
   buildAnalysisData,
+  buildBacktestSnapshot,
   buildLuckySuggestion,
   buildNumberRange,
   buildSuggestionGroups,
@@ -45,6 +46,12 @@ describe("analysis helpers", () => {
   const megaSena = getLottery("MegaSena")!;
   const lotoMania = getLottery("LotoMania")!;
   const duplaSena = getLottery("DuplaSena")!;
+  const tinyLottery: LotteryDefinition = {
+    slug: "Tiny",
+    apiSlug: "tiny",
+    countNumbers: 7,
+    numbersPerDraw: 3,
+  };
   const draws = [
     draw(5, ["01", "02", "03", "04", "05", "06"]),
     draw(4, ["01", "02", "03", "04", "05", "07"]),
@@ -142,6 +149,58 @@ describe("analysis helpers", () => {
     expect(data?.selectedDraws.map((item) => item.drawNumber)).toEqual([5, 4, 3, 2, 1]);
   });
 
+  it("builds a backtest snapshot using only draws up to the cutoff", () => {
+    const backtestDraws = [
+      draw(5, ["01", "06", "07"], "Tiny"),
+      draw(4, ["01", "03", "05"], "Tiny"),
+      draw(3, ["01", "02", "03"], "Tiny"),
+      draw(2, ["01", "02", "03"], "Tiny"),
+      draw(1, ["01", "02", "04"], "Tiny"),
+    ];
+    const snapshot = buildBacktestSnapshot(backtestDraws, tinyLottery, 3, "most", "all", "all", () => 0);
+
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.cutoffDraw.drawNumber).toBe(3);
+    expect(snapshot?.actualNextDraw?.drawNumber).toBe(4);
+    expect(snapshot?.analysisData?.selectedDraws.map((item) => item.drawNumber)).toEqual([3, 2, 1]);
+    expect(snapshot?.analysisData?.stats.find((item) => item.number === "05")?.hits).toBe(0);
+    expect(snapshot?.suggestion).toEqual(["01", "02", "03"]);
+    expect(snapshot?.hits).toEqual(["01", "03"]);
+    expect(snapshot?.missing).toEqual(["02"]);
+  });
+
+  it("returns a backtest snapshot without actual next draw for the newest cutoff", () => {
+    const backtestDraws = [
+      draw(5, ["01", "06", "07"], "Tiny"),
+      draw(4, ["01", "03", "05"], "Tiny"),
+      draw(3, ["01", "02", "03"], "Tiny"),
+      draw(2, ["01", "02", "03"], "Tiny"),
+      draw(1, ["01", "02", "04"], "Tiny"),
+    ];
+    const snapshot = buildBacktestSnapshot(backtestDraws, tinyLottery, 5, "most", "all", "all", () => 0);
+
+    expect(snapshot?.actualNextDraw).toBeNull();
+    expect(snapshot?.hits).toEqual([]);
+    expect(snapshot?.missing).toEqual(snapshot?.suggestion);
+  });
+
+  it("returns null when the backtest cutoff draw does not exist", () => {
+    expect(buildBacktestSnapshot(draws, megaSena, 9999, "most", "all")).toBeNull();
+  });
+
+  it("returns an empty backtest suggestion when the historical analysis has no usable draws", () => {
+    const backtestDraws = [draw(2, ["01", "02", "03"], "Tiny"), draw(1, [], "Tiny")];
+    const snapshot = buildBacktestSnapshot(backtestDraws, tinyLottery, 1, "most", "all");
+
+    expect(snapshot).toMatchObject({
+      actualNextDraw: backtestDraws[0],
+      analysisData: null,
+      suggestion: [],
+      hits: [],
+      missing: [],
+    });
+  });
+
   it("supports DuplaSena scope filtering", () => {
     const duplaDraws = [
       draw(
@@ -226,12 +285,6 @@ describe("analysis helpers", () => {
   });
 
   it("always keeps singleton top-ranked groups in lucky suggestions", () => {
-    const tinyLottery: LotteryDefinition = {
-      slug: "Tiny",
-      apiSlug: "tiny",
-      countNumbers: 7,
-      numbersPerDraw: 3,
-    };
     const tinyDraws = [
       draw(3, ["01", "02", "03"], "Tiny"),
       draw(2, ["01", "02", "04"], "Tiny"),

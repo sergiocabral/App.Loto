@@ -44,6 +44,15 @@ export type AnalysisData = {
   scopeLabel: string;
 };
 
+export type BacktestSnapshot = {
+  cutoffDraw: Draw;
+  actualNextDraw: Draw | null;
+  analysisData: AnalysisData | null;
+  suggestion: string[];
+  hits: string[];
+  missing: string[];
+};
+
 export const ANALYSIS_PERIOD_OPTIONS: Array<{ value: AnalysisPeriod; label: string }> = [
   { value: 10, label: "10" },
   { value: 25, label: "25" },
@@ -446,5 +455,52 @@ export function buildAnalysisData(
     drawCount: selectedDraws.length,
     periodLabel: getAnalysisPeriodLabel(period, selectedDraws.length, normalizedRange),
     scopeLabel: getAnalysisScopeLabel(scope),
+  };
+}
+
+export function buildBacktestSnapshot(
+  draws: Draw[],
+  lottery: LotteryDefinition,
+  cutoffDrawNumber: number,
+  view: AnalysisView,
+  period: AnalysisPeriod,
+  scope: DuplaSenaAnalysisScope = "all",
+  random: () => number = Math.random,
+  recencyScoreMode: RecencyScoreMode = "float",
+): BacktestSnapshot | null {
+  const cutoffIndex = draws.findIndex((draw) => draw.drawNumber === cutoffDrawNumber);
+
+  if (cutoffIndex < 0) {
+    return null;
+  }
+
+  const cutoffDraw = draws[cutoffIndex];
+  const actualNextDraw = cutoffIndex > 0 ? draws[cutoffIndex - 1] : null;
+  const historicalDraws = draws.slice(cutoffIndex);
+  const analysisData = buildAnalysisData(historicalDraws, lottery, period, scope);
+
+  if (!analysisData) {
+    return {
+      cutoffDraw,
+      actualNextDraw,
+      analysisData,
+      suggestion: [],
+      hits: [],
+      missing: [],
+    };
+  }
+
+  const suggestion = buildLuckySuggestion(lottery, view, analysisData, random, recencyScoreMode);
+  const actualNumbers = new Set(actualNextDraw?.numbers ?? []);
+  const hits = suggestion.filter((number) => actualNumbers.has(number));
+  const missing = suggestion.filter((number) => !hits.includes(number));
+
+  return {
+    cutoffDraw,
+    actualNextDraw,
+    analysisData,
+    suggestion,
+    hits,
+    missing,
   };
 }
