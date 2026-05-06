@@ -1941,7 +1941,7 @@ function AnalysisPanel({
                   >
                     <span>{option.label}</span>
                     {option.value === "recent" && activeView === "recent" ? (
-                      <span className="analysis-view-mode-indicator">{recentWeightDisplayMode === "float" ? "◻️" : "◼️"}</span>
+                      <span className="analysis-view-mode-indicator">{recentWeightDisplayMode === "float" ? "1️⃣" : "2️⃣"}</span>
                     ) : null}
                   </button>
                 ))}
