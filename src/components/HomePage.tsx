@@ -1410,6 +1410,14 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
               numberFilter={numberFilter}
             />
           ) : null}
+
+          <SelectedNumbersToolbar
+            numbers={selectedNumberList}
+            onApplyFilter={applySelectedNumbersFilter}
+            onClear={clearSelectedNumbers}
+            onCopy={copySelectedNumbers}
+            onToggleNumber={toggleSelectedNumber}
+          />
         </aside>
 
         <section className="results-panel">
@@ -1454,13 +1462,6 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
           ) : null}
           {status !== "loading" && status !== "error" && draws.length > 0 ? (
             <>
-              <SelectedNumbersToolbar
-                numbers={selectedNumberList}
-                onApplyFilter={applySelectedNumbersFilter}
-                onClear={clearSelectedNumbers}
-                onCopy={copySelectedNumbers}
-                onToggleNumber={toggleSelectedNumber}
-              />
               <SuggestionPanel
                 activeView={analysisView}
                 data={analysisData}
@@ -1565,40 +1566,41 @@ function SelectedNumbersToolbar({
   onCopy: () => void;
   onToggleNumber: (number: string) => void;
 }) {
-  if (!numbers.length) {
-    return null;
-  }
-
-  const countLabel = `${numbers.length} ${numbers.length === 1 ? "número" : "números"}`;
+  const hasNumbers = numbers.length > 0;
+  const countLabel = hasNumbers ? `${numbers.length} ${numbers.length === 1 ? "número" : "números"}` : "0 números";
 
   return (
-    <section className="selected-numbers-toolbar" aria-label="Números selecionados">
+    <section className="selected-numbers-toolbar" aria-label="Números selecionados" aria-live="polite">
       <div className="selected-numbers-meta">
         <span className="eyebrow">Seleção</span>
         <strong>{countLabel}</strong>
       </div>
       <div className="selected-number-list">
-        {numbers.map((number) => (
-          <button
-            aria-label={`Remover número ${number} da seleção`}
-            className="selected-number-chip"
-            key={number}
-            onClick={() => onToggleNumber(number)}
-            title="Remover da seleção"
-            type="button"
-          >
-            {number}
-          </button>
-        ))}
+        {hasNumbers ? (
+          numbers.map((number) => (
+            <button
+              aria-label={`Remover número ${number} da seleção`}
+              className="selected-number-chip"
+              key={number}
+              onClick={() => onToggleNumber(number)}
+              title="Remover da seleção"
+              type="button"
+            >
+              {number}
+            </button>
+          ))
+        ) : (
+          <span className="selected-number-placeholder">Sem seleção</span>
+        )}
       </div>
       <div className="selected-number-actions">
-        <button className="selected-number-action primary" onClick={onApplyFilter} type="button">
+        <button className="selected-number-action primary" disabled={!hasNumbers} onClick={onApplyFilter} type="button">
           Filtrar
         </button>
-        <button className="selected-number-action" onClick={onCopy} type="button">
+        <button className="selected-number-action" disabled={!hasNumbers} onClick={onCopy} type="button">
           Copiar
         </button>
-        <button className="selected-number-action" onClick={onClear} type="button">
+        <button className="selected-number-action" disabled={!hasNumbers} onClick={onClear} type="button">
           Limpar
         </button>
       </div>
