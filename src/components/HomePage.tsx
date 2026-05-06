@@ -6,6 +6,7 @@ import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { createSequentialLoadQueue } from "@/lib/client/sequentialLoadQueue";
 import {
   ANALYSIS_PERIOD_OPTIONS,
   ANALYSIS_VIEW_OPTIONS,
@@ -155,6 +156,7 @@ const INITIAL_DRAW_LIST_PAGE_SIZE = 25;
 const MAX_DRAW_LIST_INCREMENT = 400;
 const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
+const historyLoadQueue = createSequentialLoadQueue<LoadedLotteryData>((lotterySlug) => loadLotteryDataOnce(lotterySlug, ""));
 const CAIXA_SYNC_BATCH_SIZE = 1;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
@@ -281,6 +283,23 @@ async function loadLotteryDataOnce(lotterySlug: string, drawNumber: string): Pro
 
   pendingDataRequests.set(cacheKey, request);
   return request;
+}
+
+function queueHistoryDataLoad(lotterySlug: string, options: { priority?: boolean } = {}): Promise<LoadedLotteryData> {
+  const cacheKey = getDataCacheKey(lotterySlug, "");
+  const cachedData = loadedDataCache.get(cacheKey);
+
+  if (cachedData) {
+    return Promise.resolve(cachedData);
+  }
+
+  const pendingRequest = pendingDataRequests.get(cacheKey);
+
+  if (pendingRequest) {
+    return pendingRequest;
+  }
+
+  return historyLoadQueue.load(lotterySlug, options);
 }
 
 function getCombinationKey(numbers: string[]): string {
@@ -460,6 +479,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
   const [suggestedGames, setSuggestedGames] = useState<SuggestedGame[]>([]);
   const [selectedSuggestedGameKey, setSelectedSuggestedGameKey] = useState<string | null>(null);
+  const [selectedNumbers, setSelectedNumbers] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
@@ -554,7 +574,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       }
 
       try {
-        const loadedData = await loadLotteryDataOnce(lottery.slug, requestedDrawNumber);
+        const loadedData = requestedDrawNumber
+          ? await loadLotteryDataOnce(lottery.slug, requestedDrawNumber)
+          : await queueHistoryDataLoad(lottery.slug, { priority: true });
 
         if (ignoreResult) {
           return;
@@ -582,18 +604,28 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     };
   }, [selectedLottery, activeDrawNumber, syncInfo.running]);
 
+  useEffect(() => {
+    for (const lottery of LOTTERIES) {
+      void queueHistoryDataLoad(lottery.slug).catch(() => undefined);
+    }
+  }, []);
+
   function selectLottery(lottery: LotteryDefinition) {
+    const cachedHistory = loadedDataCache.get(getDataCacheKey(lottery.slug, ""));
+
     syncStopRef.current = true;
     syncSessionRef.current += 1;
+    void queueHistoryDataLoad(lottery.slug, { priority: true }).catch(() => undefined);
     setSelectedLottery(lottery);
     setDrawNumberInput("");
     setActiveDrawNumber("");
-    setDraws([]);
-    setSelectedDraw(null);
+    setDraws(cachedHistory?.draws ?? []);
+    setSelectedDraw(cachedHistory?.selectedDraw ?? null);
+    setSelectedNumbers(new Set());
     setSelectedSuggestedGameKey(null);
     setError(null);
-    setStatus("loading");
-    setStatusMessage("Carregando dados salvos...");
+    setStatus(cachedHistory ? "loaded" : "loading");
+    setStatusMessage(cachedHistory?.statusMessage ?? "Carregando dados salvos...");
     setLookupMode("numbers");
     setNumberFilter([]);
     setCustomAnalysisRange(null);
@@ -668,6 +700,20 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
         mode: lookupMode,
       });
     }
+  }
+
+  function toggleSelectedNumber(number: string) {
+    setSelectedNumbers((current) => {
+      const next = new Set(current);
+
+      if (next.has(number)) {
+        next.delete(number);
+      } else {
+        next.add(number);
+      }
+
+      return next;
+    });
   }
 
   function loadMoreDraws() {
@@ -985,6 +1031,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   }
 
   function selectDrawAndCopy(draw: Draw) {
+    if (selectedDraw?.drawNumber === draw.drawNumber) {
+      setSelectedDraw(null);
+      return;
+    }
+
     setSelectedDraw(draw);
     void copySelectionToClipboard(getDrawClipboardText(draw), `Números do concurso ${draw.drawNumber} copiados.`);
     if (selectedLottery) {
@@ -997,7 +1048,14 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   }
 
   function selectSuggestedGame(game: SuggestedGame) {
-    setSelectedSuggestedGameKey(getSuggestedGameKey(game));
+    const gameKey = getSuggestedGameKey(game);
+
+    if (selectedSuggestedGameKey === gameKey) {
+      setSelectedSuggestedGameKey(null);
+      return;
+    }
+
+    setSelectedSuggestedGameKey(gameKey);
     void copySelectionToClipboard(game.numbers.join(" "), "Sugestão copiada.");
     if (selectedLottery) {
       trackEvent(ANALYTICS_EVENTS.copySuggestion, {
@@ -1016,6 +1074,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setActiveDrawNumber("");
     setDraws([]);
     setSelectedDraw(null);
+    setSelectedNumbers(new Set());
     setSelectedSuggestedGameKey(null);
     setStatus("idle");
     setStatusMessage("Escolha uma loteria.");
@@ -1186,6 +1245,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 onLucky={generateLuckySuggestion}
                 onSelectGame={selectSuggestedGame}
                 selectedGameKey={selectedSuggestedGameKey}
+                onToggleNumber={toggleSelectedNumber}
+                selectedNumbers={selectedNumbers}
               />
               <AnalysisPanel
                 activeView={analysisView}
@@ -1194,6 +1255,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 customRange={effectiveCustomAnalysisRange}
                 data={analysisData}
                 isDuplaSena={selectedLottery?.slug === "DuplaSena"}
+                selectedNumbers={selectedNumbers}
+                onToggleNumber={toggleSelectedNumber}
                 onCustomRangeChange={changeCustomAnalysisRange}
                 onPeriodChange={changeAnalysisPeriod}
                 onScopeChange={changeDuplaSenaAnalysisScope}
@@ -1205,21 +1268,21 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 <FilterEmptyState numbers={numberFilter} />
               ) : (
                 <>
-                  <div className="results-list-heading">
-                    <button
-                      aria-label={syncInfo.running ? "Pausar carregamento manual de resultados" : "Carregar resultados manualmente"}
-                      className={`results-list-label results-sync-trigger ${syncInfo.running ? "running" : ""}`}
-                      disabled={!selectedLottery || syncInfo.stopRequested}
-                      onClick={() => syncBaseFromCaixa("manual")}
+              <div className="results-list-heading">
+                <button
+                  aria-label={syncInfo.running ? "Pausar carregamento manual de resultados" : "Carregar resultados manualmente"}
+                  className={`results-list-label results-sync-trigger ${syncInfo.running ? "running" : ""}`}
+                  disabled={!selectedLottery || syncInfo.stopRequested}
+                  onClick={() => syncBaseFromCaixa("manual")}
                       title={syncInfo.running ? "Pausar carregamento" : "Carregar resultados manualmente"}
                       type="button"
                     >
                       {syncInfo.running ? (syncInfo.stopRequested ? "Interrompendo carregamento..." : "Carregando resultados...") : "Resultados"}
                     </button>
-                    <strong>
-                      {filteredDraws.length} concurso{filteredDraws.length === 1 ? "" : "s"}
-                    </strong>
-                  </div>
+                <strong>
+                  {filteredDraws.length} concurso{filteredDraws.length === 1 ? "" : "s"}
+                </strong>
+              </div>
                   <DrawList
                     draws={visibleDraws}
                     hasMore={hasMoreDraws}
@@ -1228,6 +1291,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                     selectedDrawNumber={selectedDraw?.drawNumber ?? null}
                     totalCount={filteredDraws.length}
                     visibleCount={visibleDraws.length}
+                    onToggleNumber={toggleSelectedNumber}
+                    selectedNumbers={selectedNumbers}
                   />
                 </>
               )}
@@ -1398,6 +1463,8 @@ function AnalysisPanel({
   customRange,
   data,
   isDuplaSena,
+  selectedNumbers,
+  onToggleNumber,
   onCustomRangeChange,
   onPeriodChange,
   onScopeChange,
@@ -1411,12 +1478,14 @@ function AnalysisPanel({
   customRange: AnalysisDrawRange;
   data: AnalysisData | null;
   isDuplaSena: boolean;
+  onToggleNumber: (number: string) => void;
   onCustomRangeChange: (range: AnalysisDrawRange) => void;
   onPeriodChange: (period: AnalysisPeriod) => void;
   onScopeChange: (scope: DuplaSenaAnalysisScope) => void;
   onViewChange: (view: AnalysisView) => void;
   period: AnalysisPeriod;
   scope: DuplaSenaAnalysisScope;
+  selectedNumbers: Set<string>;
 }) {
   return (
     <details className="analysis-panel">
@@ -1495,7 +1564,11 @@ function AnalysisPanel({
           </div>
         </details>
 
-        {data ? <AnalysisContent data={data} view={activeView} /> : <div className="analysis-empty">Carregue resultados para ver a análise.</div>}
+        {data ? (
+          <AnalysisContent data={data} onToggleNumber={onToggleNumber} selectedNumbers={selectedNumbers} view={activeView} />
+        ) : (
+          <div className="analysis-empty">Carregue resultados para ver a análise.</div>
+        )}
       </div>
     </details>
   );
@@ -1604,11 +1677,26 @@ function RangeSliderCard({
   );
 }
 
-function AnalysisContent({ data, view }: { data: AnalysisData; view: AnalysisView }) {
+function AnalysisContent({
+  data,
+  onToggleNumber,
+  selectedNumbers,
+  view,
+}: {
+  data: AnalysisData;
+  onToggleNumber: (number: string) => void;
+  selectedNumbers: Set<string>;
+  view: AnalysisView;
+}) {
   if (view === "map" || view === "recent") {
     return (
       <div className="analysis-scroll-area heat-map-scroll-area">
-        <NumberHeatMap stats={data.stats} variant={view} />
+        <NumberHeatMap
+          onToggleNumber={onToggleNumber}
+          selectedNumbers={selectedNumbers}
+          stats={data.stats}
+          variant={view}
+        />
       </div>
     );
   }
@@ -1620,10 +1708,20 @@ function AnalysisContent({ data, view }: { data: AnalysisData; view: AnalysisVie
         ? buildTrendGroups(data.stats, (item) => item.hits, "asc")
         : buildTrendGroups(data.stats, (item) => item.overdue, "desc");
 
-  return <TrendGroups groups={groups} view={view} />;
+  return <TrendGroups groups={groups} onToggleNumber={onToggleNumber} selectedNumbers={selectedNumbers} view={view} />;
 }
 
-function TrendGroups({ groups, view }: { groups: NumberTrendGroup[]; view: AnalysisView }) {
+function TrendGroups({
+  groups,
+  onToggleNumber,
+  selectedNumbers,
+  view,
+}: {
+  groups: NumberTrendGroup[];
+  onToggleNumber: (number: string) => void;
+  selectedNumbers: Set<string>;
+  view: AnalysisView;
+}) {
   return (
     <div className="analysis-scroll-area">
       <div className="trend-groups">
@@ -1634,9 +1732,35 @@ function TrendGroups({ groups, view }: { groups: NumberTrendGroup[]; view: Analy
               <span>{formatNumberCount(group.items.length)}</span>
             </div>
             <div className="trend-number-cloud">
-              {group.items.map((item) => (
-                <span key={`${view}-${group.value}-${item.number}`}>{item.number}</span>
-              ))}
+              {group.items.map((item) => {
+                const isSelected = selectedNumbers.has(item.number);
+                const title = isSelected ? "Desmarcar número" : "Selecionar número";
+
+                return (
+                  <span
+                    aria-label={`Selecionar número ${item.number}`}
+                    aria-pressed={isSelected}
+                    className={`trend-number-cloud-item ${isSelected ? "number-selected" : ""}`}
+                    key={`${view}-${group.value}-${item.number}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleNumber(item.number);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onToggleNumber(item.number);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title={title}
+                  >
+                    {item.number}
+                  </span>
+                );
+              })}
             </div>
           </article>
         ))}
@@ -1645,7 +1769,7 @@ function TrendGroups({ groups, view }: { groups: NumberTrendGroup[]; view: Analy
   );
 }
 
-function getHeatNumberStyle(intensity: number, isActive: boolean) {
+function getHeatNumberStyle(intensity: number, isActive: boolean, isSelected: boolean) {
   const relativeIntensity = Math.min(Math.max(intensity, 0), 1);
   const hue = 222 - relativeIntensity * 184;
   const saturation = 72 + relativeIntensity * 18;
@@ -1655,13 +1779,23 @@ function getHeatNumberStyle(intensity: number, isActive: boolean) {
 
   return {
     background: `linear-gradient(135deg, hsl(${hue} ${saturation}% ${lightness}%), hsl(${Math.max(18, hue - 18)} ${Math.min(95, saturation + 4)}% ${Math.max(18, lightness - 6)}%))`,
-    borderColor: `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
+    borderColor: isSelected ? "var(--number-border-active)" : `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
     boxShadow: isActive ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "none",
     color: relativeIntensity > 0.52 ? "#020617" : "#f8fafc",
   };
 }
 
-function NumberHeatMap({ stats, variant }: { stats: NumberTrend[]; variant: "map" | "recent" }) {
+function NumberHeatMap({
+  onToggleNumber,
+  selectedNumbers,
+  stats,
+  variant,
+}: {
+  onToggleNumber: (number: string) => void;
+  selectedNumbers: Set<string>;
+  stats: NumberTrend[];
+  variant: "map" | "recent";
+}) {
   const scores = stats.map((item) => (variant === "recent" ? item.recencyScore : item.hits));
   const minScore = Math.min(...scores);
   const maxScore = Math.max(...scores);
@@ -1671,8 +1805,9 @@ function NumberHeatMap({ stats, variant }: { stats: NumberTrend[]; variant: "map
     <div className="number-heat-map">
       {stats.map((item) => {
         const score = variant === "recent" ? item.recencyScore : item.hits;
-        const relativeIntensity = scoreRange > 0 ? (score - minScore) / scoreRange : score ? 0.58 : 0;
-        const relativeLabel =
+              const isSelected = selectedNumbers.has(item.number);
+              const relativeIntensity = scoreRange > 0 ? (score - minScore) / scoreRange : score ? 0.58 : 0;
+              const relativeLabel =
           variant === "recent"
             ? `peso recente ${formatRecencyScore(item.recencyScore)}`
             : scoreRange > 0
@@ -1685,10 +1820,21 @@ function NumberHeatMap({ stats, variant }: { stats: NumberTrend[]; variant: "map
 
         return (
           <div
-            className="heat-number"
+            aria-label={`Selecionar número ${item.number}`}
+            aria-pressed={isSelected}
+            className={`heat-number ${isSelected ? "number-selected" : ""}`}
             key={`${variant}-${item.number}`}
-            style={getHeatNumberStyle(relativeIntensity, score > 0)}
-            title={title}
+            onClick={() => onToggleNumber(item.number)}
+            style={getHeatNumberStyle(relativeIntensity, score > 0, isSelected)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onToggleNumber(item.number);
+              }
+            }}
+            title={isSelected ? "Desmarcar número" : title}
           >
             <strong>{item.number}</strong>
             <small>{variant === "recent" ? formatRecencyScore(item.recencyScore) : `${item.hits}x`}</small>
@@ -1708,6 +1854,8 @@ function SuggestionPanel({
   onLucky,
   onSelectGame,
   selectedGameKey,
+  onToggleNumber,
+  selectedNumbers,
 }: {
   activeView: AnalysisView;
   data: AnalysisData | null;
@@ -1717,6 +1865,8 @@ function SuggestionPanel({
   onLucky: () => void;
   onSelectGame: (game: SuggestedGame) => void;
   selectedGameKey: string | null;
+  onToggleNumber: (number: string) => void;
+  selectedNumbers: Set<string>;
 }) {
   if (!lottery || !data) {
     return null;
@@ -1762,9 +1912,34 @@ function SuggestionPanel({
                   <span>{game.sourceLabel}</span>
                 </div>
                 <div className="suggestion-numbers">
-                  {game.numbers.map((number) => (
-                    <span key={`${game.combinationKey}-${number}`}>{number}</span>
-                  ))}
+                  {game.numbers.map((number) => {
+                    const isSelected = selectedNumbers.has(number);
+
+                    return (
+                      <span
+                        aria-label={`Selecionar número ${number}`}
+                        aria-pressed={isSelected}
+                        className={`suggestion-number ${isSelected ? "number-selected" : ""}`}
+                        key={`${game.combinationKey}-${number}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onToggleNumber(number);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onToggleNumber(number);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title={isSelected ? "Desmarcar número" : "Selecionar número"}
+                      >
+                        {number}
+                      </span>
+                    );
+                  })}
                 </div>
               </button>
             );
@@ -1788,7 +1963,9 @@ function DrawList({
   hasMore,
   onLoadMore,
   onSelect,
+  onToggleNumber,
   selectedDrawNumber,
+  selectedNumbers,
   totalCount,
   visibleCount,
 }: {
@@ -1796,10 +1973,13 @@ function DrawList({
   hasMore: boolean;
   onLoadMore: () => void;
   onSelect: (draw: Draw) => void;
+  onToggleNumber: (number: string) => void;
   selectedDrawNumber: number | null;
+  selectedNumbers: Set<string>;
   totalCount: number;
   visibleCount: number;
 }) {
+
   return (
     <div className="draw-list">
       {draws.map((draw) => {
@@ -1821,11 +2001,34 @@ function DrawList({
                 <span className="draw-number-group" key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}`}>
                   {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
                   <span className="draw-group-values">
-                    {group.map((number) => (
-                      <span className="draw-number-pill" key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}>
-                        {number}
-                      </span>
-                    ))}
+                    {group.map((number) => {
+                      const isSelected = selectedNumbers.has(number);
+
+                      return (
+                        <span
+                          aria-label={`Selecionar número ${number}`}
+                          aria-pressed={isSelected}
+                          className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
+                          key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onToggleNumber(number);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onToggleNumber(number);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          title={isSelected ? "Desmarcar número" : "Selecionar número"}
+                        >
+                          {number}
+                        </span>
+                      );
+                    })}
                   </span>
                 </span>
               ))}

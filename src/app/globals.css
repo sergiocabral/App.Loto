@@ -21,6 +21,8 @@
   --radius-lg: 24px;
   --radius-md: 18px;
   --radius-sm: 14px;
+  --number-border: rgba(56, 189, 248, 0.45);
+  --number-border-active: rgba(251, 191, 36, 0.95);
 }
 
 * {
@@ -1256,16 +1258,51 @@ button {
 .draw-number-pill {
   align-items: center;
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
+  border: 1px solid var(--number-border);
+  border-radius: 50%;
   color: var(--text);
   display: inline-flex;
   font-size: 12px;
   font-weight: 900;
   justify-content: center;
-  min-height: 28px;
-  min-width: 32px;
-  padding: 0 8px;
+  min-height: 30px;
+  min-width: 30px;
+  padding: 0;
+  height: 30px;
+  width: 30px;
+}
+
+.number-selected,
+.draw-number-pill-selected {
+  border: 1px solid var(--number-border-active);
+  color: var(--text);
+  font-weight: 900;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2);
+}
+
+.number-selected {
+  border-color: var(--primary-strong) !important;
+  background-color: var(--number-border-active) !important;
+  color: black !important;
+}
+
+.draw-number-pill,
+.trend-number-cloud span,
+.trend-number-cloud-item,
+.suggestion-number,
+.heat-number[role="button"] {
+  cursor: pointer;
+}
+
+.draw-number-pill:focus-visible,
+.trend-number-cloud-item:focus-visible,
+.suggestion-number:focus-visible,
+.heat-number[role="button"]:focus-visible,
+.trend-number-cloud span:focus-visible,
+.draw-number-pill-selected,
+.number-selected:focus-visible {
+  outline: 2px solid var(--number-border-active);
+  outline-offset: 2px;
 }
 
 .draw-row-date {
@@ -1404,7 +1441,7 @@ button {
 .trend-number-cloud span {
   align-items: center;
   background: rgba(255, 255, 255, 0.9);
-  border-radius: 999px;
+  border-radius: 50%;
   color: #020617;
   display: inline-flex;
   font-family: 'JetBrains Mono', monospace;
@@ -1413,7 +1450,10 @@ button {
   justify-content: center;
   min-height: 30px;
   min-width: 30px;
-  padding: 0 8px;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--number-border);
 }
 
 .analysis-header {
@@ -1909,7 +1949,7 @@ button {
 .suggestion-numbers span {
   align-items: center;
   background: #dcfce7;
-  border-radius: 999px;
+  border-radius: 50%;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.28);
   color: #052e16;
   display: inline-flex;
@@ -1919,7 +1959,17 @@ button {
   height: 42px;
   justify-content: center;
   min-width: 42px;
-  padding: 0 12px;
+  padding: 0;
+  width: 42px;
+  border: 1px solid var(--number-border);
+}
+
+.suggestion-number {
+  min-height: 42px;
+  min-width: 42px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
 }
 
 .suggestion-numbers.secondary span {
@@ -2453,7 +2503,9 @@ button {
 
   .draw-number-pill {
     min-height: 30px;
-    min-width: 34px;
+    min-width: 30px;
+    width: 30px;
+    border-radius: 50%;
   }
 
   .remark42-frame {
