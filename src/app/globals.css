@@ -1352,9 +1352,12 @@ button {
 
 .draw-number-group {
   align-items: center;
+  cursor: pointer;
   display: flex;
   gap: 8px;
   min-width: 0;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .draw-group-label {
@@ -1403,7 +1406,7 @@ button {
 
 .number-selected {
   border-color: var(--primary-strong) !important;
-  background: linear-gradient(135deg, rgb(240, 140, 200), rgb(255, 255, 255)) !important;
+  background-color: var(--number-border-active) !important;
   color: black !important;
 }
 
@@ -2074,11 +2077,14 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   color: inherit;
+  cursor: pointer;
   display: grid;
   gap: 10px;
   padding: 12px;
   text-align: left;
+  touch-action: manipulation;
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  user-select: none;
 }
 
 .suggestion-game:hover,
@@ -2175,6 +2181,10 @@ button {
   padding: 8px 4px;
   place-items: center;
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+
+.heat-number-selected {
+  text-shadow: 0 0 5px black, 0 0 5px var(--danger), 0 0 5px var(--danger), 0 0 5px var(--danger);
 }
 
 .heat-number strong {

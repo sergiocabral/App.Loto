@@ -169,6 +169,7 @@ const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
 const historyLoadQueue = createSequentialLoadQueue<LoadedLotteryData>((lotterySlug) => loadLotteryDataOnce(lotterySlug, ""));
 const CAIXA_SYNC_BATCH_SIZE = 1;
+const NUMBER_GROUP_LONG_PRESS_MS = 1000;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
   running: false,
@@ -182,6 +183,57 @@ const INITIAL_SYNC_INFO: SyncInfo = {
   skippedInBatch: 0,
   stopReason: null,
 };
+
+function createNumberGroupLongPressHandlers(onLongPress: () => void) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  function clearLongPressTimer() {
+    if (!timeoutId) {
+      return;
+    }
+
+    clearTimeout(timeoutId);
+    timeoutId = null;
+  }
+
+  return {
+    onClickCapture(event: React.MouseEvent<HTMLElement>) {
+      if (event.currentTarget.dataset.longPressHandled !== "true") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      delete event.currentTarget.dataset.longPressHandled;
+    },
+    onContextMenu(event: React.MouseEvent<HTMLElement>) {
+      if (event.currentTarget.dataset.longPressHandled !== "true") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      delete event.currentTarget.dataset.longPressHandled;
+    },
+    onPointerCancel: clearLongPressTimer,
+    onPointerDown(event: React.PointerEvent<HTMLElement>) {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const target = event.currentTarget;
+      clearLongPressTimer();
+      delete target.dataset.longPressHandled;
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+        target.dataset.longPressHandled = "true";
+        onLongPress();
+      }, NUMBER_GROUP_LONG_PRESS_MS);
+    },
+    onPointerLeave: clearLongPressTimer,
+    onPointerUp: clearLongPressTimer,
+  };
+}
 
 type LoadState = "idle" | "loading" | "syncing" | "loaded" | "error";
 
@@ -783,17 +835,37 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     }, 220);
   }
 
-  function selectOnlyNumberGroup(numbers: string[]) {
-    const nextNumbers = sortNumbersForDisplay([...new Set(numbers)]);
+  function addNumberGroupToSelection(numbers: string[]) {
+    const groupNumbers = sortNumbersForDisplay([...new Set(numbers)]);
 
-    if (!nextNumbers.length) {
+    if (!groupNumbers.length) {
       return;
     }
 
     clearPendingSelectionClick();
-    setSelectedNumbers(new Set(nextNumbers));
+    setSelectedNumbers((current) => new Set([...current, ...groupNumbers]));
     setSelectedSuggestedGameKey(null);
-    setStatusMessage(`Seleção atualizada: ${nextNumbers.join(", ")}.`);
+    setStatusMessage(`Números adicionados: ${groupNumbers.join(", ")}.`);
+  }
+
+  function replaceOrClearNumberGroupSelection(numbers: string[]) {
+    const groupNumbers = sortNumbersForDisplay([...new Set(numbers)]);
+
+    if (!groupNumbers.length) {
+      return;
+    }
+
+    clearPendingSelectionClick();
+    setSelectedSuggestedGameKey(null);
+
+    if (groupNumbers.every((number) => selectedNumbers.has(number))) {
+      setSelectedNumbers(new Set());
+      setStatusMessage("Seleção de números limpa.");
+      return;
+    }
+
+    setSelectedNumbers(new Set(groupNumbers));
+    setStatusMessage(`Seleção atualizada: ${groupNumbers.join(", ")}.`);
   }
 
   function applySelectedNumbersFilter() {
@@ -1395,8 +1467,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 lottery={selectedLottery}
                 games={visibleSuggestedGames}
                 onClear={clearSuggestedGames}
+                onAddNumberGroup={addNumberGroupToSelection}
                 onLucky={generateLuckySuggestion}
-                onSelectNumberGroup={selectOnlyNumberGroup}
+                onReplaceOrClearNumberGroup={replaceOrClearNumberGroupSelection}
                 onSelectGame={selectSuggestedGame}
                 selectedGameKey={selectedSuggestedGameKey}
                 onToggleNumber={toggleSelectedNumber}
@@ -1443,7 +1516,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                     hasMore={hasMoreDraws}
                     onLoadMore={loadMoreDraws}
                     onSelect={selectDrawAndCopy}
-                    onSelectNumberGroup={selectOnlyNumberGroup}
+                    onAddNumberGroup={addNumberGroupToSelection}
+                    onReplaceOrClearNumberGroup={replaceOrClearNumberGroupSelection}
                     selectedDrawNumber={selectedDraw?.drawNumber ?? null}
                     totalCount={filteredDraws.length}
                     visibleCount={visibleDraws.length}
@@ -2059,19 +2133,14 @@ function getHeatNumberStyle(intensity: number, isActive: boolean, isSelected: bo
   const borderLightness = 34 + relativeIntensity * 32;
   const glow = 0.08 + relativeIntensity * 0.22;
 
-  if (isSelected) {
-    return {
-      background: "linear-gradient(135deg, var(--number-border-active), #f59e0b)",
-      borderColor: "var(--primary-strong)",
-      boxShadow: isActive ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "0 0 0 2px rgba(251, 191, 36, 0.24)",
-      color: "#020617",
-    };
-  }
-
   return {
     background: `linear-gradient(135deg, hsl(${hue} ${saturation}% ${lightness}%), hsl(${Math.max(18, hue - 18)} ${Math.min(95, saturation + 4)}% ${Math.max(18, lightness - 6)}%))`,
-    borderColor: `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
-    boxShadow: isActive ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "none",
+    borderColor: isSelected ? "var(--number-border-active)" : `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
+    boxShadow: isSelected
+      ? "0 0 0 2px rgba(251, 191, 36, 0.24)"
+      : isActive
+        ? `0 10px 24px rgba(56, 189, 248, ${glow})`
+        : "none",
     color: relativeIntensity > 0.52 ? "#020617" : "#f8fafc",
   };
 }
@@ -2118,7 +2187,7 @@ function NumberHeatMap({
           <div
             aria-label={`Selecionar número ${item.number}`}
             aria-pressed={isSelected}
-            className={`heat-number ${isSelected ? "number-selected" : ""}`}
+            className={`heat-number ${isSelected ? "heat-number-selected" : ""}`}
             key={`${variant}-${item.number}`}
             onClick={() => onToggleNumber(item.number)}
             style={getHeatNumberStyle(relativeIntensity, score > 0, isSelected)}
@@ -2147,8 +2216,9 @@ function SuggestionPanel({
   games,
   lottery,
   onClear,
+  onAddNumberGroup,
   onLucky,
-  onSelectNumberGroup,
+  onReplaceOrClearNumberGroup,
   onSelectGame,
   selectedGameKey,
   onToggleNumber,
@@ -2159,8 +2229,9 @@ function SuggestionPanel({
   games: SuggestedGame[];
   lottery: LotteryDefinition | null;
   onClear: () => void;
+  onAddNumberGroup: (numbers: string[]) => void;
   onLucky: () => void;
-  onSelectNumberGroup: (numbers: string[]) => void;
+  onReplaceOrClearNumberGroup: (numbers: string[]) => void;
   onSelectGame: (game: SuggestedGame) => void;
   selectedGameKey: string | null;
   onToggleNumber: (number: string) => void;
@@ -2194,6 +2265,7 @@ function SuggestionPanel({
           games.map((game, index) => {
             const gameKey = getSuggestedGameKey(game);
             const selected = selectedGameKey === gameKey;
+            const longPressHandlers = createNumberGroupLongPressHandlers(() => onReplaceOrClearNumberGroup(game.numbers));
 
             return (
               <div
@@ -2201,10 +2273,12 @@ function SuggestionPanel({
                 aria-pressed={selected}
                 className={`suggestion-game ${selected ? "active" : ""}`}
                 key={gameKey}
+                {...longPressHandlers}
                 onClick={() => onSelectGame(game)}
                 onDoubleClick={(event) => {
                   event.preventDefault();
-                  onSelectNumberGroup(game.numbers);
+                  event.stopPropagation();
+                  onAddNumberGroup(game.numbers);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -2269,7 +2343,8 @@ function DrawList({
   hasMore,
   onLoadMore,
   onSelect,
-  onSelectNumberGroup,
+  onAddNumberGroup,
+  onReplaceOrClearNumberGroup,
   onToggleNumber,
   selectedDrawNumber,
   selectedNumbers,
@@ -2280,7 +2355,8 @@ function DrawList({
   hasMore: boolean;
   onLoadMore: () => void;
   onSelect: (draw: Draw) => void;
-  onSelectNumberGroup: (numbers: string[]) => void;
+  onAddNumberGroup: (numbers: string[]) => void;
+  onReplaceOrClearNumberGroup: (numbers: string[]) => void;
   onToggleNumber: (number: string) => void;
   selectedDrawNumber: number | null;
   selectedNumbers: Set<string>;
@@ -2300,10 +2376,6 @@ function DrawList({
             className={`draw-row ${selectedDrawNumber === draw.drawNumber ? "active" : ""}`}
             key={`${draw.lottery}-${draw.drawNumber}`}
             onClick={() => onSelect(draw)}
-            onDoubleClick={(event) => {
-              event.preventDefault();
-              onSelectNumberGroup(groups.flat());
-            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -2320,48 +2392,53 @@ function DrawList({
                 <small className="draw-row-date">{draw.date}</small>
               </div>
               <strong className="draw-row-groups" aria-label={formatDrawNumbers(draw)}>
-                {groups.map((group, groupIndex) => (
-                  <span
-                    className="draw-number-group"
-                    key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}`}
-                    onDoubleClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onSelectNumberGroup(group);
-                    }}
-                    title="Clique duas vezes para selecionar este grupo"
-                  >
-                    {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
-                    <span className="draw-group-values">
-                      {group.map((number) => {
-                        const isSelected = selectedNumbers.has(number);
+                {groups.map((group, groupIndex) => {
+                  const longPressHandlers = createNumberGroupLongPressHandlers(() => onReplaceOrClearNumberGroup(group));
 
-                        return (
-                          <button
-                            aria-label={`Selecionar número ${number}`}
-                            className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
-                            key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onToggleNumber(number);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
+                  return (
+                    <span
+                      className="draw-number-group"
+                      key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}`}
+                      {...longPressHandlers}
+                      onDoubleClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onAddNumberGroup(group);
+                      }}
+                      title="Clique duas vezes para adicionar; segure para selecionar só este grupo"
+                    >
+                      {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
+                      <span className="draw-group-values">
+                        {group.map((number) => {
+                          const isSelected = selectedNumbers.has(number);
+
+                          return (
+                            <button
+                              aria-label={`Selecionar número ${number}`}
+                              className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
+                              key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
+                              onClick={(event) => {
                                 event.stopPropagation();
                                 onToggleNumber(number);
-                              }
-                            }}
-                            title={isSelected ? "Desmarcar número" : "Selecionar número"}
-                            type="button"
-                          >
-                            {number}
-                          </button>
-                        );
-                      })}
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  onToggleNumber(number);
+                                }
+                              }}
+                              title={isSelected ? "Desmarcar número" : "Selecionar número"}
+                              type="button"
+                            >
+                              {number}
+                            </button>
+                          );
+                        })}
+                      </span>
                     </span>
-                  </span>
-                ))}
+                  );
+                })}
               </strong>
             </div>
           </div>
