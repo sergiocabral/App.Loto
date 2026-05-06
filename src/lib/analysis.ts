@@ -3,6 +3,7 @@ import type { Draw } from "@/lib/types";
 
 export type AnalysisPeriod = 10 | 25 | 50 | 100 | "all";
 export type AnalysisView = "most" | "least" | "delayed" | "map" | "recent";
+export type RecencyScoreMode = "float" | "rounded";
 export type AnalysisDrawRange = {
   end: number;
   start: number;
@@ -117,7 +118,11 @@ export function getRecentAppearanceWeight(drawIndex: number): number {
   return RECENCY_DECAY_FACTOR ** Math.max(0, drawIndex);
 }
 
-export function formatRecencyScore(score: number): string {
+export function formatRecencyScore(score: number, mode: RecencyScoreMode = "float"): string {
+  if (mode === "rounded") {
+    return String(Math.round(score));
+  }
+
   return score.toFixed(2).replace(/\.00$/, "").replace(/(\d)0$/, "$1").replace(".", ",");
 }
 
@@ -266,13 +271,21 @@ export function shuffleItems<T>(items: T[], random: () => number = Math.random):
   return shuffled;
 }
 
-export function buildSuggestionGroups(view: AnalysisView, data: AnalysisData): NumberTrendGroup[] {
+export function getRecentScoreGroupValue(item: NumberTrend, mode: RecencyScoreMode = "float"): number {
+  return mode === "rounded" ? Math.round(item.recencyScore) : Math.round(item.recencyScore * 1000);
+}
+
+export function buildSuggestionGroups(
+  view: AnalysisView,
+  data: AnalysisData,
+  recencyScoreMode: RecencyScoreMode = "float",
+): NumberTrendGroup[] {
   if (view === "most" || view === "map") {
     return buildTrendGroups(data.stats, (item) => item.hits, "desc");
   }
 
   if (view === "recent") {
-    return buildTrendGroups(data.stats, (item) => Math.round(item.recencyScore * 1000), "desc");
+    return buildTrendGroups(data.stats, (item) => getRecentScoreGroupValue(item, recencyScoreMode), "desc");
   }
 
   if (view === "least") {
@@ -291,11 +304,12 @@ export function buildLuckySuggestion(
   view: AnalysisView,
   data: AnalysisData,
   random: () => number = Math.random,
+  recencyScoreMode: RecencyScoreMode = "float",
 ): string[] {
   const size = Math.min(getSuggestionSize(lottery), data.stats.length);
   const selected: string[] = [];
 
-  for (const group of buildSuggestionGroups(view, data)) {
+  for (const group of buildSuggestionGroups(view, data, recencyScoreMode)) {
     if (selected.length >= size) {
       break;
     }

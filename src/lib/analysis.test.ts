@@ -106,6 +106,7 @@ describe("analysis helpers", () => {
     expect(formatRecencyScore(1)).toBe("1");
     expect(formatRecencyScore(0.9)).toBe("0,9");
     expect(formatRecencyScore(0.81)).toBe("0,81");
+    expect(formatRecencyScore(4.0951, "rounded")).toBe("4");
     expect(getRecentAppearanceWeight(0)).toBe(1);
     expect(getRecentAppearanceWeight(1)).toBe(0.9);
     expect(getRecentAppearanceWeight(2)).toBeCloseTo(0.81);
@@ -206,6 +207,7 @@ describe("analysis helpers", () => {
     expect(buildSuggestionGroups("delayed", data).at(0)?.value).toBe(5);
     expect(buildSuggestionGroups("map", data).at(0)?.items.length).toBeGreaterThan(0);
     expect(buildSuggestionGroups("recent", data).at(0)).toMatchObject({ value: 4095 });
+    expect(buildSuggestionGroups("recent", data, "rounded").at(0)).toMatchObject({ value: 4 });
   });
 
   it("builds lucky suggestions by filling from the top ranked groups", () => {

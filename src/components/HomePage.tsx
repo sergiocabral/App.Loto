@@ -35,6 +35,7 @@ import {
   type DuplaSenaAnalysisScope,
   type NumberTrend,
   type NumberTrendGroup,
+  type RecencyScoreMode,
 } from "@/lib/analysis";
 import type { Draw } from "@/lib/types";
 
@@ -469,16 +470,24 @@ function buildUniqueLuckySuggestion(
     return null;
   }
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const numbers = buildLuckySuggestion(lottery, view, data);
-    const combinationKey = getCombinationKey(numbers);
+  function findUniqueByRecencyScoreMode(recencyScoreMode: RecencyScoreMode): string[] | null {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const numbers = buildLuckySuggestion(lottery, view, data, Math.random, recencyScoreMode);
+      const combinationKey = getCombinationKey(numbers);
 
-    if (!existingKeys.has(combinationKey)) {
-      return numbers;
+      if (!existingKeys.has(combinationKey)) {
+        return numbers;
+      }
     }
+
+    return null;
   }
 
-  return null;
+  if (view === "recent") {
+    return findUniqueByRecencyScoreMode("float") ?? findUniqueByRecencyScoreMode("rounded");
+  }
+
+  return findUniqueByRecencyScoreMode("float");
 }
 
 export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled = false }: HomePageProps) {
@@ -498,6 +507,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(25);
   const [customAnalysisRange, setCustomAnalysisRange] = useState<AnalysisDrawRange | null>(null);
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
+  const [recentWeightDisplayMode, setRecentWeightDisplayMode] = useState<RecencyScoreMode>("float");
   const [duplaSenaAnalysisScope, setDuplaSenaAnalysisScope] = useState<DuplaSenaAnalysisScope>("all");
   const [syncInfo, setSyncInfo] = useState<SyncInfo>(INITIAL_SYNC_INFO);
   const [suggestedGames, setSuggestedGames] = useState<SuggestedGame[]>([]);
@@ -979,6 +989,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   }
 
   function changeAnalysisView(view: AnalysisView) {
+    setRecentWeightDisplayMode((current) =>
+      view === "recent" && analysisView === "recent" ? (current === "float" ? "rounded" : "float") : "float",
+    );
     setAnalysisView(view);
     if (selectedLottery) {
       trackEvent(
@@ -1111,6 +1124,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setAnalysisPeriod(25);
     setCustomAnalysisRange(null);
     setAnalysisView("most");
+    setRecentWeightDisplayMode("float");
     setDuplaSenaAnalysisScope("all");
     setSyncInfo(INITIAL_SYNC_INFO);
     setError(null);
@@ -1282,6 +1296,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 customRange={effectiveCustomAnalysisRange}
                 data={analysisData}
                 isDuplaSena={selectedLottery?.slug === "DuplaSena"}
+                recentWeightDisplayMode={recentWeightDisplayMode}
                 selectedNumbers={selectedNumbers}
                 onToggleNumber={toggleSelectedNumber}
                 onCustomRangeChange={changeCustomAnalysisRange}
@@ -1490,6 +1505,7 @@ function AnalysisPanel({
   customRange,
   data,
   isDuplaSena,
+  recentWeightDisplayMode,
   selectedNumbers,
   onToggleNumber,
   onCustomRangeChange,
@@ -1505,6 +1521,7 @@ function AnalysisPanel({
   customRange: AnalysisDrawRange;
   data: AnalysisData | null;
   isDuplaSena: boolean;
+  recentWeightDisplayMode: RecencyScoreMode;
   onToggleNumber: (number: string) => void;
   onCustomRangeChange: (range: AnalysisDrawRange) => void;
   onPeriodChange: (period: AnalysisPeriod) => void;
@@ -1592,7 +1609,13 @@ function AnalysisPanel({
         </details>
 
         {data ? (
-          <AnalysisContent data={data} onToggleNumber={onToggleNumber} selectedNumbers={selectedNumbers} view={activeView} />
+          <AnalysisContent
+            data={data}
+            onToggleNumber={onToggleNumber}
+            recentWeightDisplayMode={recentWeightDisplayMode}
+            selectedNumbers={selectedNumbers}
+            view={activeView}
+          />
         ) : (
           <div className="analysis-empty">Carregue resultados para ver a análise.</div>
         )}
@@ -1707,11 +1730,13 @@ function RangeSliderCard({
 function AnalysisContent({
   data,
   onToggleNumber,
+  recentWeightDisplayMode,
   selectedNumbers,
   view,
 }: {
   data: AnalysisData;
   onToggleNumber: (number: string) => void;
+  recentWeightDisplayMode: RecencyScoreMode;
   selectedNumbers: Set<string>;
   view: AnalysisView;
 }) {
@@ -1720,6 +1745,7 @@ function AnalysisContent({
       <div className="analysis-scroll-area heat-map-scroll-area">
         <NumberHeatMap
           onToggleNumber={onToggleNumber}
+          recentWeightDisplayMode={recentWeightDisplayMode}
           selectedNumbers={selectedNumbers}
           stats={data.stats}
           variant={view}
@@ -1823,16 +1849,20 @@ function getHeatNumberStyle(intensity: number, isActive: boolean, isSelected: bo
 
 function NumberHeatMap({
   onToggleNumber,
+  recentWeightDisplayMode,
   selectedNumbers,
   stats,
   variant,
 }: {
   onToggleNumber: (number: string) => void;
+  recentWeightDisplayMode: RecencyScoreMode;
   selectedNumbers: Set<string>;
   stats: NumberTrend[];
   variant: "map" | "recent";
 }) {
-  const scores = stats.map((item) => (variant === "recent" ? item.recencyScore : item.hits));
+  const getRecentDisplayScore = (item: NumberTrend) =>
+    recentWeightDisplayMode === "rounded" ? Math.round(item.recencyScore) : item.recencyScore;
+  const scores = stats.map((item) => (variant === "recent" ? getRecentDisplayScore(item) : item.hits));
   const minScore = Math.min(...scores);
   const maxScore = Math.max(...scores);
   const scoreRange = Math.max(maxScore - minScore, 0);
@@ -1840,12 +1870,13 @@ function NumberHeatMap({
   return (
     <div className="number-heat-map">
       {stats.map((item) => {
-        const score = variant === "recent" ? item.recencyScore : item.hits;
-              const isSelected = selectedNumbers.has(item.number);
-              const relativeIntensity = scoreRange > 0 ? (score - minScore) / scoreRange : score ? 0.58 : 0;
-              const relativeLabel =
+        const score = variant === "recent" ? getRecentDisplayScore(item) : item.hits;
+        const isSelected = selectedNumbers.has(item.number);
+        const relativeIntensity = scoreRange > 0 ? (score - minScore) / scoreRange : score ? 0.58 : 0;
+        const recentScoreLabel = formatRecencyScore(item.recencyScore, recentWeightDisplayMode);
+        const relativeLabel =
           variant === "recent"
-            ? `peso recente ${formatRecencyScore(item.recencyScore)}`
+            ? `peso recente ${recentScoreLabel}`
             : scoreRange > 0
               ? `${item.hits - minScore} acima do menor valor (${minScore}x)`
               : "";
@@ -1873,7 +1904,7 @@ function NumberHeatMap({
             title={isSelected ? "Desmarcar número" : title}
           >
             <strong>{item.number}</strong>
-            <small>{variant === "recent" ? formatRecencyScore(item.recencyScore) : `${item.hits}x`}</small>
+            <small>{variant === "recent" ? recentScoreLabel : `${item.hits}x`}</small>
           </div>
         );
       })}
