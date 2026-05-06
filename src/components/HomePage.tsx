@@ -678,7 +678,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setLookupMode("numbers");
     setNumberFilter([]);
     setCustomAnalysisRange(null);
-    setRecentScoreMode(1);
+    setRecentWeightDisplayMode("float");
     setSyncInfo(INITIAL_SYNC_INFO);
     updateLegacyUrl(lottery.slug);
     trackEvent(ANALYTICS_EVENTS.lotterySelected, getLotteryAnalyticsData(lottery));
@@ -822,7 +822,20 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
 
     setSelectedNumbers(new Set());
     setSelectedSuggestedGameKey(null);
-    setStatusMessage("Seleção de números limpa.");
+    setDrawNumberInput("");
+    setActiveDrawNumber("");
+    setNumberFilter([]);
+    setSelectedDraw(null);
+
+    if (selectedLottery) {
+      updateLegacyUrl(selectedLottery.slug);
+      trackEvent(ANALYTICS_EVENTS.clearedFilter, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        mode: "selection",
+      });
+    }
+
+    setStatusMessage("Seleção e filtro limpos.");
   }
 
   function copySelectedNumbers() {
