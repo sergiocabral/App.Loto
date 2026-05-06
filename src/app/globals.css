@@ -1318,6 +1318,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 18px;
   color: var(--text);
+  cursor: pointer;
   display: flex;
   gap: 12px;
   padding: 14px;
@@ -1365,7 +1366,6 @@ button {
   font-family: 'JetBrains Mono', monospace;
   font-size: 14px;
   gap: 8px;
-  width: 100%;
 }
 
 .draw-row-meta {
@@ -1377,21 +1377,12 @@ button {
 
 .draw-number-group {
   align-items: center;
-  border-radius: 14px;
-  box-sizing: border-box;
   cursor: pointer;
   display: flex;
   gap: 8px;
-  min-height: 42px;
   min-width: 0;
-  padding: 6px;
   touch-action: manipulation;
   user-select: none;
-  width: 100%;
-}
-
-.draw-number-group:hover {
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .draw-group-label {

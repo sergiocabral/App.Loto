@@ -2370,6 +2370,8 @@ function DrawList({
     <div className="draw-list">
       {draws.map((draw, drawIndex) => {
         const groups = getDisplayGroups(draw);
+        const drawGroupNumbers = groups.flat();
+        const longPressHandlers = createNumberGroupLongPressHandlers(() => onAddNumberGroup(drawGroupNumbers));
 
         return (
           <div
@@ -2377,14 +2379,20 @@ function DrawList({
             aria-pressed={selectedDrawNumber === draw.drawNumber}
             className={`draw-row ${selectedDrawNumber === draw.drawNumber ? "active" : ""}`}
             key={`${draw.lottery}-${draw.drawNumber}`}
+            {...longPressHandlers}
             onClick={() => onSelect(draw)}
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onReplaceOrClearNumberGroup(drawGroupNumbers);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 onSelect(draw);
               }
             }}
-            title="Selecionar e copiar números"
+            title="Clique para copiar; clique duas vezes para selecionar só este concurso; segure para adicionar"
             tabIndex={0}
           >
             <span className="draw-row-index">{drawIndex + 1}</span>
@@ -2394,53 +2402,39 @@ function DrawList({
                 <small className="draw-row-date">{draw.date}</small>
               </div>
               <strong className="draw-row-groups" aria-label={formatDrawNumbers(draw)}>
-                {groups.map((group, groupIndex) => {
-                  const longPressHandlers = createNumberGroupLongPressHandlers(() => onAddNumberGroup(group));
+                {groups.map((group, groupIndex) => (
+                  <span className="draw-number-group" key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}`}>
+                    {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
+                    <span className="draw-group-values">
+                      {group.map((number) => {
+                        const isSelected = selectedNumbers.has(number);
 
-                  return (
-                    <span
-                      className="draw-number-group"
-                      key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}`}
-                      {...longPressHandlers}
-                      onDoubleClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onReplaceOrClearNumberGroup(group);
-                      }}
-                      title="Clique duas vezes para selecionar só este grupo; segure para adicionar"
-                    >
-                      {groups.length > 1 ? <span className="draw-group-label">{groupIndex + 1}º</span> : null}
-                      <span className="draw-group-values">
-                        {group.map((number) => {
-                          const isSelected = selectedNumbers.has(number);
-
-                          return (
-                            <button
-                              aria-label={`Selecionar número ${number}`}
-                              className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
-                              key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
-                              onClick={(event) => {
+                        return (
+                          <button
+                            aria-label={`Selecionar número ${number}`}
+                            className={`draw-number-pill ${isSelected ? "number-selected" : ""}`}
+                            key={`${draw.lottery}-${draw.drawNumber}-${groupIndex}-${number}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onToggleNumber(number);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
                                 event.stopPropagation();
                                 onToggleNumber(number);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  onToggleNumber(number);
-                                }
-                              }}
-                              title={isSelected ? "Desmarcar número" : "Selecionar número"}
-                              type="button"
-                            >
-                              {number}
-                            </button>
-                          );
-                        })}
-                      </span>
+                              }
+                            }}
+                            title={isSelected ? "Desmarcar número" : "Selecionar número"}
+                            type="button"
+                          >
+                            {number}
+                          </button>
+                        );
+                      })}
                     </span>
-                  );
-                })}
+                  </span>
+                ))}
               </strong>
             </div>
           </div>
