@@ -2,11 +2,7 @@ import path from "node:path";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { config } from "dotenv";
 
-function shouldLoadLocalEnvFiles(): boolean {
-  return process.env.NEXT_RUNTIME_PROVIDER !== "cloudflare";
-}
-
-if (shouldLoadLocalEnvFiles()) {
+if (process.env.NEXT_RUNTIME_PROVIDER !== "cloudflare") {
   config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
   config({ path: path.resolve(process.cwd(), ".env.local"), override: true, quiet: true });
 }
