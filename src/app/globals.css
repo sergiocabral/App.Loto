@@ -981,6 +981,128 @@ button {
   margin-bottom: 20px;
 }
 
+.selected-numbers-toolbar {
+  align-items: stretch;
+  background:
+    linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(56, 189, 248, 0.1)),
+    rgba(2, 6, 23, 0.34);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  border-radius: 20px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+  padding: 14px;
+}
+
+.selected-numbers-meta {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.selected-numbers-meta .eyebrow {
+  margin-bottom: 0;
+}
+
+.selected-numbers-meta strong {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.selected-number-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 116px;
+  min-height: 42px;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.selected-number-chip {
+  align-items: center;
+  background: #fef3c7;
+  border: 1px solid rgba(251, 191, 36, 0.78);
+  border-radius: 50%;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
+  color: #451a03;
+  display: inline-flex;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  min-width: 34px;
+  padding: 0;
+  width: 34px;
+}
+
+.selected-number-chip:hover {
+  background: #fde68a;
+  border-color: var(--warning);
+}
+
+.selected-number-chip:focus-visible {
+  outline: 2px solid var(--number-border-active);
+  outline-offset: 2px;
+}
+
+.selected-number-placeholder {
+  align-items: center;
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 38px;
+  padding: 9px 12px;
+  width: 100%;
+}
+
+.selected-number-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.selected-number-action {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--muted-strong);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 38px;
+  padding: 9px 12px;
+  width: 100%;
+}
+
+.selected-number-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.selected-number-action:not(:disabled):hover {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.selected-number-action.primary {
+  background: linear-gradient(135deg, var(--warning), var(--primary));
+  border-color: rgba(251, 191, 36, 0.42);
+  color: #020617;
+}
+
 .loading-state,
 .empty-state,
 .error-state {
@@ -1196,6 +1318,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 18px;
   color: var(--text);
+  cursor: pointer;
   display: flex;
   gap: 12px;
   padding: 14px;
@@ -1254,9 +1377,12 @@ button {
 
 .draw-number-group {
   align-items: center;
+  cursor: pointer;
   display: flex;
   gap: 8px;
   min-width: 0;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .draw-group-label {
@@ -1305,7 +1431,7 @@ button {
 
 .number-selected {
   border-color: var(--primary-strong) !important;
-  background: linear-gradient(135deg, rgb(240, 140, 200), rgb(255, 255, 255)) !important;
+  background-color: var(--number-border-active) !important;
   color: black !important;
 }
 
@@ -1611,6 +1737,14 @@ button {
 .segmented-control button.active {
   background: linear-gradient(135deg, rgba(56, 189, 248, 0.92), rgba(167, 139, 250, 0.9));
   color: #020617;
+}
+
+.analysis-view-mode-indicator {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 900;
+  margin-left: 4px;
+  opacity: 0.76;
 }
 
 .period-option-range {
@@ -1968,11 +2102,14 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   color: inherit;
+  cursor: pointer;
   display: grid;
   gap: 10px;
   padding: 12px;
   text-align: left;
+  touch-action: manipulation;
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  user-select: none;
 }
 
 .suggestion-game:hover,
@@ -2065,10 +2202,40 @@ button {
   border-radius: 15px;
   display: grid;
   gap: 2px;
+  isolation: isolate;
   min-height: 54px;
+  overflow: hidden;
   padding: 8px 4px;
   place-items: center;
-  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+  position: relative;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.heat-number-selected {
+  border-width: 0;
+}
+
+.heat-number-selected::before,
+.heat-number-selected::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+}
+
+.heat-number-selected::before {
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0), rgba(251, 191, 36, 0.5));
+  bottom: 0;
+  height: 46%;
+  left: 0;
+  right: 0;
+  z-index: 0;
+}
+
+.heat-number-selected::after {
+  border: 1px solid rgba(254, 243, 199, 0.9);
+  border-radius: 12px;
+  inset: 3px;
+  z-index: 0;
 }
 
 .heat-number strong {
@@ -2082,6 +2249,12 @@ button {
   font-size: 11px;
   font-weight: 800;
   opacity: 0.78;
+}
+
+.heat-number strong,
+.heat-number small {
+  position: relative;
+  z-index: 1;
 }
 
 .analysis-empty {
@@ -2383,6 +2556,16 @@ button {
   .draw-row,
   .loading-state {
     grid-template-columns: 1fr;
+  }
+
+  .selected-numbers-toolbar {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .selected-number-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .analysis-panel,

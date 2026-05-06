@@ -169,6 +169,7 @@ const loadedDataCache = new Map<string, LoadedLotteryData>();
 const pendingDataRequests = new Map<string, Promise<LoadedLotteryData>>();
 const historyLoadQueue = createSequentialLoadQueue<LoadedLotteryData>((lotterySlug) => loadLotteryDataOnce(lotterySlug, ""));
 const CAIXA_SYNC_BATCH_SIZE = 1;
+const NUMBER_GROUP_LONG_PRESS_MS = 1000;
 
 const INITIAL_SYNC_INFO: SyncInfo = {
   running: false,
@@ -182,6 +183,57 @@ const INITIAL_SYNC_INFO: SyncInfo = {
   skippedInBatch: 0,
   stopReason: null,
 };
+
+function createNumberGroupLongPressHandlers(onLongPress: () => void) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  function clearLongPressTimer() {
+    if (!timeoutId) {
+      return;
+    }
+
+    clearTimeout(timeoutId);
+    timeoutId = null;
+  }
+
+  return {
+    onClickCapture(event: React.MouseEvent<HTMLElement>) {
+      if (event.currentTarget.dataset.longPressHandled !== "true") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      delete event.currentTarget.dataset.longPressHandled;
+    },
+    onContextMenu(event: React.MouseEvent<HTMLElement>) {
+      if (event.currentTarget.dataset.longPressHandled !== "true") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      delete event.currentTarget.dataset.longPressHandled;
+    },
+    onPointerCancel: clearLongPressTimer,
+    onPointerDown(event: React.PointerEvent<HTMLElement>) {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const target = event.currentTarget;
+      clearLongPressTimer();
+      delete target.dataset.longPressHandled;
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+        target.dataset.longPressHandled = "true";
+        onLongPress();
+      }, NUMBER_GROUP_LONG_PRESS_MS);
+    },
+    onPointerLeave: clearLongPressTimer,
+    onPointerUp: clearLongPressTimer,
+  };
+}
 
 type LoadState = "idle" | "loading" | "syncing" | "loaded" | "error";
 
@@ -516,6 +568,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
+  const selectionClickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isSyncing = syncInfo.running;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
@@ -568,6 +621,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     () => (selectedLottery && analysisData ? buildSuggestionKey(selectedLottery, analysisView, analysisData) : ""),
     [analysisData, analysisView, selectedLottery],
   );
+  const selectedNumberList = useMemo(() => sortNumbersForDisplay([...selectedNumbers]), [selectedNumbers]);
+  const selectedNumberText = selectedNumberList.join(" ");
   const visibleSuggestedGames = useMemo(
     () =>
       suggestedGames
@@ -647,6 +702,15 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     }
   }, []);
 
+  useEffect(
+    () => () => {
+      if (selectionClickTimeoutRef.current) {
+        clearTimeout(selectionClickTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
   function selectLottery(lottery: LotteryDefinition) {
     const cachedHistory = loadedDataCache.get(getDataCacheKey(lottery.slug, ""));
 
@@ -666,6 +730,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setLookupMode("numbers");
     setNumberFilter([]);
     setCustomAnalysisRange(null);
+    setRecentWeightDisplayMode("float");
     setSyncInfo(INITIAL_SYNC_INFO);
     updateLegacyUrl(lottery.slug);
     trackEvent(ANALYTICS_EVENTS.lotterySelected, getLotteryAnalyticsData(lottery));
@@ -751,6 +816,100 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
 
       return next;
     });
+  }
+
+  function clearPendingSelectionClick() {
+    if (!selectionClickTimeoutRef.current) {
+      return;
+    }
+
+    clearTimeout(selectionClickTimeoutRef.current);
+    selectionClickTimeoutRef.current = null;
+  }
+
+  function scheduleSelectionClick(action: () => void) {
+    clearPendingSelectionClick();
+    selectionClickTimeoutRef.current = setTimeout(() => {
+      selectionClickTimeoutRef.current = null;
+      action();
+    }, 220);
+  }
+
+  function addNumberGroupToSelection(numbers: string[]) {
+    const groupNumbers = sortNumbersForDisplay([...new Set(numbers)]);
+
+    if (!groupNumbers.length) {
+      return;
+    }
+
+    clearPendingSelectionClick();
+    setSelectedNumbers((current) => new Set([...current, ...groupNumbers]));
+    setSelectedSuggestedGameKey(null);
+    setStatusMessage(`Números adicionados: ${groupNumbers.join(", ")}.`);
+  }
+
+  function replaceNumberGroupSelection(numbers: string[]) {
+    const groupNumbers = sortNumbersForDisplay([...new Set(numbers)]);
+
+    if (!groupNumbers.length) {
+      return;
+    }
+
+    clearPendingSelectionClick();
+    setSelectedSuggestedGameKey(null);
+
+    setSelectedNumbers(new Set(groupNumbers));
+    setStatusMessage(`Seleção atualizada: ${groupNumbers.join(", ")}.`);
+  }
+
+  function applySelectedNumbersFilter() {
+    if (!selectedLottery || !selectedNumberList.length) {
+      return;
+    }
+
+    setLookupMode("numbers");
+    setDrawNumberInput(selectedNumberText);
+    setNumberFilter(selectedNumberList);
+    setSelectedDraw(null);
+    setActiveDrawNumber("");
+    updateLegacyUrl(selectedLottery.slug);
+    setStatusMessage(`Filtro aplicado: ${selectedNumberList.join(", ")}.`);
+    trackEvent(ANALYTICS_EVENTS.searchedNumbers, {
+      ...getLotteryAnalyticsData(selectedLottery),
+      count: selectedNumberList.length,
+      source: "selection",
+    });
+  }
+
+  function clearSelectedNumbers() {
+    if (!selectedNumberList.length) {
+      return;
+    }
+
+    setSelectedNumbers(new Set());
+    setSelectedSuggestedGameKey(null);
+    setDrawNumberInput("");
+    setActiveDrawNumber("");
+    setNumberFilter([]);
+    setSelectedDraw(null);
+
+    if (selectedLottery) {
+      updateLegacyUrl(selectedLottery.slug);
+      trackEvent(ANALYTICS_EVENTS.clearedFilter, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        mode: "selection",
+      });
+    }
+
+    setStatusMessage("Seleção e filtro limpos.");
+  }
+
+  function copySelectedNumbers() {
+    if (!selectedNumberText) {
+      return;
+    }
+
+    void copySelectionToClipboard(selectedNumberText, "Números selecionados copiados.");
   }
 
   function loadMoreDraws() {
@@ -989,14 +1148,22 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   }
 
   function changeAnalysisView(view: AnalysisView) {
-    setRecentWeightDisplayMode((current) =>
-      view === "recent" && analysisView === "recent" ? (current === "float" ? "rounded" : "float") : "float",
-    );
+    const nextRecentWeightDisplayMode =
+      view === "recent" && analysisView === "recent"
+        ? recentWeightDisplayMode === "float"
+          ? "rounded"
+          : "float"
+        : "float";
+
+    setRecentWeightDisplayMode(nextRecentWeightDisplayMode);
     setAnalysisView(view);
     if (selectedLottery) {
       trackEvent(
         ANALYTICS_EVENTS.updatedAnalysisView,
-        getAnalysisAnalyticsData(selectedLottery, view, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+        {
+          ...getAnalysisAnalyticsData(selectedLottery, view, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+          recentScoreMode: view === "recent" ? (nextRecentWeightDisplayMode === "float" ? 1 : 2) : undefined,
+        },
       );
     }
   }
@@ -1071,39 +1238,43 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   }
 
   function selectDrawAndCopy(draw: Draw) {
-    if (selectedDraw?.drawNumber === draw.drawNumber) {
-      setSelectedDraw(null);
-      return;
-    }
+    scheduleSelectionClick(() => {
+      if (selectedDraw?.drawNumber === draw.drawNumber) {
+        setSelectedDraw(null);
+        return;
+      }
 
-    setSelectedDraw(draw);
-    void copySelectionToClipboard(getDrawClipboardText(draw), `Números do concurso ${draw.drawNumber} copiados.`);
-    if (selectedLottery) {
-      trackEvent(ANALYTICS_EVENTS.copyDraw, {
-        ...getLotteryAnalyticsData(selectedLottery),
-        drawNumber: draw.drawNumber,
-        grouped: getDisplayGroups(draw).length > 1,
-      });
-    }
+      setSelectedDraw(draw);
+      void copySelectionToClipboard(getDrawClipboardText(draw), `Números do concurso ${draw.drawNumber} copiados.`);
+      if (selectedLottery) {
+        trackEvent(ANALYTICS_EVENTS.copyDraw, {
+          ...getLotteryAnalyticsData(selectedLottery),
+          drawNumber: draw.drawNumber,
+          grouped: getDisplayGroups(draw).length > 1,
+        });
+      }
+    });
   }
 
   function selectSuggestedGame(game: SuggestedGame) {
-    const gameKey = getSuggestedGameKey(game);
+    scheduleSelectionClick(() => {
+      const gameKey = getSuggestedGameKey(game);
 
-    if (selectedSuggestedGameKey === gameKey) {
-      setSelectedSuggestedGameKey(null);
-      return;
-    }
+      if (selectedSuggestedGameKey === gameKey) {
+        setSelectedSuggestedGameKey(null);
+        return;
+      }
 
-    setSelectedSuggestedGameKey(gameKey);
-    void copySelectionToClipboard(game.numbers.join(" "), "Sugestão copiada.");
-    if (selectedLottery) {
-      trackEvent(ANALYTICS_EVENTS.copySuggestion, {
-        ...getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope),
-        suggestionSize: game.numbers.length,
-        variantIndex: game.variantIndex,
-      });
-    }
+      setSelectedSuggestedGameKey(gameKey);
+      void copySelectionToClipboard(game.numbers.join(" "), "Sugestão copiada.");
+      if (selectedLottery) {
+        trackEvent(ANALYTICS_EVENTS.copySuggestion, {
+          ...getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope),
+          suggestionSize: game.numbers.length,
+          variantIndex: game.variantIndex,
+        });
+      }
+    });
   }
 
   function returnToHome() {
@@ -1233,6 +1404,14 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
               numberFilter={numberFilter}
             />
           ) : null}
+
+          <SelectedNumbersToolbar
+            numbers={selectedNumberList}
+            onApplyFilter={applySelectedNumbersFilter}
+            onClear={clearSelectedNumbers}
+            onCopy={copySelectedNumbers}
+            onToggleNumber={toggleSelectedNumber}
+          />
         </aside>
 
         <section className="results-panel">
@@ -1283,7 +1462,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 lottery={selectedLottery}
                 games={visibleSuggestedGames}
                 onClear={clearSuggestedGames}
+                onAddNumberGroup={addNumberGroupToSelection}
                 onLucky={generateLuckySuggestion}
+                onReplaceNumberGroup={replaceNumberGroupSelection}
                 onSelectGame={selectSuggestedGame}
                 selectedGameKey={selectedSuggestedGameKey}
                 onToggleNumber={toggleSelectedNumber}
@@ -1330,6 +1511,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                     hasMore={hasMoreDraws}
                     onLoadMore={loadMoreDraws}
                     onSelect={selectDrawAndCopy}
+                    onAddNumberGroup={addNumberGroupToSelection}
+                    onReplaceNumberGroup={replaceNumberGroupSelection}
                     selectedDrawNumber={selectedDraw?.drawNumber ?? null}
                     totalCount={filteredDraws.length}
                     visibleCount={visibleDraws.length}
@@ -1361,6 +1544,61 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       </div>
     </footer>
   </>
+  );
+}
+
+function SelectedNumbersToolbar({
+  numbers,
+  onApplyFilter,
+  onClear,
+  onCopy,
+  onToggleNumber,
+}: {
+  numbers: string[];
+  onApplyFilter: () => void;
+  onClear: () => void;
+  onCopy: () => void;
+  onToggleNumber: (number: string) => void;
+}) {
+  const hasNumbers = numbers.length > 0;
+  const countLabel = hasNumbers ? `${numbers.length} ${numbers.length === 1 ? "número" : "números"}` : "0 números";
+
+  return (
+    <section className="selected-numbers-toolbar" aria-label="Números selecionados" aria-live="polite">
+      <div className="selected-numbers-meta">
+        <span className="eyebrow">Seleção</span>
+        <strong>{countLabel}</strong>
+      </div>
+      <div className="selected-number-list">
+        {hasNumbers ? (
+          numbers.map((number) => (
+            <button
+              aria-label={`Remover número ${number} da seleção`}
+              className="selected-number-chip"
+              key={number}
+              onClick={() => onToggleNumber(number)}
+              title="Remover da seleção"
+              type="button"
+            >
+              {number}
+            </button>
+          ))
+        ) : (
+          <span className="selected-number-placeholder">Sem seleção</span>
+        )}
+      </div>
+      <div className="selected-number-actions">
+        <button className="selected-number-action primary" disabled={!hasNumbers} onClick={onApplyFilter} type="button">
+          Filtrar
+        </button>
+        <button className="selected-number-action" disabled={!hasNumbers} onClick={onCopy} type="button">
+          Copiar
+        </button>
+        <button className="selected-number-action" disabled={!hasNumbers} onClick={onClear} type="button">
+          Limpar
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -1600,7 +1838,10 @@ function AnalysisPanel({
                     onClick={() => onViewChange(option.value)}
                     type="button"
                   >
-                    {option.label}
+                    <span>{option.label}</span>
+                    {option.value === "recent" && activeView === "recent" ? (
+                      <span className="analysis-view-mode-indicator">({recentWeightDisplayMode === "float" ? 1 : 2})</span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -1880,27 +2121,17 @@ function TrendGroups({
   );
 }
 
-function getHeatNumberStyle(intensity: number, isActive: boolean, isSelected: boolean) {
+function getHeatNumberStyle(intensity: number, isSelected: boolean) {
   const relativeIntensity = Math.min(Math.max(intensity, 0), 1);
   const hue = 222 - relativeIntensity * 184;
   const saturation = 72 + relativeIntensity * 18;
   const lightness = 14 + relativeIntensity * 48;
   const borderLightness = 34 + relativeIntensity * 32;
-  const glow = 0.08 + relativeIntensity * 0.22;
-
-  if (isSelected) {
-    return {
-      background: "linear-gradient(135deg, var(--number-border-active), #f59e0b)",
-      borderColor: "var(--primary-strong)",
-      boxShadow: isActive ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "0 0 0 2px rgba(251, 191, 36, 0.24)",
-      color: "#020617",
-    };
-  }
 
   return {
     background: `linear-gradient(135deg, hsl(${hue} ${saturation}% ${lightness}%), hsl(${Math.max(18, hue - 18)} ${Math.min(95, saturation + 4)}% ${Math.max(18, lightness - 6)}%))`,
-    borderColor: `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
-    boxShadow: isActive ? `0 10px 24px rgba(56, 189, 248, ${glow})` : "none",
+    borderColor: isSelected ? "var(--number-border-active)" : `hsl(${hue} ${Math.min(96, saturation + 6)}% ${borderLightness}%)`,
+    boxShadow: "none",
     color: relativeIntensity > 0.52 ? "#020617" : "#f8fafc",
   };
 }
@@ -1947,10 +2178,10 @@ function NumberHeatMap({
           <div
             aria-label={`Selecionar número ${item.number}`}
             aria-pressed={isSelected}
-            className={`heat-number ${isSelected ? "number-selected" : ""}`}
+            className={`heat-number ${isSelected ? "heat-number-selected" : ""}`}
             key={`${variant}-${item.number}`}
             onClick={() => onToggleNumber(item.number)}
-            style={getHeatNumberStyle(relativeIntensity, score > 0, isSelected)}
+            style={getHeatNumberStyle(relativeIntensity, isSelected)}
             role="button"
             tabIndex={0}
             onKeyDown={(event) => {
@@ -1976,7 +2207,9 @@ function SuggestionPanel({
   games,
   lottery,
   onClear,
+  onAddNumberGroup,
   onLucky,
+  onReplaceNumberGroup,
   onSelectGame,
   selectedGameKey,
   onToggleNumber,
@@ -1987,7 +2220,9 @@ function SuggestionPanel({
   games: SuggestedGame[];
   lottery: LotteryDefinition | null;
   onClear: () => void;
+  onAddNumberGroup: (numbers: string[]) => void;
   onLucky: () => void;
+  onReplaceNumberGroup: (numbers: string[]) => void;
   onSelectGame: (game: SuggestedGame) => void;
   selectedGameKey: string | null;
   onToggleNumber: (number: string) => void;
@@ -2021,6 +2256,7 @@ function SuggestionPanel({
           games.map((game, index) => {
             const gameKey = getSuggestedGameKey(game);
             const selected = selectedGameKey === gameKey;
+            const longPressHandlers = createNumberGroupLongPressHandlers(() => onAddNumberGroup(game.numbers));
 
             return (
               <div
@@ -2028,7 +2264,13 @@ function SuggestionPanel({
                 aria-pressed={selected}
                 className={`suggestion-game ${selected ? "active" : ""}`}
                 key={gameKey}
+                {...longPressHandlers}
                 onClick={() => onSelectGame(game)}
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onReplaceNumberGroup(game.numbers);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
@@ -2036,10 +2278,10 @@ function SuggestionPanel({
                   }
                 }}
                 tabIndex={0}
-                title="Selecionar e copiar números"
+                title="Clique para copiar; clique duas vezes para selecionar só esta sugestão; segure para adicionar"
               >
                 <div className="suggestion-game-meta">
-                  <strong>{index === 0 ? "Nova sugestão" : `Sugestão ${games.length - index}`}</strong>
+                  <strong>{`Sugestão ${games.length - index}`}</strong>
                   <span>{game.sourceLabel}</span>
                 </div>
                 <div className="suggestion-numbers">
@@ -2092,6 +2334,8 @@ function DrawList({
   hasMore,
   onLoadMore,
   onSelect,
+  onAddNumberGroup,
+  onReplaceNumberGroup,
   onToggleNumber,
   selectedDrawNumber,
   selectedNumbers,
@@ -2102,6 +2346,8 @@ function DrawList({
   hasMore: boolean;
   onLoadMore: () => void;
   onSelect: (draw: Draw) => void;
+  onAddNumberGroup: (numbers: string[]) => void;
+  onReplaceNumberGroup: (numbers: string[]) => void;
   onToggleNumber: (number: string) => void;
   selectedDrawNumber: number | null;
   selectedNumbers: Set<string>;
@@ -2113,6 +2359,8 @@ function DrawList({
     <div className="draw-list">
       {draws.map((draw, drawIndex) => {
         const groups = getDisplayGroups(draw);
+        const drawGroupNumbers = groups.flat();
+        const longPressHandlers = createNumberGroupLongPressHandlers(() => onAddNumberGroup(drawGroupNumbers));
 
         return (
           <div
@@ -2120,14 +2368,20 @@ function DrawList({
             aria-pressed={selectedDrawNumber === draw.drawNumber}
             className={`draw-row ${selectedDrawNumber === draw.drawNumber ? "active" : ""}`}
             key={`${draw.lottery}-${draw.drawNumber}`}
+            {...longPressHandlers}
             onClick={() => onSelect(draw)}
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onReplaceNumberGroup(drawGroupNumbers);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 onSelect(draw);
               }
             }}
-            title="Selecionar e copiar números"
+            title="Clique para copiar; clique duas vezes para selecionar só este concurso; segure para adicionar"
             tabIndex={0}
           >
             <span className="draw-row-index">{drawIndex + 1}</span>
