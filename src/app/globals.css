@@ -981,6 +981,104 @@ button {
   margin-bottom: 20px;
 }
 
+.selected-numbers-toolbar {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(56, 189, 248, 0.1)),
+    rgba(2, 6, 23, 0.34);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  border-radius: 20px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(112px, 0.4fr) minmax(0, 1fr) auto;
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.selected-numbers-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.selected-numbers-meta .eyebrow {
+  margin-bottom: 0;
+}
+
+.selected-numbers-meta strong {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.selected-number-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.selected-number-chip {
+  align-items: center;
+  background: #fef3c7;
+  border: 1px solid rgba(251, 191, 36, 0.78);
+  border-radius: 50%;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
+  color: #451a03;
+  display: inline-flex;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  min-width: 34px;
+  padding: 0;
+  width: 34px;
+}
+
+.selected-number-chip:hover {
+  background: #fde68a;
+  border-color: var(--warning);
+}
+
+.selected-number-chip:focus-visible {
+  outline: 2px solid var(--number-border-active);
+  outline-offset: 2px;
+}
+
+.selected-number-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.selected-number-action {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--muted-strong);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 38px;
+  padding: 9px 12px;
+}
+
+.selected-number-action:hover {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.selected-number-action.primary {
+  background: linear-gradient(135deg, var(--warning), var(--primary));
+  border-color: rgba(251, 191, 36, 0.42);
+  color: #020617;
+}
+
 .loading-state,
 .empty-state,
 .error-state {
@@ -2383,6 +2481,16 @@ button {
   .draw-row,
   .loading-state {
     grid-template-columns: 1fr;
+  }
+
+  .selected-numbers-toolbar {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .selected-number-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .analysis-panel,
