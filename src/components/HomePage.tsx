@@ -2022,7 +2022,7 @@ function DrawList({
 
   return (
     <div className="draw-list">
-      {draws.map((draw) => {
+      {draws.map((draw, drawIndex) => {
         const groups = getDisplayGroups(draw);
 
         return (
@@ -2041,6 +2041,7 @@ function DrawList({
             title="Selecionar e copiar números"
             tabIndex={0}
           >
+            <span className="draw-row-index">{drawIndex + 1}</span>
             <span className="draw-row-number">#{draw.drawNumber}</span>
             <strong className="draw-row-groups" aria-label={formatDrawNumbers(draw)}>
               {groups.map((group, groupIndex) => (

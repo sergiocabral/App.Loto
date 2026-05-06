@@ -1198,7 +1198,7 @@ button {
   color: var(--text);
   display: grid;
   gap: 12px;
-  grid-template-columns: 92px minmax(0, 1fr) 120px;
+  grid-template-columns: 36px 92px minmax(0, 1fr) 120px;
   padding: 14px;
   text-align: left;
   transition: border-color 160ms ease, background 160ms ease;
@@ -1220,6 +1220,15 @@ button {
   color: var(--primary);
   font-family: 'JetBrains Mono', monospace;
   font-weight: 800;
+}
+
+.draw-row-index {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 36px;
+  text-align: center;
+  width: 36px;
 }
 
 .draw-row-groups {
