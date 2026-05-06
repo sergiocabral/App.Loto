@@ -509,6 +509,8 @@ opennextjs-cloudflare build && opennextjs-cloudflare deploy
 
 Não use apenas `npm run build` seguido de `npx wrangler deploy`, porque `npm run build` gera `.next`, mas não gera o bundle `.open-next` necessário para o Worker.
 
+Também não use `npx wrangler versions upload` sozinho: esse comando espera que `.open-next/assets` já exista e falha em ambientes limpos, como Cloudflare Builds ou GitHub Actions.
+
 Se a interface da Cloudflare exigir comandos separados, use:
 
 ```bash
@@ -523,6 +525,14 @@ npx opennextjs-cloudflare deploy
 
 como deploy command.
 
+Se o objetivo for apenas subir uma nova versão sem promover imediatamente, use:
+
+```bash
+npm run upload
+```
+
+Esse script executa o build OpenNext antes do upload de versão.
+
 ### Deploy pela máquina local
 
 Autenticado no Wrangler, rode:
@@ -534,8 +544,7 @@ npm run deploy
 Para validar sem publicar:
 
 ```bash
-npx opennextjs-cloudflare build
-npx wrangler deploy --dry-run
+npm run cloudflare:check
 ```
 
 ### Usando Hyperdrive opcionalmente

@@ -9,6 +9,8 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cloudflare:build": "opennextjs-cloudflare build",
+    "cloudflare:check": "opennextjs-cloudflare build && wrangler deploy --dry-run",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lint": "eslint",
     "test": "vitest run",
