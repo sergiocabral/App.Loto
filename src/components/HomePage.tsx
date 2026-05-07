@@ -670,7 +670,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const isSyncing = syncInfo.running;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
   const canClearLookupFilter = Boolean(drawNumberInput.trim() || activeDrawNumber.trim() || numberFilter.length);
-  const canRenderBacktest = Boolean(selectedLottery && draws.length > 0);
+  const canRenderBacktest = Boolean(selectedLottery && draws.length > 1);
 
   const filteredDraws = useMemo(() => draws.filter((draw) => drawContainsNumbers(draw, numberFilter)), [draws, numberFilter]);
   const numberFilterKey = numberFilter.join("|");
@@ -1655,10 +1655,15 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       )}
     </div>
     <BacktestDrawer
+      customRange={analysisPeriod === "all" ? effectiveCustomAnalysisRange : undefined}
       draws={draws}
       lottery={selectedLottery}
       onClose={closeBacktestDrawer}
       open={isBacktestOpen}
+      period={analysisPeriod}
+      recencyScoreMode={recentWeightDisplayMode}
+      scope={selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"}
+      view={analysisView}
     />
     <Remark42Comments />
     <footer className="super-footer" aria-label="Apoie o Luckygames">

@@ -467,6 +467,7 @@ export function buildBacktestSnapshot(
   scope: DuplaSenaAnalysisScope = "all",
   random: () => number = Math.random,
   recencyScoreMode: RecencyScoreMode = "float",
+  requestedRange?: AnalysisDrawRange,
 ): BacktestSnapshot | null {
   const cutoffIndex = draws.findIndex((draw) => draw.drawNumber === cutoffDrawNumber);
 
@@ -477,7 +478,7 @@ export function buildBacktestSnapshot(
   const cutoffDraw = draws[cutoffIndex];
   const actualNextDraw = cutoffIndex > 0 ? draws[cutoffIndex - 1] : null;
   const historicalDraws = draws.slice(cutoffIndex);
-  const analysisData = buildAnalysisData(historicalDraws, lottery, period, scope);
+  const analysisData = buildAnalysisData(historicalDraws, lottery, period, scope, requestedRange);
 
   if (!analysisData) {
     return {
@@ -491,7 +492,7 @@ export function buildBacktestSnapshot(
   }
 
   const suggestion = buildLuckySuggestion(lottery, view, analysisData, random, recencyScoreMode);
-  const actualNumbers = new Set(actualNextDraw?.numbers ?? []);
+  const actualNumbers = new Set(actualNextDraw ? getNumbersForAnalysis(actualNextDraw, scope) : []);
   const hits = suggestion.filter((number) => actualNumbers.has(number));
   const missing = suggestion.filter((number) => !hits.includes(number));
 

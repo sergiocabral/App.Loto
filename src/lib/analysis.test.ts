@@ -169,6 +169,24 @@ describe("analysis helpers", () => {
     expect(snapshot?.missing).toEqual(["02"]);
   });
 
+  it("applies custom range inside the historical backtest window", () => {
+    const backtestDraws = [
+      draw(5, ["01", "06", "07"], "Tiny"),
+      draw(4, ["01", "03", "05"], "Tiny"),
+      draw(3, ["01", "02", "03"], "Tiny"),
+      draw(2, ["04", "05", "06"], "Tiny"),
+      draw(1, ["04", "05", "06"], "Tiny"),
+    ];
+    const snapshot = buildBacktestSnapshot(backtestDraws, tinyLottery, 3, "most", "all", "all", () => 0, "float", {
+      end: 3,
+      start: 2,
+    });
+
+    expect(snapshot?.analysisData?.selectedDraws.map((item) => item.drawNumber)).toEqual([2, 1]);
+    expect(snapshot?.suggestion).toEqual(["04", "05", "06"]);
+    expect(snapshot?.hits).toEqual(["05"]);
+  });
+
   it("returns a backtest snapshot without actual next draw for the newest cutoff", () => {
     const backtestDraws = [
       draw(5, ["01", "06", "07"], "Tiny"),
@@ -245,6 +263,47 @@ describe("analysis helpers", () => {
 
     expect(firstScope?.most.at(0)).toMatchObject({ number: "01", hits: 2 });
     expect(secondScope?.most.at(0)).toMatchObject({ number: "07", hits: 2 });
+  });
+
+  it("does not count DuplaSena backtest hits outside the selected scope", () => {
+    const duplaDraws = [
+      draw(
+        3,
+        ["01", "02", "03", "04", "05", "06", "13", "14", "15", "16", "17", "18"],
+        "DuplaSena",
+        [
+          ["01", "02", "03", "04", "05", "06"],
+          ["13", "14", "15", "16", "17", "18"],
+        ],
+      ),
+      draw(
+        2,
+        ["07", "08", "09", "10", "11", "12", "01", "02", "03", "04", "05", "06"],
+        "DuplaSena",
+        [
+          ["07", "08", "09", "10", "11", "12"],
+          ["01", "02", "03", "04", "05", "06"],
+        ],
+      ),
+      draw(
+        1,
+        ["07", "08", "09", "10", "11", "12", "01", "02", "03", "04", "05", "06"],
+        "DuplaSena",
+        [
+          ["07", "08", "09", "10", "11", "12"],
+          ["01", "02", "03", "04", "05", "06"],
+        ],
+      ),
+    ];
+
+    const firstScope = buildBacktestSnapshot(duplaDraws, duplaSena, 2, "most", "all", "first", () => 0);
+    const secondScope = buildBacktestSnapshot(duplaDraws, duplaSena, 2, "most", "all", "second", () => 0);
+
+    expect(firstScope?.suggestion).toEqual(["07", "08", "09", "10", "11", "12"]);
+    expect(firstScope?.hits).toEqual([]);
+    expect(secondScope?.suggestion).toEqual(["01", "02", "03", "04", "05", "06"]);
+    expect(secondScope?.hits).toEqual([]);
+    expect(secondScope?.missing).toEqual(["01", "02", "03", "04", "05", "06"]);
   });
 
   it("groups trends by equal values in requested order", () => {
