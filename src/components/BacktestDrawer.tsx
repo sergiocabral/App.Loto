@@ -29,6 +29,7 @@ type BacktestDrawerProps = {
 };
 
 type SimulatorPeriodPreset = 10 | 25 | 50 | 100 | "custom";
+type SimulationSpeed = 1 | 2 | 3;
 
 const SIMULATOR_PERIOD_OPTIONS: Array<{ value: SimulatorPeriodPreset; label: string }> = [
   { value: 10, label: "10" },
@@ -39,7 +40,17 @@ const SIMULATOR_PERIOD_OPTIONS: Array<{ value: SimulatorPeriodPreset; label: str
 ];
 
 const SIMULATION_DUPLICATE_ATTEMPT_LIMIT = 80;
-const SIMULATION_INTERVAL_MS = 200;
+const SIMULATION_NUMBER_LINE_SIZE = 7;
+const SIMULATION_SPEED_DELAYS: Record<SimulationSpeed, number> = {
+  1: 250,
+  2: 80,
+  3: 10,
+};
+const SIMULATION_SPEED_OPTIONS: Array<{ value: SimulationSpeed; label: string }> = [
+  { value: 1, label: "1x" },
+  { value: 2, label: "2x" },
+  { value: 3, label: "3x" },
+];
 
 type SimulationSuggestion = {
   cutoffDate: string;
@@ -154,11 +165,11 @@ function buildSimulationReport(suggestions: SimulationSuggestion[], groups: Simu
     return `Total de sugestoes simuladas: 0
 Concursos processados: 0
 
-Concursos:
-  nenhum
-
 Melhores sugestoes:
-  aguardando processamento`;
+  aguardando processamento
+
+Concursos:
+  nenhum`;
   }
 
   const hitSuggestions = [...suggestions].filter((suggestion) => suggestion.hitCount > 0);
@@ -181,7 +192,7 @@ Melhores sugestoes:
       (suggestion, index) =>
         `${index + 1}. concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
    sugestao ${suggestion.sequence} (${suggestion.hitCount} ${suggestion.hitCount === 1 ? "acerto" : "acertos"})
-   numeros  ${formatReportNumbers(suggestion)}`,
+${formatReportNumberLines(suggestion)}`,
     )
     .join("\n");
   const noHitLine = "Nenhuma sugestao acertou numero ainda.\nO simulador segue procurando uma pista boa.";
@@ -190,7 +201,7 @@ Melhores sugestoes:
         .map(
           (suggestion) => `  concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
     sugestao ${suggestion.sequence} (${suggestion.hitCount} acertos)
-    numeros  ${formatReportNumbers(suggestion)}
+${formatReportNumberLines(suggestion, "    numeros  ")}
     GANHARIA o premio maximo simulado
 ***`,
         )
@@ -200,15 +211,24 @@ Melhores sugestoes:
   return `Total de sugestoes simuladas: ${suggestions.length}
 Concursos processados: ${groups.length}
 
-Concursos:
-${processedDraws}
-
 Melhores sugestoes:
-${bestLines || noHitLine}${winnerLines}`;
+${bestLines || noHitLine}${winnerLines}
+
+Concursos:
+${processedDraws}`;
 }
 
-function formatReportNumbers(suggestion: SimulationSuggestion): string {
-  return suggestion.numbers.map((number) => (suggestion.hitNumbers.includes(number) ? `(${number})` : ` ${number} `)).join(" ");
+function formatReportNumberLines(suggestion: SimulationSuggestion, firstLinePrefix = "   numeros  "): string {
+  const tokens = suggestion.numbers.map((number) => (suggestion.hitNumbers.includes(number) ? `(${number})` : ` ${number} `));
+  const continuationPrefix = " ".repeat(firstLinePrefix.length);
+  const lines: string[] = [];
+
+  for (let index = 0; index < tokens.length; index += SIMULATION_NUMBER_LINE_SIZE) {
+    const prefix = index === 0 ? firstLinePrefix : continuationPrefix;
+    lines.push(`${prefix}${tokens.slice(index, index + SIMULATION_NUMBER_LINE_SIZE).join(" ")}`);
+  }
+
+  return lines.join("\n");
 }
 
 function buildCopyableSimulationReport(report: string): string {
@@ -287,6 +307,7 @@ export function BacktestDrawer({
   const [periodPreset, setPeriodPreset] = useState<SimulatorPeriodPreset>(() => getSimulatorPeriodPreset(quickAnalysisPeriod));
   const [customPeriodCount, setCustomPeriodCount] = useState(() => (quickAnalysisPeriod === "all" ? getCustomRangeCount(quickCustomRange) : 1));
   const [autoAdvanceCutoff, setAutoAdvanceCutoff] = useState(false);
+  const [simulationSpeed, setSimulationSpeed] = useState<SimulationSpeed>(2);
   const [simulationCurrentCutoffDrawNumber, setSimulationCurrentCutoffDrawNumber] = useState<number | null>(null);
   const [simulationResults, setSimulationResults] = useState<SimulationSuggestion[]>([]);
   const [simulationRunning, setSimulationRunning] = useState(false);
@@ -365,7 +386,7 @@ export function BacktestDrawer({
       return;
     }
 
-    const intervalId = window.setInterval(() => {
+    const timeoutId = window.setTimeout(() => {
       if (!lottery || simulationCurrentCutoffDrawNumber === null) {
         setSimulationRunning(false);
         setSimulationStatusMessage("Sem concurso de corte para processar.");
@@ -441,10 +462,10 @@ export function BacktestDrawer({
 
       setSimulationRunning(false);
       setSimulationStatusMessage(autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sugestões diferentes esgotadas para este corte.");
-    }, SIMULATION_INTERVAL_MS);
+    }, SIMULATION_SPEED_DELAYS[simulationSpeed]);
 
     return () => {
-      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
     };
   }, [
     analysisView,
@@ -459,6 +480,7 @@ export function BacktestDrawer({
     simulationCurrentCutoffDrawNumber,
     simulationResults,
     simulationRunning,
+    simulationSpeed,
   ]);
 
   function handleCutoffChange(value: string) {
@@ -578,9 +600,11 @@ export function BacktestDrawer({
                 onGroupToggle={toggleSimulationGroup}
                 onStart={startSimulation}
                 onStop={stopSimulation}
+                onSpeedChange={setSimulationSpeed}
                 openGroupKeys={openSimulationGroups}
                 report={simulationReport}
                 running={simulationRunning}
+                speed={simulationSpeed}
                 statusMessage={simulationStatusMessage}
                 suggestions={simulationResults}
               />
@@ -781,9 +805,11 @@ type BacktestSimulationPanelProps = {
   onGroupToggle: (key: string) => void;
   onStart: () => void;
   onStop: () => void;
+  onSpeedChange: (speed: SimulationSpeed) => void;
   openGroupKeys: Set<string>;
   report: string;
   running: boolean;
+  speed: SimulationSpeed;
   statusMessage: string;
   suggestions: SimulationSuggestion[];
 };
@@ -797,9 +823,11 @@ function BacktestSimulationPanel({
   onGroupToggle,
   onStart,
   onStop,
+  onSpeedChange,
   openGroupKeys,
   report,
   running,
+  speed,
   statusMessage,
   suggestions,
 }: BacktestSimulationPanelProps) {
@@ -836,6 +864,23 @@ function BacktestSimulationPanel({
         <button className="backtest-drawer__simulation-button is-stop" disabled={!running} onClick={onStop} type="button">
           Parar
         </button>
+      </div>
+
+      <div className="backtest-drawer__speed-control">
+        <span>Velocidade</span>
+        <div aria-label="Velocidade da simulação" className="backtest-drawer__speed-options" role="group">
+          {SIMULATION_SPEED_OPTIONS.map((option) => (
+            <button
+              aria-pressed={speed === option.value}
+              className={`backtest-drawer__speed-button ${speed === option.value ? "is-active" : ""}`}
+              key={option.value}
+              onClick={() => onSpeedChange(option.value)}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <label className="backtest-drawer__checkbox-field">

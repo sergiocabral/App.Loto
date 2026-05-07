@@ -2489,6 +2489,49 @@ button.results-link:disabled {
   outline-offset: 3px;
 }
 
+.backtest-drawer__speed-control {
+  display: grid;
+  gap: 8px;
+}
+
+.backtest-drawer__speed-control > span {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.backtest-drawer__speed-options {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 6px;
+}
+
+.backtest-drawer__speed-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 900;
+  min-height: 34px;
+}
+
+.backtest-drawer__speed-button.is-active {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.32);
+  color: var(--text);
+}
+
+.backtest-drawer__speed-button:focus-visible {
+  outline: 3px solid rgba(56, 189, 248, 0.55);
+  outline-offset: 2px;
+}
+
 .backtest-drawer__simulation-status {
   align-items: center;
   background: rgba(2, 6, 23, 0.34);
