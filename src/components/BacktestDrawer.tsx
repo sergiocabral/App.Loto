@@ -94,7 +94,7 @@ export function BacktestDrawer({
         <header className="backtest-drawer__header">
           <div>
             <span className="eyebrow">Simulador</span>
-            <h2 id="backtest-title">Sorteios anteriore</h2>
+            <h2 id="backtest-title">Sorteios anteriores</h2>
             {lottery ? <p>{formatLotteryName(lottery.slug)}</p> : null}
           </div>
           <button aria-label="Fechar simulador" className="backtest-drawer__close" onClick={onClose} ref={closeButtonRef} type="button">

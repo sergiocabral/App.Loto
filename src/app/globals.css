@@ -2278,6 +2278,7 @@ button.results-link:disabled {
 }
 
 .backtest-drawer__body {
+  align-content: start;
   display: grid;
   gap: 14px;
   overflow: auto;
