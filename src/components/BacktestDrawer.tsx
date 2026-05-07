@@ -160,7 +160,7 @@ function getSimulationGroups(suggestions: SimulationSuggestion[]): SimulationGro
       ...group,
       suggestions: [...group.suggestions].sort((left, right) => right.hitCount - left.hitCount || right.sequence - left.sequence),
     }))
-    .sort((left, right) => right.targetDrawNumber - left.targetDrawNumber);
+    .sort((left, right) => left.targetDrawNumber - right.targetDrawNumber);
 }
 
 function buildSimulationReport(suggestions: SimulationSuggestion[], groups: SimulationGroup[]): string {
