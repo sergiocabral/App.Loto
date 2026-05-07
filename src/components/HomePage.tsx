@@ -1550,7 +1550,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
             <div className="results-actions">
               {canRenderBacktest ? (
                 <button className="legacy-link results-link backtest-drawer__trigger" onClick={openBacktestDrawer} type="button">
-                  Testar no passado
+                  Simulador
                 </button>
               ) : null}
               <a
@@ -1655,15 +1655,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       )}
     </div>
     <BacktestDrawer
-      customRange={analysisPeriod === "all" ? effectiveCustomAnalysisRange : undefined}
       draws={draws}
       lottery={selectedLottery}
       onClose={closeBacktestDrawer}
       open={isBacktestOpen}
-      period={analysisPeriod}
-      recencyScoreMode={recentWeightDisplayMode}
-      scope={selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"}
-      view={analysisView}
     />
     <Remark42Comments />
     <footer className="super-footer" aria-label="Apoie o Luckygames">
