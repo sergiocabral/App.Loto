@@ -7,6 +7,7 @@ import {
   buildAnalysisData,
   buildLuckySuggestion,
   getNumbersForAnalysis,
+  getSuggestionSize,
   type AnalysisData,
   type AnalysisDrawRange,
   type AnalysisPeriod,
@@ -96,6 +97,12 @@ function clampPeriodCount(value: number, maximum: number): number {
 
 function getCustomRangeCount(range: AnalysisDrawRange): number {
   return Math.max(1, Math.round(range.end) - Math.round(range.start) + 1);
+}
+
+function clampSuggestionNumberCount(value: number, minimum: number): number {
+  const normalizedMinimum = Math.max(1, Math.round(minimum));
+  const roundedValue = Number.isFinite(value) ? Math.round(value) : normalizedMinimum;
+  return Math.max(roundedValue, normalizedMinimum);
 }
 
 function getSimulatorPeriodPreset(period: AnalysisPeriod): SimulatorPeriodPreset {
@@ -245,16 +252,61 @@ function getCurrentDomain(): string {
   }
 }
 
+function copyTextWithTemporarySelection(text: string): boolean {
+  if (typeof document === "undefined" || !document.body) {
+    return false;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.opacity = "0";
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  const normalizedText = text.trim();
+
+  if (!normalizedText) {
+    return false;
+  }
+
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(normalizedText);
+      return true;
+    } catch {
+      return copyTextWithTemporarySelection(normalizedText);
+    }
+  }
+
+  return copyTextWithTemporarySelection(normalizedText);
+}
+
 function buildUniqueSimulationSuggestion(
   lottery: LotteryDefinition,
   view: AnalysisView,
   data: AnalysisData,
   existingKeys: Set<string>,
   recencyScoreMode: RecencyScoreMode,
+  suggestionSize: number,
 ): string[] | null {
   function findUniqueByRecencyScoreMode(mode: RecencyScoreMode): string[] | null {
     for (let attempt = 0; attempt < SIMULATION_DUPLICATE_ATTEMPT_LIMIT; attempt += 1) {
-      const numbers = buildLuckySuggestion(lottery, view, data, Math.random, mode);
+      const numbers = buildLuckySuggestion(lottery, view, data, Math.random, mode, suggestionSize);
       const key = getSuggestionKey(numbers);
 
       if (numbers.length && !existingKeys.has(key)) {
@@ -303,18 +355,21 @@ export function BacktestDrawer({
   const onCloseRef = useRef(onClose);
 
   const eligibleCutoffs = useMemo(() => getEligibleCutoffs(draws), [draws]);
+  const minimumSuggestionNumberCount = useMemo(() => (lottery ? getSuggestionSize(lottery) : 1), [lottery]);
   const [cutoffDrawNumber, setCutoffDrawNumber] = useState<number | null>(null);
   const [analysisView, setAnalysisView] = useState<AnalysisView>(quickAnalysisView);
   const [periodPreset, setPeriodPreset] = useState<SimulatorPeriodPreset>(() => getSimulatorPeriodPreset(quickAnalysisPeriod));
   const [customPeriodCount, setCustomPeriodCount] = useState(() => (quickAnalysisPeriod === "all" ? getCustomRangeCount(quickCustomRange) : 1));
-  const [autoAdvanceCutoff, setAutoAdvanceCutoff] = useState(false);
+  const [autoAdvanceCutoff, setAutoAdvanceCutoff] = useState(true);
   const [simulationSpeed, setSimulationSpeed] = useState<SimulationSpeed>(2);
+  const [suggestionNumberCount, setSuggestionNumberCount] = useState(minimumSuggestionNumberCount);
   const [simulationCurrentCutoffDrawNumber, setSimulationCurrentCutoffDrawNumber] = useState<number | null>(null);
   const [simulationResults, setSimulationResults] = useState<SimulationSuggestion[]>([]);
   const [simulationRunning, setSimulationRunning] = useState(false);
   const [simulationStatusMessage, setSimulationStatusMessage] = useState("Pronto para iniciar.");
   const [closedSimulationGroups, setClosedSimulationGroups] = useState<Set<string>>(() => new Set());
   const [openSimulationGroups, setOpenSimulationGroups] = useState<Set<string>>(() => new Set());
+  const effectiveSuggestionNumberCount = clampSuggestionNumberCount(suggestionNumberCount, minimumSuggestionNumberCount);
 
   const handleClose = useCallback(() => {
     setSimulationRunning(false);
@@ -393,6 +448,7 @@ export function BacktestDrawer({
       periodCount: selectedSimulationPeriodCount,
       autoAdvanceCutoff,
       speed: simulationSpeed,
+      suggestionNumberCount: effectiveSuggestionNumberCount,
       simulatedSuggestions: simulationResults.length,
       ...extra,
     };
@@ -462,12 +518,13 @@ export function BacktestDrawer({
           .map((suggestion) => suggestion.key),
       );
 
-      const numbers = buildUniqueSimulationSuggestion(lottery, analysisView, analysisData, existingKeys, quickRecencyScoreMode);
+      const numbers = buildUniqueSimulationSuggestion(lottery, analysisView, analysisData, existingKeys, quickRecencyScoreMode, effectiveSuggestionNumberCount);
 
       if (numbers) {
         const key = getSuggestionKey(numbers);
         const actualNumbers = new Set(getNumbersForAnalysis(targetDraw, quickAnalysisScope));
         const hitNumbers = numbers.filter((number) => actualNumbers.has(number));
+        const sequence = simulationResults.filter((suggestion) => suggestion.cutoffDrawNumber === simulationCurrentCutoffDrawNumber).length + 1;
         const suggestion: SimulationSuggestion = {
           cutoffDate: cutoffDraw.date,
           cutoffDrawNumber: cutoffDraw.drawNumber,
@@ -475,7 +532,7 @@ export function BacktestDrawer({
           hitNumbers,
           key,
           numbers,
-          sequence: simulationResults.length + 1,
+          sequence,
           targetDate: targetDraw.date,
           targetDrawNumber: targetDraw.drawNumber,
           totalNumbers: numbers.length,
@@ -514,6 +571,7 @@ export function BacktestDrawer({
     simulationResults,
     simulationRunning,
     simulationSpeed,
+    effectiveSuggestionNumberCount,
   ]);
 
   function handleCutoffChange(value: string) {
@@ -590,8 +648,33 @@ export function BacktestDrawer({
     );
   }
 
+  function handleSuggestionNumberCountChange(value: number) {
+    const nextCount = clampSuggestionNumberCount(value, minimumSuggestionNumberCount);
+    setSuggestionNumberCount(nextCount);
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorSuggestionSizeChanged,
+      getSimulatorAnalyticsData({
+        suggestionNumberCount: nextCount,
+      }),
+    );
+  }
+
   function handleReportCopy() {
     trackEvent(ANALYTICS_EVENTS.simulatorCopyReport, getSimulatorAnalyticsData());
+  }
+
+  function handleSuggestionCopy(suggestion: SimulationSuggestion) {
+    setSimulationStatusMessage(`Sugestão ${suggestion.sequence} copiada.`);
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorCopySuggestion,
+      getSimulatorAnalyticsData({
+        cutoffDrawNumber: suggestion.cutoffDrawNumber,
+        hitCount: suggestion.hitCount,
+        sequence: suggestion.sequence,
+        suggestionNumberCount: suggestion.numbers.length,
+        targetDrawNumber: suggestion.targetDrawNumber,
+      }),
+    );
   }
 
   function startSimulation() {
@@ -718,6 +801,8 @@ export function BacktestDrawer({
                 onAutoAdvanceCutoffChange={handleAutoAdvanceCutoffChange}
                 onGroupToggle={toggleSimulationGroup}
                 onReportCopy={handleReportCopy}
+                onSuggestionCopy={handleSuggestionCopy}
+                onSuggestionNumberCountChange={handleSuggestionNumberCountChange}
                 onStart={startSimulation}
                 onStop={stopSimulation}
                 onSpeedChange={handleSimulationSpeedChange}
@@ -726,6 +811,8 @@ export function BacktestDrawer({
                 running={simulationRunning}
                 speed={simulationSpeed}
                 statusMessage={simulationStatusMessage}
+                minimumSuggestionNumberCount={minimumSuggestionNumberCount}
+                suggestionNumberCount={effectiveSuggestionNumberCount}
                 suggestions={simulationResults}
               />
             </>
@@ -921,9 +1008,12 @@ type BacktestSimulationPanelProps = {
   autoAdvanceCutoff: boolean;
   closedGroupKeys: Set<string>;
   groups: SimulationGroup[];
+  minimumSuggestionNumberCount: number;
   onAutoAdvanceCutoffChange: (checked: boolean) => void;
   onGroupToggle: (key: string) => void;
   onReportCopy: () => void;
+  onSuggestionCopy: (suggestion: SimulationSuggestion) => void;
+  onSuggestionNumberCountChange: (count: number) => void;
   onStart: () => void;
   onStop: () => void;
   onSpeedChange: (speed: SimulationSpeed) => void;
@@ -932,6 +1022,7 @@ type BacktestSimulationPanelProps = {
   running: boolean;
   speed: SimulationSpeed;
   statusMessage: string;
+  suggestionNumberCount: number;
   suggestions: SimulationSuggestion[];
 };
 
@@ -940,9 +1031,12 @@ function BacktestSimulationPanel({
   autoAdvanceCutoff,
   closedGroupKeys,
   groups,
+  minimumSuggestionNumberCount,
   onAutoAdvanceCutoffChange,
   onGroupToggle,
   onReportCopy,
+  onSuggestionCopy,
+  onSuggestionNumberCountChange,
   onStart,
   onStop,
   onSpeedChange,
@@ -951,23 +1045,36 @@ function BacktestSimulationPanel({
   running,
   speed,
   statusMessage,
+  suggestionNumberCount,
   suggestions,
 }: BacktestSimulationPanelProps) {
   const [reportCopied, setReportCopied] = useState(false);
+  const [copiedSuggestionKey, setCopiedSuggestionKey] = useState<string | null>(null);
 
   const handleCopyReport = useCallback(() => {
-    if (!navigator.clipboard) {
-      return;
-    }
-
-    void navigator.clipboard
-      .writeText(buildCopyableSimulationReport(report))
-      .then(() => {
+    void copyTextToClipboard(buildCopyableSimulationReport(report)).then((copied) => {
+      if (copied) {
         setReportCopied(true);
         onReportCopy();
-      })
-      .catch(() => setReportCopied(false));
+      } else {
+        setReportCopied(false);
+      }
+    });
   }, [onReportCopy, report]);
+
+  const handleCopySuggestion = useCallback(
+    (suggestion: SimulationSuggestion) => {
+      void copyTextToClipboard(suggestion.numbers.join(" ")).then((copied) => {
+        if (!copied) {
+          return;
+        }
+
+        setCopiedSuggestionKey(`${suggestion.cutoffDrawNumber}:${suggestion.key}`);
+        onSuggestionCopy(suggestion);
+      });
+    },
+    [onSuggestionCopy],
+  );
 
   useEffect(() => {
     if (!reportCopied) {
@@ -978,6 +1085,16 @@ function BacktestSimulationPanel({
 
     return () => window.clearTimeout(timeoutId);
   }, [reportCopied]);
+
+  useEffect(() => {
+    if (!copiedSuggestionKey) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setCopiedSuggestionKey(null), 1600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [copiedSuggestionKey]);
 
   return (
     <section aria-label="Simulação" className="backtest-drawer__section">
@@ -992,6 +1109,60 @@ function BacktestSimulationPanel({
         <button className="backtest-drawer__simulation-button is-stop" disabled={!running} onClick={onStop} type="button">
           Parar
         </button>
+      </div>
+
+      <label className="backtest-drawer__checkbox-field">
+        <input
+          checked={autoAdvanceCutoff}
+          disabled={running}
+          onChange={(event) => onAutoAdvanceCutoffChange(event.target.checked)}
+          type="checkbox"
+        />
+        <span>Retroceder concurso de corte ao esgotar sugestões</span>
+      </label>
+
+      <div className="backtest-drawer__suggestion-size-control">
+        <div className="backtest-drawer__suggestion-size-header">
+          <span>Números por sugestão</span>
+          <strong>{suggestionNumberCount}</strong>
+        </div>
+        <div className="backtest-drawer__period-controls">
+          <div className="range-precision-controls" aria-label="Ajuste fino da quantidade de números sugeridos">
+            <button
+              aria-label="Reduzir quantidade de números sugeridos"
+              disabled={running || suggestionNumberCount <= minimumSuggestionNumberCount}
+              onClick={() => onSuggestionNumberCountChange(suggestionNumberCount - 1)}
+              title="Reduzir quantidade de números sugeridos"
+              type="button"
+            >
+              -1
+            </button>
+            <button
+              aria-label="Aumentar quantidade de números sugeridos"
+              disabled={running}
+              onClick={() => onSuggestionNumberCountChange(suggestionNumberCount + 1)}
+              title="Aumentar quantidade de números sugeridos"
+              type="button"
+            >
+              +1
+            </button>
+          </div>
+          <label className="backtest-drawer__period-input">
+            <span>Unidades</span>
+            <input
+              aria-label="Quantidade de números por sugestão"
+              disabled={running}
+              min={minimumSuggestionNumberCount}
+              onChange={(event) => onSuggestionNumberCountChange(Number.parseInt(event.target.value, 10))}
+              step={1}
+              type="number"
+              value={suggestionNumberCount}
+            />
+          </label>
+        </div>
+        <p className="backtest-drawer__period-summary">
+          Mínimo desta loteria: {minimumSuggestionNumberCount} {minimumSuggestionNumberCount === 1 ? "número" : "números"}.
+        </p>
       </div>
 
       <div className="backtest-drawer__speed-control">
@@ -1010,16 +1181,6 @@ function BacktestSimulationPanel({
           ))}
         </div>
       </div>
-
-      <label className="backtest-drawer__checkbox-field">
-        <input
-          checked={autoAdvanceCutoff}
-          disabled={running}
-          onChange={(event) => onAutoAdvanceCutoffChange(event.target.checked)}
-          type="checkbox"
-        />
-        <span>Retroceder concurso de corte ao esgotar sugestões</span>
-      </label>
 
       <div
         aria-live="polite"
@@ -1071,16 +1232,24 @@ function BacktestSimulationPanel({
                   <div className="backtest-drawer__suggestion-list">
                     {group.suggestions.map((suggestion) => {
                       const isWinner = suggestion.hitCount === suggestion.totalNumbers && suggestion.totalNumbers > 0;
+                      const renderedSuggestionKey = `${suggestion.cutoffDrawNumber}:${suggestion.key}`;
+                      const wasCopied = copiedSuggestionKey === renderedSuggestionKey;
 
                       return (
                         <article className={`backtest-drawer__suggestion-item ${isWinner ? "is-winner" : ""}`} key={suggestion.key}>
                           <header>
                             <strong>Sugestão {suggestion.sequence}</strong>
                             <span>
-                              {suggestion.hitCount}/{suggestion.totalNumbers} acertos
+                              {wasCopied ? "Copiado" : `${suggestion.hitCount}/${suggestion.totalNumbers} acertos`}
                             </span>
                           </header>
-                          <div className="backtest-drawer__suggestion-numbers" aria-label={`Números da sugestão ${suggestion.sequence}`}>
+                          <button
+                            aria-label={`Copiar números da sugestão ${suggestion.sequence}`}
+                            className="backtest-drawer__suggestion-numbers"
+                            onClick={() => handleCopySuggestion(suggestion)}
+                            title="Copiar sugestão"
+                            type="button"
+                          >
                             {suggestion.numbers.map((number) => {
                               const isHit = suggestion.hitNumbers.includes(number);
 
@@ -1090,7 +1259,7 @@ function BacktestSimulationPanel({
                                 </span>
                               );
                             })}
-                          </div>
+                          </button>
                         </article>
                       );
                     })}

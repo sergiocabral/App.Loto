@@ -257,6 +257,13 @@ describe("analysis helpers", () => {
     expect(buildLuckySuggestion(duplaSena, "most", data, () => 0)).toHaveLength(6);
   });
 
+  it("accepts a custom suggestion size without exceeding available numbers", () => {
+    const data = buildAnalysisData(draws, megaSena, "all", "all")!;
+
+    expect(buildLuckySuggestion(megaSena, "most", data, () => 0, "float", 8)).toHaveLength(8);
+    expect(buildLuckySuggestion(megaSena, "most", data, () => 0, "float", 999)).toHaveLength(data.stats.length);
+  });
+
   it("keeps suggestion keys stable for identical analysis and changed for another view", () => {
     const data = buildAnalysisData(draws, megaSena, "all", "all")!;
 

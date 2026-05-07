@@ -2532,6 +2532,31 @@ button.results-link:disabled {
   outline-offset: 2px;
 }
 
+.backtest-drawer__suggestion-size-control {
+  display: grid;
+  gap: 9px;
+}
+
+.backtest-drawer__suggestion-size-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.backtest-drawer__suggestion-size-header span {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.backtest-drawer__suggestion-size-header strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
 .backtest-drawer__simulation-status {
   align-items: center;
   background: rgba(2, 6, 23, 0.34);
@@ -2705,9 +2730,19 @@ button.results-link:disabled {
 }
 
 .backtest-drawer__suggestion-numbers {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+  padding: 0;
+  text-align: left;
+}
+
+.backtest-drawer__suggestion-numbers:focus-visible {
+  outline: 3px solid rgba(56, 189, 248, 0.55);
+  outline-offset: 3px;
 }
 
 .backtest-drawer__suggestion-numbers span {
