@@ -2310,6 +2310,59 @@ button.results-link:disabled {
   font-weight: 800;
 }
 
+.backtest-drawer__hint-card {
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.backtest-drawer__hint-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 8px;
+  justify-self: start;
+  padding: 0;
+}
+
+.backtest-drawer__hint-toggle span {
+  align-items: center;
+  background: rgba(125, 211, 252, 0.16);
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  border-radius: 999px;
+  color: var(--accent);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 950;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+
+.backtest-drawer__hint-toggle strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.backtest-drawer__hint-toggle:focus-visible {
+  outline: 3px solid rgba(56, 189, 248, 0.55);
+  outline-offset: 3px;
+}
+
+.backtest-drawer__hint-card p {
+  color: var(--muted-strong);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin: 0;
+}
+
 .backtest-drawer__section {
   background: rgba(255, 255, 255, 0.055);
   border: 1px solid rgba(125, 211, 252, 0.16);
