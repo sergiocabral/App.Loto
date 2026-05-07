@@ -106,10 +106,6 @@ function getSuggestionKey(numbers: string[]): string {
   return numbers.join("-");
 }
 
-function formatDrawReference(drawNumber: number, date: string): string {
-  return `concurso ${drawNumber} (${date})`;
-}
-
 function getSimulationGroups(suggestions: SimulationSuggestion[], activeCutoffDrawNumber: number | null): SimulationGroup[] {
   const groups = new Map<number, SimulationGroup>();
 
@@ -136,7 +132,7 @@ function getSimulationGroups(suggestions: SimulationSuggestion[], activeCutoffDr
   return [...groups.values()]
     .map((group) => ({
       ...group,
-      suggestions: [...group.suggestions].sort((left, right) => right.hitCount - left.hitCount || left.sequence - right.sequence),
+      suggestions: [...group.suggestions].sort((left, right) => right.hitCount - left.hitCount || right.sequence - left.sequence),
     }))
     .sort((left, right) => {
       if (left.cutoffDrawNumber === activeCutoffDrawNumber) {
@@ -153,42 +149,60 @@ function getSimulationGroups(suggestions: SimulationSuggestion[], activeCutoffDr
 
 function buildSimulationReport(suggestions: SimulationSuggestion[], groups: SimulationGroup[]): string {
   if (!suggestions.length) {
-    return "Total de sugestões simuladas: 0\nMelhor sugestão: aguardando processamento\nConcursos processados: nenhum";
+    return `SIMULACAO
+
+Total de sugestoes simuladas: 0
+Melhores sugestoes: aguardando processamento
+Concursos processados: nenhum`;
   }
 
-  const bestSuggestions = [...suggestions].sort((left, right) => right.hitCount - left.hitCount || left.sequence - right.sequence).slice(0, 3);
-  const winners = bestSuggestions.filter((suggestion) => suggestion.hitCount === suggestion.totalNumbers && suggestion.totalNumbers > 0);
+  const bestSuggestions = [...suggestions]
+    .filter((suggestion) => suggestion.hitCount > 0)
+    .sort((left, right) => right.hitCount - left.hitCount || right.sequence - left.sequence)
+    .slice(0, 3);
+  const winners = suggestions.filter((suggestion) => suggestion.hitCount === suggestion.totalNumbers && suggestion.totalNumbers > 0);
   const processedDraws = groups
     .map(
       (group) =>
-        `${formatDrawReference(group.targetDrawNumber, group.targetDate)}: ${group.suggestions.length} ${
-          group.suggestions.length === 1 ? "sugestão" : "sugestões"
-        }`,
+        `  concurso ${group.targetDrawNumber}  ${group.targetDate}
+    sugestoes: ${group.suggestions.length}`,
     )
     .join("\n");
   const bestLines = bestSuggestions
     .map(
       (suggestion, index) =>
-        `${index + 1}. Sugestão ${suggestion.sequence}: ${suggestion.numbers.join(" ")} para ${formatDrawReference(
-          suggestion.targetDrawNumber,
-          suggestion.targetDate,
-        )} - ${suggestion.hitCount}/${suggestion.totalNumbers} acertos`,
+        `${index + 1}. concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
+   sugestao ${suggestion.sequence}
+   numeros  ${formatReportNumbers(suggestion)}
+   acertos  ${suggestion.hitCount}`,
     )
     .join("\n");
+  const noHitLine = "Nenhuma sugestao acertou numero ainda.\nO simulador segue procurando uma pista boa.";
   const winnerLines = winners.length
     ? `\n\nPREMIO MAXIMO SIMULADO:\n${winners
-        .map((suggestion) => `Sugestão ${suggestion.sequence} teria acertado todos os ${suggestion.totalNumbers} números.`)
+        .map(
+          (suggestion) => `  concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
+    sugestao ${suggestion.sequence}
+    numeros  ${formatReportNumbers(suggestion)}
+    GANHARIA o premio maximo simulado`,
+        )
         .join("\n")}`
     : "";
 
-  return `Total de sugestões simuladas: ${suggestions.length}
+  return `SIMULACAO
+
+Total de sugestoes simuladas: ${suggestions.length}
 Concursos processados: ${groups.length}
 
-Melhores sugestões:
-${bestLines}${winnerLines}
+Melhores sugestoes:
+${bestLines || noHitLine}${winnerLines}
 
-Concursos no relatório:
+Concursos no relatorio:
 ${processedDraws}`;
+}
+
+function formatReportNumbers(suggestion: SimulationSuggestion): string {
+  return suggestion.numbers.map((number) => (suggestion.hitNumbers.includes(number) ? `(${number})` : ` ${number} `)).join(" ");
 }
 
 export function BacktestDrawer({
@@ -721,6 +735,26 @@ function BacktestSimulationPanel({
   statusMessage,
   suggestions,
 }: BacktestSimulationPanelProps) {
+  const [reportCopied, setReportCopied] = useState(false);
+
+  const handleCopyReport = useCallback(() => {
+    if (!navigator.clipboard) {
+      return;
+    }
+
+    void navigator.clipboard.writeText(report).then(() => setReportCopied(true)).catch(() => setReportCopied(false));
+  }, [report]);
+
+  useEffect(() => {
+    if (!reportCopied) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setReportCopied(false), 1600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [reportCopied]);
+
   return (
     <section aria-label="Simulação" className="backtest-drawer__section">
       <header className="backtest-drawer__section-header">
@@ -758,7 +792,12 @@ function BacktestSimulationPanel({
       </div>
 
       <div className="backtest-drawer__simulation-report" aria-label="Relatório da simulação">
-        <strong>Relatório</strong>
+        <div className="backtest-drawer__simulation-report-header">
+          <strong>Relatório</strong>
+          <button className="backtest-drawer__copy-button" disabled={!report.trim()} onClick={handleCopyReport} type="button">
+            {reportCopied ? "Copiado" : "Copiar"}
+          </button>
+        </div>
         <pre>{report}</pre>
       </div>
 

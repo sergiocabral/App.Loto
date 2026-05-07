@@ -2541,11 +2541,34 @@ button.results-link:disabled {
   padding: 12px;
 }
 
-.backtest-drawer__simulation-report > strong {
+.backtest-drawer__simulation-report-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.backtest-drawer__simulation-report-header strong {
   color: var(--text);
   font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.backtest-drawer__copy-button {
+  background: rgba(125, 211, 252, 0.1);
+  border: 1px solid rgba(125, 211, 252, 0.26);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 5px 10px;
+}
+
+.backtest-drawer__copy-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .backtest-drawer__simulation-report pre {
@@ -2555,7 +2578,7 @@ button.results-link:disabled {
   font-weight: 700;
   line-height: 1.45;
   margin: 0;
-  max-height: 168px;
+  max-height: 208px;
   overflow: auto;
   white-space: pre-wrap;
 }
