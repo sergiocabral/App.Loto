@@ -65,6 +65,8 @@ export function BacktestDrawer({
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
   const [periodPreset, setPeriodPreset] = useState<SimulatorPeriodPreset>(10);
   const [customPeriodCount, setCustomPeriodCount] = useState(1);
+  const [simulationCycle, setSimulationCycle] = useState(0);
+  const [simulationRunning, setSimulationRunning] = useState(false);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -123,6 +125,26 @@ export function BacktestDrawer({
   }, [availableAnalysisDrawCount]);
 
   useEffect(() => {
+    if (!simulationRunning) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setSimulationCycle((current) => current + 1);
+    }, 500);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [simulationRunning]);
+
+  useEffect(() => {
+    if (!open) {
+      setSimulationRunning(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
     const isOpening = open && !wasOpenRef.current;
     wasOpenRef.current = open;
 
@@ -150,6 +172,15 @@ export function BacktestDrawer({
   function handleCustomPeriodCountChange(value: number) {
     setPeriodPreset("custom");
     setCustomPeriodCount(clampPeriodCount(value, availableAnalysisDrawCount));
+  }
+
+  function startSimulation() {
+    setSimulationCycle(0);
+    setSimulationRunning(true);
+  }
+
+  function stopSimulation() {
+    setSimulationRunning(false);
   }
 
   if (!open) {
@@ -180,6 +211,7 @@ export function BacktestDrawer({
             <>
               <BacktestCutoffPicker
                 cutoffs={eligibleCutoffs}
+                disabled={simulationRunning}
                 onChange={handleCutoffChange}
                 value={activeCutoffDrawNumber}
               />
@@ -187,10 +219,17 @@ export function BacktestDrawer({
                 analysisView={analysisView}
                 availableDrawCount={availableAnalysisDrawCount}
                 customPeriodCount={customPeriodCount}
+                disabled={simulationRunning}
                 onAnalysisViewChange={setAnalysisView}
                 onCustomPeriodCountChange={handleCustomPeriodCountChange}
                 onPeriodPresetChange={setPeriodPreset}
                 periodPreset={periodPreset}
+              />
+              <BacktestSimulationPanel
+                cycle={simulationCycle}
+                onStart={startSimulation}
+                onStop={stopSimulation}
+                running={simulationRunning}
               />
             </>
           )}
@@ -202,11 +241,12 @@ export function BacktestDrawer({
 
 type BacktestCutoffPickerProps = {
   cutoffs: Draw[];
+  disabled: boolean;
   onChange: (value: string) => void;
   value: number | null;
 };
 
-function BacktestCutoffPicker({ cutoffs, onChange, value }: BacktestCutoffPickerProps) {
+function BacktestCutoffPicker({ cutoffs, disabled, onChange, value }: BacktestCutoffPickerProps) {
   return (
     <section aria-label="Selecionar concurso de corte" className="backtest-drawer__section">
       <header className="backtest-drawer__section-header">
@@ -220,6 +260,7 @@ function BacktestCutoffPicker({ cutoffs, onChange, value }: BacktestCutoffPicker
         <select
           aria-label="Concurso de corte"
           className="backtest-drawer__select"
+          disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           value={value ?? ""}
         >
@@ -238,6 +279,7 @@ type BacktestAnalysisParametersProps = {
   analysisView: AnalysisView;
   availableDrawCount: number;
   customPeriodCount: number;
+  disabled: boolean;
   onAnalysisViewChange: (view: AnalysisView) => void;
   onCustomPeriodCountChange: (count: number) => void;
   onPeriodPresetChange: (period: SimulatorPeriodPreset) => void;
@@ -248,6 +290,7 @@ function BacktestAnalysisParameters({
   analysisView,
   availableDrawCount,
   customPeriodCount,
+  disabled,
   onAnalysisViewChange,
   onCustomPeriodCountChange,
   onPeriodPresetChange,
@@ -284,6 +327,7 @@ function BacktestAnalysisParameters({
             {SIMULATOR_PERIOD_OPTIONS.map((option) => (
               <button
                 className={periodPreset === option.value ? "active" : ""}
+                disabled={disabled}
                 key={String(option.value)}
                 onClick={() => handlePeriodPresetChange(option.value)}
                 type="button"
@@ -304,6 +348,7 @@ function BacktestAnalysisParameters({
               <input
                 aria-label="Quantidade de concursos anteriores ao corte"
                 className="period-slider"
+                disabled={disabled}
                 max={maximum}
                 min={1}
                 onChange={(event) => onCustomPeriodCountChange(Number.parseInt(event.target.value, 10))}
@@ -315,7 +360,7 @@ function BacktestAnalysisParameters({
                 <div className="range-precision-controls" aria-label="Ajuste fino do período">
                   <button
                     aria-label="Reduzir período em 1 concurso"
-                    disabled={!canDecrease}
+                    disabled={disabled || !canDecrease}
                     onClick={() => onCustomPeriodCountChange(customPeriodCount - 1)}
                     title="Reduzir período em 1 concurso"
                     type="button"
@@ -324,7 +369,7 @@ function BacktestAnalysisParameters({
                   </button>
                   <button
                     aria-label="Aumentar período em 1 concurso"
-                    disabled={!canIncrease}
+                    disabled={disabled || !canIncrease}
                     onClick={() => onCustomPeriodCountChange(customPeriodCount + 1)}
                     title="Aumentar período em 1 concurso"
                     type="button"
@@ -336,6 +381,7 @@ function BacktestAnalysisParameters({
                   <span>Unidades</span>
                   <input
                     aria-label="Quantidade exata de concursos anteriores"
+                    disabled={disabled}
                     max={maximum}
                     min={1}
                     onChange={(event) => onCustomPeriodCountChange(Number.parseInt(event.target.value, 10))}
@@ -357,6 +403,7 @@ function BacktestAnalysisParameters({
           <select
             aria-label="Tipo de Análise"
             className="backtest-drawer__select"
+            disabled={disabled}
             onChange={(event) => onAnalysisViewChange(event.target.value as AnalysisView)}
             value={analysisView}
           >
@@ -367,6 +414,46 @@ function BacktestAnalysisParameters({
             ))}
           </select>
         </label>
+      </div>
+    </section>
+  );
+}
+
+type BacktestSimulationPanelProps = {
+  cycle: number;
+  onStart: () => void;
+  onStop: () => void;
+  running: boolean;
+};
+
+function BacktestSimulationPanel({ cycle, onStart, onStop, running }: BacktestSimulationPanelProps) {
+  return (
+    <section aria-label="Simulação" className="backtest-drawer__section">
+      <header className="backtest-drawer__section-header">
+        <h3>Simulação</h3>
+        <span className="backtest-drawer__section-hint">
+          Laboratório em aquecimento: a automação entra na próxima etapa.
+        </span>
+      </header>
+
+      <div className="backtest-drawer__simulation-actions">
+        <button className="backtest-drawer__simulation-button is-start" disabled={running} onClick={onStart} type="button">
+          Iniciar
+        </button>
+        <button className="backtest-drawer__simulation-button is-stop" disabled={!running} onClick={onStop} type="button">
+          Parar
+        </button>
+      </div>
+
+      <div
+        aria-live="polite"
+        className={`backtest-drawer__simulation-status ${running ? "is-running" : ""}`}
+      >
+        <span aria-hidden="true" className="backtest-drawer__spinner" />
+        <div>
+          <strong>{running ? "Rodando ensaio técnico" : "Laboratório em aquecimento"}</strong>
+          <span>{running ? `Ciclo ${cycle} em preparação` : "Pronto para receber a lógica de cálculo."}</span>
+        </div>
       </div>
     </section>
   );

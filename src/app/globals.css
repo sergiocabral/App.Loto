@@ -2403,6 +2403,14 @@ button.results-link:disabled {
   outline-offset: 2px;
 }
 
+.backtest-drawer__period-input input:disabled,
+.backtest-drawer__select:disabled,
+.backtest-drawer__section .segmented-control button:disabled,
+.backtest-drawer__section .period-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .backtest-drawer__select {
   appearance: none;
   background:
@@ -2421,6 +2429,89 @@ button.results-link:disabled {
 .backtest-drawer__select:focus-visible {
   outline: 3px solid rgba(56, 189, 248, 0.55);
   outline-offset: 3px;
+}
+
+.backtest-drawer__simulation-actions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.backtest-drawer__simulation-button {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.backtest-drawer__simulation-button.is-start {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.94), rgba(56, 189, 248, 0.86));
+  border-color: rgba(52, 211, 153, 0.36);
+  color: #020617;
+}
+
+.backtest-drawer__simulation-button.is-stop {
+  background: rgba(251, 113, 133, 0.14);
+  border-color: rgba(251, 113, 133, 0.34);
+  color: #fecdd3;
+}
+
+.backtest-drawer__simulation-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.backtest-drawer__simulation-button:focus-visible {
+  outline: 3px solid rgba(56, 189, 248, 0.55);
+  outline-offset: 3px;
+}
+
+.backtest-drawer__simulation-status {
+  align-items: center;
+  background: rgba(2, 6, 23, 0.34);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 14px;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+}
+
+.backtest-drawer__simulation-status > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.backtest-drawer__simulation-status strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.backtest-drawer__simulation-status span:not(.backtest-drawer__spinner) {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.backtest-drawer__spinner {
+  border: 3px solid rgba(148, 163, 184, 0.24);
+  border-radius: 50%;
+  border-top-color: rgba(56, 189, 248, 0.98);
+  flex: 0 0 auto;
+  height: 24px;
+  opacity: 0.54;
+  width: 24px;
+}
+
+.backtest-drawer__simulation-status.is-running .backtest-drawer__spinner {
+  animation: backtestDrawerSpin 800ms linear infinite;
+  opacity: 1;
 }
 
 @media (max-width: 540px) {
@@ -2452,6 +2543,12 @@ button.results-link:disabled {
 
   to {
     opacity: 1;
+  }
+}
+
+@keyframes backtestDrawerSpin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
