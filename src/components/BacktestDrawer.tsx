@@ -53,7 +53,7 @@ export function BacktestDrawer({
   const [cutoffDrawNumber, setCutoffDrawNumber] = useState<number | null>(null);
   const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
   const [periodPreset, setPeriodPreset] = useState<SimulatorPeriodPreset>(10);
-  const [customPeriodCount, setCustomPeriodCount] = useState(10);
+  const [customPeriodCount, setCustomPeriodCount] = useState(1);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -108,7 +108,7 @@ export function BacktestDrawer({
   }, [activeCutoffDrawNumber, draws]);
 
   useEffect(() => {
-    setCustomPeriodCount((current) => clampPeriodCount(current, availableAnalysisDrawCount));
+    setCustomPeriodCount(clampPeriodCount(availableAnalysisDrawCount, availableAnalysisDrawCount));
   }, [availableAnalysisDrawCount]);
 
   function handleCutoffChange(value: string) {
@@ -234,7 +234,7 @@ function BacktestAnalysisParameters({
       return;
     }
 
-    onCustomPeriodCountChange(customPeriodCount);
+    onCustomPeriodCountChange(maximum);
   }
 
   return (
@@ -315,11 +315,10 @@ function BacktestAnalysisParameters({
                 </label>
               </div>
             </div>
-          ) : (
-            <p className="backtest-drawer__period-summary">
-              Usando até {selectedPeriodCount} {selectedPeriodCount === 1 ? "concurso anterior" : "concursos anteriores"} ao corte.
-            </p>
-          )}
+          ) : null}
+          <p className="backtest-drawer__period-summary">
+            Usando até {selectedPeriodCount} {selectedPeriodCount === 1 ? "concurso anterior" : "concursos anteriores"} ao corte.
+          </p>
         </div>
 
         <label className="backtest-drawer__field">
