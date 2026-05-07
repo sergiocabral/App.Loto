@@ -403,6 +403,24 @@ export function BacktestDrawer({
         return;
       }
 
+      function advanceToCutoff(nextCutoffDrawNumber: number) {
+        setClosedSimulationGroups((current) => {
+          const next = new Set(current);
+          const currentKey = String(simulationCurrentCutoffDrawNumber);
+          const nextKey = String(nextCutoffDrawNumber);
+
+          if (current.has(currentKey)) {
+            next.add(nextKey);
+          } else {
+            next.delete(nextKey);
+          }
+
+          return next;
+        });
+        setSimulationCurrentCutoffDrawNumber(nextCutoffDrawNumber);
+        setSimulationStatusMessage(`Avançando para o corte do concurso ${nextCutoffDrawNumber}.`);
+      }
+
       const historicalDraws = draws.slice(cutoffIndex);
       const analysisPeriod: AnalysisPeriod = periodPreset === "custom" ? "all" : periodPreset;
       const requestedRange = periodPreset === "custom" ? { end: selectedSimulationPeriodCount, start: 1 } : undefined;
@@ -412,8 +430,7 @@ export function BacktestDrawer({
         const nextCutoffDrawNumber = autoAdvanceCutoff ? getNextOlderCutoffDrawNumber(eligibleCutoffs, simulationCurrentCutoffDrawNumber) : null;
 
         if (nextCutoffDrawNumber !== null) {
-          setSimulationCurrentCutoffDrawNumber(nextCutoffDrawNumber);
-          setSimulationStatusMessage(`Avançando para o corte do concurso ${nextCutoffDrawNumber}.`);
+          advanceToCutoff(nextCutoffDrawNumber);
           return;
         }
 
@@ -455,8 +472,7 @@ export function BacktestDrawer({
       const nextCutoffDrawNumber = autoAdvanceCutoff ? getNextOlderCutoffDrawNumber(eligibleCutoffs, simulationCurrentCutoffDrawNumber) : null;
 
       if (nextCutoffDrawNumber !== null) {
-        setSimulationCurrentCutoffDrawNumber(nextCutoffDrawNumber);
-        setSimulationStatusMessage(`Avançando para o corte do concurso ${nextCutoffDrawNumber}.`);
+        advanceToCutoff(nextCutoffDrawNumber);
         return;
       }
 
