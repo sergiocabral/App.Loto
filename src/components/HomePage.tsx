@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { BacktestDrawer } from "@/components/BacktestDrawer";
 import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
@@ -660,6 +661,8 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [suggestedGames, setSuggestedGames] = useState<SuggestedGame[]>([]);
   const [selectedSuggestedGameKey, setSelectedSuggestedGameKey] = useState<string | null>(null);
   const [selectedNumbers, setSelectedNumbers] = useState<Set<string>>(new Set());
+  const [isBacktestOpen, setIsBacktestOpen] = useState(false);
+  const [backtestOpenRevision, setBacktestOpenRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
@@ -668,6 +671,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const isSyncing = syncInfo.running;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
   const canClearLookupFilter = Boolean(drawNumberInput.trim() || activeDrawNumber.trim() || numberFilter.length);
+  const canRenderBacktest = Boolean(selectedLottery && draws.length > 1);
 
   const filteredDraws = useMemo(() => draws.filter((draw) => drawContainsNumbers(draw, numberFilter)), [draws, numberFilter]);
   const numberFilterKey = numberFilter.join("|");
@@ -819,6 +823,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setSelectedDraw(cachedHistory?.selectedDraw ?? null);
     setSelectedNumbers(new Set());
     setSelectedSuggestedGameKey(null);
+    setIsBacktestOpen(false);
     setError(null);
     setStatus(cachedHistory ? "loaded" : "loading");
     setStatusMessage(cachedHistory?.statusMessage ?? "Carregando dados salvos...");
@@ -1378,6 +1383,30 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     });
   }
 
+  function openBacktestDrawer() {
+    if (!canRenderBacktest || !selectedLottery) {
+      return;
+    }
+
+    trackEvent(ANALYTICS_EVENTS.simulatorOpened, {
+      ...getLotteryAnalyticsData(selectedLottery),
+      drawCount: draws.length,
+    });
+    setBacktestOpenRevision((current) => current + 1);
+    setIsBacktestOpen(true);
+  }
+
+  function closeBacktestDrawer() {
+    if (selectedLottery) {
+      trackEvent(ANALYTICS_EVENTS.simulatorClosed, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        drawCount: draws.length,
+      });
+    }
+
+    setIsBacktestOpen(false);
+  }
+
   function returnToHome() {
     syncStopRef.current = true;
     syncSessionRef.current += 1;
@@ -1388,6 +1417,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setSelectedDraw(null);
     setSelectedNumbers(new Set());
     setSelectedSuggestedGameKey(null);
+    setIsBacktestOpen(false);
     setStatus("idle");
     setStatusMessage("Escolha uma loteria.");
     setLookupMode("numbers");
@@ -1531,6 +1561,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
               {statusMessage ? <p className={`status-badge ${status}`}>{statusMessage}</p> : null}
             </div>
             <div className="results-actions">
+              {canRenderBacktest ? (
+                <button className="legacy-link results-link backtest-drawer__trigger" onClick={openBacktestDrawer} type="button">
+                  Simulador
+                </button>
+              ) : null}
               <a
                 className="legacy-link results-link"
                 href={legacyHref}
@@ -1632,6 +1667,18 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
         </section>
       )}
     </div>
+    <BacktestDrawer
+      draws={draws}
+      key={backtestOpenRevision}
+      lottery={selectedLottery}
+      onClose={closeBacktestDrawer}
+      open={isBacktestOpen}
+      quickAnalysisPeriod={analysisPeriod}
+      quickAnalysisScope={selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"}
+      quickAnalysisView={analysisView}
+      quickCustomRange={effectiveCustomAnalysisRange}
+      quickRecencyScoreMode={recentWeightDisplayMode}
+    />
     <Remark42Comments />
     <footer className="super-footer" aria-label="Apoie o Luckygames">
       <div className="donation-callout donation-callout-bottom">

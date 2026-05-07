@@ -305,8 +305,10 @@ export function buildLuckySuggestion(
   data: AnalysisData,
   random: () => number = Math.random,
   recencyScoreMode: RecencyScoreMode = "float",
+  suggestionSize = getSuggestionSize(lottery),
 ): string[] {
-  const size = Math.min(getSuggestionSize(lottery), data.stats.length);
+  const requestedSize = Number.isFinite(suggestionSize) ? Math.floor(suggestionSize) : getSuggestionSize(lottery);
+  const size = Math.min(Math.max(1, requestedSize), data.stats.length);
   const selected: string[] = [];
 
   for (const group of buildSuggestionGroups(view, data, recencyScoreMode)) {

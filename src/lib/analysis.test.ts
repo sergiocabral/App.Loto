@@ -45,6 +45,12 @@ describe("analysis helpers", () => {
   const megaSena = getLottery("MegaSena")!;
   const lotoMania = getLottery("LotoMania")!;
   const duplaSena = getLottery("DuplaSena")!;
+  const tinyLottery: LotteryDefinition = {
+    slug: "Tiny",
+    apiSlug: "tiny",
+    countNumbers: 7,
+    numbersPerDraw: 3,
+  };
   const draws = [
     draw(5, ["01", "02", "03", "04", "05", "06"]),
     draw(4, ["01", "02", "03", "04", "05", "07"]),
@@ -226,12 +232,6 @@ describe("analysis helpers", () => {
   });
 
   it("always keeps singleton top-ranked groups in lucky suggestions", () => {
-    const tinyLottery: LotteryDefinition = {
-      slug: "Tiny",
-      apiSlug: "tiny",
-      countNumbers: 7,
-      numbersPerDraw: 3,
-    };
     const tinyDraws = [
       draw(3, ["01", "02", "03"], "Tiny"),
       draw(2, ["01", "02", "04"], "Tiny"),
@@ -255,6 +255,13 @@ describe("analysis helpers", () => {
 
     expect(getSuggestionSize(duplaSena)).toBe(6);
     expect(buildLuckySuggestion(duplaSena, "most", data, () => 0)).toHaveLength(6);
+  });
+
+  it("accepts a custom suggestion size without exceeding available numbers", () => {
+    const data = buildAnalysisData(draws, megaSena, "all", "all")!;
+
+    expect(buildLuckySuggestion(megaSena, "most", data, () => 0, "float", 8)).toHaveLength(8);
+    expect(buildLuckySuggestion(megaSena, "most", data, () => 0, "float", 999)).toHaveLength(data.stats.length);
   });
 
   it("keeps suggestion keys stable for identical analysis and changed for another view", () => {
