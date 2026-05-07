@@ -1384,15 +1384,26 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   }
 
   function openBacktestDrawer() {
-    if (!canRenderBacktest) {
+    if (!canRenderBacktest || !selectedLottery) {
       return;
     }
 
+    trackEvent(ANALYTICS_EVENTS.simulatorOpened, {
+      ...getLotteryAnalyticsData(selectedLottery),
+      drawCount: draws.length,
+    });
     setBacktestOpenRevision((current) => current + 1);
     setIsBacktestOpen(true);
   }
 
   function closeBacktestDrawer() {
+    if (selectedLottery) {
+      trackEvent(ANALYTICS_EVENTS.simulatorClosed, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        drawCount: draws.length,
+      });
+    }
+
     setIsBacktestOpen(false);
   }
 

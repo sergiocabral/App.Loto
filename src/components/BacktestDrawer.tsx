@@ -14,6 +14,7 @@ import {
   type DuplaSenaAnalysisScope,
   type RecencyScoreMode,
 } from "@/lib/analysis";
+import { ANALYTICS_EVENTS, type AnalyticsEventData, trackEvent } from "@/lib/analytics";
 import type { Draw } from "@/lib/types";
 
 type BacktestDrawerProps = {
@@ -381,6 +382,22 @@ export function BacktestDrawer({
 
   const simulationReport = useMemo(() => buildSimulationReport(simulationResults, simulationGroups), [simulationGroups, simulationResults]);
 
+  function getSimulatorAnalyticsData(extra?: AnalyticsEventData): AnalyticsEventData {
+    return {
+      lottery: lottery?.slug,
+      numbersPerDraw: lottery?.numbersPerDraw,
+      totalNumbers: lottery?.countNumbers,
+      cutoffDrawNumber: activeCutoffDrawNumber ?? undefined,
+      analysisView,
+      period: periodPreset === "custom" ? "ajustar" : periodPreset,
+      periodCount: selectedSimulationPeriodCount,
+      autoAdvanceCutoff,
+      speed: simulationSpeed,
+      simulatedSuggestions: simulationResults.length,
+      ...extra,
+    };
+  }
+
   useEffect(() => {
     if (!simulationRunning) {
       return;
@@ -510,11 +527,71 @@ export function BacktestDrawer({
     const nextAvailableDrawCount = getAvailableDrawCountForCutoff(draws, numeric);
     setCutoffDrawNumber(numeric);
     setCustomPeriodCount(clampPeriodCount(nextAvailableDrawCount, nextAvailableDrawCount));
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorCutoffChanged,
+      getSimulatorAnalyticsData({
+        availableDrawCount: nextAvailableDrawCount,
+        cutoffDrawNumber: numeric,
+      }),
+    );
   }
 
   function handleCustomPeriodCountChange(value: number) {
+    const nextCount = clampPeriodCount(value, availableAnalysisDrawCount);
     setPeriodPreset("custom");
-    setCustomPeriodCount(clampPeriodCount(value, availableAnalysisDrawCount));
+    setCustomPeriodCount(nextCount);
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorRangeChanged,
+      getSimulatorAnalyticsData({
+        period: "ajustar",
+        periodCount: nextCount,
+      }),
+    );
+  }
+
+  function handlePeriodPresetChange(value: SimulatorPeriodPreset) {
+    setPeriodPreset(value);
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorPeriodChanged,
+      getSimulatorAnalyticsData({
+        period: value === "custom" ? "ajustar" : value,
+        periodCount: value === "custom" ? effectiveCustomPeriodCount : Math.min(value, Math.max(1, availableAnalysisDrawCount)),
+      }),
+    );
+  }
+
+  function handleAnalysisViewChange(value: AnalysisView) {
+    setAnalysisView(value);
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorAnalysisChanged,
+      getSimulatorAnalyticsData({
+        analysisView: value,
+      }),
+    );
+  }
+
+  function handleAutoAdvanceCutoffChange(value: boolean) {
+    setAutoAdvanceCutoff(value);
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorAutoAdvanceChanged,
+      getSimulatorAnalyticsData({
+        autoAdvanceCutoff: value,
+      }),
+    );
+  }
+
+  function handleSimulationSpeedChange(value: SimulationSpeed) {
+    setSimulationSpeed(value);
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorSpeedChanged,
+      getSimulatorAnalyticsData({
+        speed: value,
+      }),
+    );
+  }
+
+  function handleReportCopy() {
+    trackEvent(ANALYTICS_EVENTS.simulatorCopyReport, getSimulatorAnalyticsData());
   }
 
   function startSimulation() {
@@ -529,15 +606,24 @@ export function BacktestDrawer({
     setOpenSimulationGroups(new Set());
     setSimulationStatusMessage("Preparando a primeira sugestão.");
     setSimulationRunning(true);
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorStarted,
+      getSimulatorAnalyticsData({
+        cutoffDrawNumber: activeCutoffDrawNumber,
+        simulatedSuggestions: 0,
+      }),
+    );
   }
 
   function stopSimulation() {
     setSimulationRunning(false);
     setSimulationStatusMessage("Simulação pausada.");
+    trackEvent(ANALYTICS_EVENTS.simulatorStopped, getSimulatorAnalyticsData());
   }
 
   function toggleSimulationGroup(key: string) {
     if (key === String(simulationCurrentCutoffDrawNumber)) {
+      const nextOpen = closedSimulationGroups.has(key);
       setClosedSimulationGroups((current) => {
         const next = new Set(current);
 
@@ -549,9 +635,18 @@ export function BacktestDrawer({
 
         return next;
       });
+      trackEvent(
+        ANALYTICS_EVENTS.simulatorGroupToggled,
+        getSimulatorAnalyticsData({
+          activeGroup: true,
+          groupDrawNumber: Number.parseInt(key, 10),
+          open: nextOpen,
+        }),
+      );
       return;
     }
 
+    const nextOpen = !openSimulationGroups.has(key);
     setOpenSimulationGroups((current) => {
       const next = new Set(current);
 
@@ -563,6 +658,14 @@ export function BacktestDrawer({
 
       return next;
     });
+    trackEvent(
+      ANALYTICS_EVENTS.simulatorGroupToggled,
+      getSimulatorAnalyticsData({
+        activeGroup: false,
+        groupDrawNumber: Number.parseInt(key, 10),
+        open: nextOpen,
+      }),
+    );
   }
 
   if (!open) {
@@ -602,9 +705,9 @@ export function BacktestDrawer({
                 availableDrawCount={availableAnalysisDrawCount}
                 customPeriodCount={effectiveCustomPeriodCount}
                 disabled={simulationRunning}
-                onAnalysisViewChange={setAnalysisView}
+                onAnalysisViewChange={handleAnalysisViewChange}
                 onCustomPeriodCountChange={handleCustomPeriodCountChange}
-                onPeriodPresetChange={setPeriodPreset}
+                onPeriodPresetChange={handlePeriodPresetChange}
                 periodPreset={periodPreset}
               />
               <BacktestSimulationPanel
@@ -612,11 +715,12 @@ export function BacktestDrawer({
                 autoAdvanceCutoff={autoAdvanceCutoff}
                 closedGroupKeys={closedSimulationGroups}
                 groups={simulationGroups}
-                onAutoAdvanceCutoffChange={setAutoAdvanceCutoff}
+                onAutoAdvanceCutoffChange={handleAutoAdvanceCutoffChange}
                 onGroupToggle={toggleSimulationGroup}
+                onReportCopy={handleReportCopy}
                 onStart={startSimulation}
                 onStop={stopSimulation}
-                onSpeedChange={setSimulationSpeed}
+                onSpeedChange={handleSimulationSpeedChange}
                 openGroupKeys={openSimulationGroups}
                 report={simulationReport}
                 running={simulationRunning}
@@ -819,6 +923,7 @@ type BacktestSimulationPanelProps = {
   groups: SimulationGroup[];
   onAutoAdvanceCutoffChange: (checked: boolean) => void;
   onGroupToggle: (key: string) => void;
+  onReportCopy: () => void;
   onStart: () => void;
   onStop: () => void;
   onSpeedChange: (speed: SimulationSpeed) => void;
@@ -837,6 +942,7 @@ function BacktestSimulationPanel({
   groups,
   onAutoAdvanceCutoffChange,
   onGroupToggle,
+  onReportCopy,
   onStart,
   onStop,
   onSpeedChange,
@@ -854,8 +960,14 @@ function BacktestSimulationPanel({
       return;
     }
 
-    void navigator.clipboard.writeText(buildCopyableSimulationReport(report)).then(() => setReportCopied(true)).catch(() => setReportCopied(false));
-  }, [report]);
+    void navigator.clipboard
+      .writeText(buildCopyableSimulationReport(report))
+      .then(() => {
+        setReportCopied(true);
+        onReportCopy();
+      })
+      .catch(() => setReportCopied(false));
+  }, [onReportCopy, report]);
 
   useEffect(() => {
     if (!reportCopied) {
