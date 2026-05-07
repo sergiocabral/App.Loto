@@ -57,6 +57,7 @@ const SIMULATION_SPEED_OPTIONS: Array<{ value: SimulationSpeed; label: string }>
 type SimulationSuggestion = {
   cutoffDate: string;
   cutoffDrawNumber: number;
+  drawnNumbersCount: number;
   hitCount: number;
   hitNumbers: string[];
   key: string;
@@ -127,7 +128,11 @@ function getSuggestionKey(numbers: string[]): string {
   return numbers.join("-");
 }
 
-function getSimulationGroups(suggestions: SimulationSuggestion[], activeCutoffDrawNumber: number | null): SimulationGroup[] {
+function isWinningSimulationSuggestion(suggestion: SimulationSuggestion): boolean {
+  return suggestion.drawnNumbersCount > 0 && suggestion.hitCount >= suggestion.drawnNumbersCount;
+}
+
+function getSimulationGroups(suggestions: SimulationSuggestion[]): SimulationGroup[] {
   const groups = new Map<number, SimulationGroup>();
 
   for (const suggestion of suggestions) {
@@ -155,17 +160,7 @@ function getSimulationGroups(suggestions: SimulationSuggestion[], activeCutoffDr
       ...group,
       suggestions: [...group.suggestions].sort((left, right) => right.hitCount - left.hitCount || right.sequence - left.sequence),
     }))
-    .sort((left, right) => {
-      if (left.cutoffDrawNumber === activeCutoffDrawNumber) {
-        return -1;
-      }
-
-      if (right.cutoffDrawNumber === activeCutoffDrawNumber) {
-        return 1;
-      }
-
-      return right.latestSequence - left.latestSequence;
-    });
+    .sort((left, right) => right.targetDrawNumber - left.targetDrawNumber);
 }
 
 function buildSimulationReport(suggestions: SimulationSuggestion[], groups: SimulationGroup[]): string {
@@ -182,11 +177,13 @@ Concursos:
 
   const hitSuggestions = [...suggestions].filter((suggestion) => suggestion.hitCount > 0);
   const sortedHitSuggestions = hitSuggestions.sort((left, right) => right.hitCount - left.hitCount || right.sequence - left.sequence);
-  const highlightedSuggestions = sortedHitSuggestions.filter((suggestion) => suggestion.hitCount / suggestion.totalNumbers > 0.67);
+  const highlightedSuggestions = sortedHitSuggestions.filter(
+    (suggestion) => suggestion.drawnNumbersCount > 0 && suggestion.hitCount / suggestion.drawnNumbersCount > 0.67,
+  );
   const bestSuggestions = getUniqueSuggestions([...sortedHitSuggestions.slice(0, 5), ...highlightedSuggestions]).sort(
     (left, right) => right.hitCount - left.hitCount || right.sequence - left.sequence,
   );
-  const winners = suggestions.filter((suggestion) => suggestion.hitCount === suggestion.totalNumbers && suggestion.totalNumbers > 0);
+  const winners = suggestions.filter(isWinningSimulationSuggestion);
   const processedDraws = groups
     .map(
       (group) =>
@@ -196,21 +193,21 @@ Concursos:
     )
     .join("\n");
   const bestLines = bestSuggestions
-    .map(
-      (suggestion, index) =>
-        `${index + 1}. concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
-   sugestao ${suggestion.sequence} (${suggestion.hitCount} ${suggestion.hitCount === 1 ? "acerto" : "acertos"})
-${formatReportNumberLines(suggestion)}`,
-    )
+    .map((suggestion, index) => {
+      const winnerSuffix = isWinningSimulationSuggestion(suggestion) ? " GANHOU!" : "";
+
+      return `${index + 1}. concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
+   sugestao ${suggestion.sequence} (${suggestion.hitCount} ${suggestion.hitCount === 1 ? "acerto" : "acertos"})${winnerSuffix}
+${formatReportNumberLines(suggestion)}`;
+    })
     .join("\n");
   const noHitLine = "Nenhuma sugestao acertou numero ainda.\nO simulador segue procurando uma pista boa.";
   const winnerLines = winners.length
-    ? `\n\n*** PREMIO MAXIMO SIMULADO ***\n${winners
+    ? `\n\n*** GANHOU! ***\n${winners
         .map(
           (suggestion) => `  concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
-    sugestao ${suggestion.sequence} (${suggestion.hitCount} acertos)
+    sugestao ${suggestion.sequence} (${suggestion.hitCount} acertos) GANHOU!
 ${formatReportNumberLines(suggestion, "    numeros  ")}
-    GANHARIA o premio maximo simulado
 ***`,
         )
         .join("\n")}`
@@ -325,15 +322,17 @@ function buildUniqueSimulationSuggestion(
 }
 
 function getUniqueSuggestions(suggestions: SimulationSuggestion[]): SimulationSuggestion[] {
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   const unique: SimulationSuggestion[] = [];
 
   for (const suggestion of suggestions) {
-    if (seen.has(suggestion.sequence)) {
+    const suggestionKey = `${suggestion.cutoffDrawNumber}:${suggestion.sequence}:${suggestion.key}`;
+
+    if (seen.has(suggestionKey)) {
       continue;
     }
 
-    seen.add(suggestion.sequence);
+    seen.add(suggestionKey);
     unique.push(suggestion);
   }
 
@@ -430,10 +429,7 @@ export function BacktestDrawer({
     [availableAnalysisDrawCount, effectiveCustomPeriodCount, periodPreset],
   );
 
-  const simulationGroups = useMemo(
-    () => getSimulationGroups(simulationResults, simulationCurrentCutoffDrawNumber),
-    [simulationCurrentCutoffDrawNumber, simulationResults],
-  );
+  const simulationGroups = useMemo(() => getSimulationGroups(simulationResults), [simulationResults]);
 
   const simulationReport = useMemo(() => buildSimulationReport(simulationResults, simulationGroups), [simulationGroups, simulationResults]);
 
@@ -528,6 +524,7 @@ export function BacktestDrawer({
         const suggestion: SimulationSuggestion = {
           cutoffDate: cutoffDraw.date,
           cutoffDrawNumber: cutoffDraw.drawNumber,
+          drawnNumbersCount: actualNumbers.size,
           hitCount: hitNumbers.length,
           hitNumbers,
           key,
@@ -1231,7 +1228,7 @@ function BacktestSimulationPanel({
                 {isOpen ? (
                   <div className="backtest-drawer__suggestion-list">
                     {group.suggestions.map((suggestion) => {
-                      const isWinner = suggestion.hitCount === suggestion.totalNumbers && suggestion.totalNumbers > 0;
+                      const isWinner = isWinningSimulationSuggestion(suggestion);
                       const renderedSuggestionKey = `${suggestion.cutoffDrawNumber}:${suggestion.key}`;
                       const wasCopied = copiedSuggestionKey === renderedSuggestionKey;
 
@@ -1240,7 +1237,9 @@ function BacktestSimulationPanel({
                           <header>
                             <strong>Sugestão {suggestion.sequence}</strong>
                             <span>
-                              {wasCopied ? "Copiado" : `${suggestion.hitCount}/${suggestion.totalNumbers} acertos`}
+                              {wasCopied
+                                ? "Copiado"
+                                : `${suggestion.hitCount}/${suggestion.drawnNumbersCount} acertos${isWinner ? " · GANHOU" : ""}`}
                             </span>
                           </header>
                           <button
