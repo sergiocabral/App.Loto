@@ -150,9 +150,7 @@ function getSimulationGroups(suggestions: SimulationSuggestion[], activeCutoffDr
 
 function buildSimulationReport(suggestions: SimulationSuggestion[], groups: SimulationGroup[]): string {
   if (!suggestions.length) {
-    return `SIMULACAO
-
-Total de sugestoes simuladas: 0
+    return `Total de sugestoes simuladas: 0
 Concursos processados: 0
 
 Concursos:
@@ -172,34 +170,33 @@ Melhores sugestoes:
   const processedDraws = groups
     .map(
       (group) =>
-        `  concurso ${group.targetDrawNumber}  ${group.targetDate}
-    sugestoes: ${group.suggestions.length}`,
+        `- Concurso ${group.targetDrawNumber} em ${group.targetDate}: ${group.suggestions.length} ${
+          group.suggestions.length === 1 ? "sugestao" : "sugestoes"
+        }`,
     )
     .join("\n");
   const bestLines = bestSuggestions
     .map(
       (suggestion, index) =>
         `${index + 1}. concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
-   sugestao ${suggestion.sequence}
-   numeros  ${formatReportNumbers(suggestion)}
-   acertos  ${suggestion.hitCount}`,
+   sugestao ${suggestion.sequence} (${suggestion.hitCount} ${suggestion.hitCount === 1 ? "acerto" : "acertos"})
+   numeros  ${formatReportNumbers(suggestion)}`,
     )
     .join("\n");
   const noHitLine = "Nenhuma sugestao acertou numero ainda.\nO simulador segue procurando uma pista boa.";
   const winnerLines = winners.length
-    ? `\n\nPREMIO MAXIMO SIMULADO:\n${winners
+    ? `\n\n*** PREMIO MAXIMO SIMULADO ***\n${winners
         .map(
           (suggestion) => `  concurso ${suggestion.targetDrawNumber}  ${suggestion.targetDate}
-    sugestao ${suggestion.sequence}
+    sugestao ${suggestion.sequence} (${suggestion.hitCount} acertos)
     numeros  ${formatReportNumbers(suggestion)}
-    GANHARIA o premio maximo simulado`,
+    GANHARIA o premio maximo simulado
+***`,
         )
         .join("\n")}`
     : "";
 
-  return `SIMULACAO
-
-Total de sugestoes simuladas: ${suggestions.length}
+  return `Total de sugestoes simuladas: ${suggestions.length}
 Concursos processados: ${groups.length}
 
 Concursos:
@@ -211,6 +208,19 @@ ${bestLines || noHitLine}${winnerLines}`;
 
 function formatReportNumbers(suggestion: SimulationSuggestion): string {
   return suggestion.numbers.map((number) => (suggestion.hitNumbers.includes(number) ? `(${number})` : ` ${number} `)).join(" ");
+}
+
+function buildCopyableSimulationReport(report: string): string {
+  const domain = getCurrentDomain();
+  return `Simulador de sorteios anteriores\n\n${report}\n\nSite: ${domain}`;
+}
+
+function getCurrentDomain(): string {
+  try {
+    return new URL(window.location.href).hostname;
+  } catch {
+    return window.location.hostname;
+  }
 }
 
 function getUniqueSuggestions(suggestions: SimulationSuggestion[]): SimulationSuggestion[] {
@@ -776,7 +786,7 @@ function BacktestSimulationPanel({
       return;
     }
 
-    void navigator.clipboard.writeText(report).then(() => setReportCopied(true)).catch(() => setReportCopied(false));
+    void navigator.clipboard.writeText(buildCopyableSimulationReport(report)).then(() => setReportCopied(true)).catch(() => setReportCopied(false));
   }, [report]);
 
   useEffect(() => {
