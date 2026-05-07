@@ -90,6 +90,28 @@ function getEligibleCutoffs(draws: Draw[]): Draw[] {
   return draws.slice(1);
 }
 
+function getEligibleTargetDraws(draws: Draw[]): Draw[] {
+  if (draws.length < 2) {
+    return [];
+  }
+
+  return draws.slice(0, -1);
+}
+
+function getTargetDrawNumberForCutoff(draws: Draw[], cutoffDrawNumber: number | null): number | null {
+  if (cutoffDrawNumber === null) {
+    return null;
+  }
+
+  const cutoffIndex = draws.findIndex((draw) => draw.drawNumber === cutoffDrawNumber);
+  return cutoffIndex > 0 ? draws[cutoffIndex - 1].drawNumber : null;
+}
+
+function getCutoffDrawNumberForTarget(draws: Draw[], targetDrawNumber: number): number | null {
+  const targetIndex = draws.findIndex((draw) => draw.drawNumber === targetDrawNumber);
+  return targetIndex >= 0 ? draws[targetIndex + 1]?.drawNumber ?? null : null;
+}
+
 function clampPeriodCount(value: number, maximum: number): number {
   const normalizedMaximum = Math.max(1, maximum);
   const roundedValue = Number.isFinite(value) ? Math.round(value) : 1;
@@ -354,6 +376,7 @@ export function BacktestDrawer({
   const onCloseRef = useRef(onClose);
 
   const eligibleCutoffs = useMemo(() => getEligibleCutoffs(draws), [draws]);
+  const eligibleTargets = useMemo(() => getEligibleTargetDraws(draws), [draws]);
   const minimumSuggestionNumberCount = useMemo(() => (lottery ? getSuggestionSize(lottery) : 1), [lottery]);
   const [cutoffDrawNumber, setCutoffDrawNumber] = useState<number | null>(null);
   const [analysisView, setAnalysisView] = useState<AnalysisView>(quickAnalysisView);
@@ -418,6 +441,10 @@ export function BacktestDrawer({
     return eligibleCutoffs[0].drawNumber;
   }, [cutoffDrawNumber, eligibleCutoffs]);
 
+  const activeTargetDrawNumber = useMemo(() => {
+    return getTargetDrawNumberForCutoff(draws, activeCutoffDrawNumber);
+  }, [activeCutoffDrawNumber, draws]);
+
   const availableAnalysisDrawCount = useMemo(() => {
     return getAvailableDrawCountForCutoff(draws, activeCutoffDrawNumber);
   }, [activeCutoffDrawNumber, draws]);
@@ -439,6 +466,7 @@ export function BacktestDrawer({
       numbersPerDraw: lottery?.numbersPerDraw,
       totalNumbers: lottery?.countNumbers,
       cutoffDrawNumber: activeCutoffDrawNumber ?? undefined,
+      targetDrawNumber: activeTargetDrawNumber ?? undefined,
       analysisView,
       period: periodPreset === "custom" ? "ajustar" : periodPreset,
       periodCount: selectedSimulationPeriodCount,
@@ -458,7 +486,7 @@ export function BacktestDrawer({
     const timeoutId = window.setTimeout(() => {
       if (!lottery || simulationCurrentCutoffDrawNumber === null) {
         setSimulationRunning(false);
-        setSimulationStatusMessage("Sem concurso de corte para processar.");
+        setSimulationStatusMessage("Sem sorteio alvo para processar.");
         return;
       }
 
@@ -468,7 +496,7 @@ export function BacktestDrawer({
 
       if (!cutoffDraw || !targetDraw) {
         setSimulationRunning(false);
-        setSimulationStatusMessage("Sem concurso seguinte para conferir.");
+        setSimulationStatusMessage("Sem sorteio alvo para conferir.");
         return;
       }
 
@@ -487,7 +515,12 @@ export function BacktestDrawer({
           return next;
         });
         setSimulationCurrentCutoffDrawNumber(nextCutoffDrawNumber);
-        setSimulationStatusMessage(`Avançando para o corte do concurso ${nextCutoffDrawNumber}.`);
+        const nextTargetDrawNumber = getTargetDrawNumberForCutoff(draws, nextCutoffDrawNumber);
+        setSimulationStatusMessage(
+          nextTargetDrawNumber === null
+            ? "Retrocedendo para o próximo sorteio alvo."
+            : `Retrocedendo para o sorteio alvo ${nextTargetDrawNumber}.`,
+        );
       }
 
       const historicalDraws = draws.slice(cutoffIndex);
@@ -504,7 +537,9 @@ export function BacktestDrawer({
         }
 
         setSimulationRunning(false);
-        setSimulationStatusMessage(autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sem dados suficientes para gerar análise neste corte.");
+        setSimulationStatusMessage(
+          autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sem dados suficientes para gerar análise neste alvo.",
+        );
         return;
       }
 
@@ -548,7 +583,7 @@ export function BacktestDrawer({
       }
 
       setSimulationRunning(false);
-      setSimulationStatusMessage(autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sugestões diferentes esgotadas para este corte.");
+      setSimulationStatusMessage(autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sugestões diferentes esgotadas para este alvo.");
     }, SIMULATION_SPEED_DELAYS[simulationSpeed]);
 
     return () => {
@@ -571,22 +606,30 @@ export function BacktestDrawer({
     effectiveSuggestionNumberCount,
   ]);
 
-  function handleCutoffChange(value: string) {
-    const numeric = Number.parseInt(value, 10);
+  function handleTargetChange(value: string) {
+    const targetDrawNumber = Number.parseInt(value, 10);
 
-    if (!Number.isFinite(numeric)) {
+    if (!Number.isFinite(targetDrawNumber)) {
       setCutoffDrawNumber(null);
       return;
     }
 
-    const nextAvailableDrawCount = getAvailableDrawCountForCutoff(draws, numeric);
-    setCutoffDrawNumber(numeric);
+    const nextCutoffDrawNumber = getCutoffDrawNumberForTarget(draws, targetDrawNumber);
+
+    if (nextCutoffDrawNumber === null) {
+      setCutoffDrawNumber(null);
+      return;
+    }
+
+    const nextAvailableDrawCount = getAvailableDrawCountForCutoff(draws, nextCutoffDrawNumber);
+    setCutoffDrawNumber(nextCutoffDrawNumber);
     setCustomPeriodCount(clampPeriodCount(nextAvailableDrawCount, nextAvailableDrawCount));
     trackEvent(
       ANALYTICS_EVENTS.simulatorCutoffChanged,
       getSimulatorAnalyticsData({
         availableDrawCount: nextAvailableDrawCount,
-        cutoffDrawNumber: numeric,
+        cutoffDrawNumber: nextCutoffDrawNumber,
+        targetDrawNumber,
       }),
     );
   }
@@ -676,7 +719,7 @@ export function BacktestDrawer({
 
   function startSimulation() {
     if (activeCutoffDrawNumber === null) {
-      setSimulationStatusMessage("Selecione um concurso de corte para iniciar.");
+      setSimulationStatusMessage("Selecione um sorteio alvo para iniciar.");
       return;
     }
 
@@ -690,6 +733,7 @@ export function BacktestDrawer({
       ANALYTICS_EVENTS.simulatorStarted,
       getSimulatorAnalyticsData({
         cutoffDrawNumber: activeCutoffDrawNumber,
+        targetDrawNumber: activeTargetDrawNumber ?? undefined,
         simulatedSuggestions: 0,
       }),
     );
@@ -767,18 +811,19 @@ export function BacktestDrawer({
           </button>
         </header>
         <div className="backtest-drawer__body">
-          {!eligibleCutoffs.length ? (
+          {!eligibleTargets.length ? (
             <div className="backtest-drawer__placeholder">
               <strong>Sem concursos anteriores suficientes</strong>
               <span className="backtest-drawer__meta">Carregue mais resultados para usar o simulador.</span>
             </div>
           ) : (
             <>
-              <BacktestCutoffPicker
-                cutoffs={eligibleCutoffs}
+              <BacktestSimulationHint />
+              <BacktestTargetPicker
                 disabled={simulationRunning}
-                onChange={handleCutoffChange}
-                value={activeCutoffDrawNumber}
+                onChange={handleTargetChange}
+                targets={eligibleTargets}
+                value={activeTargetDrawNumber}
               />
               <BacktestAnalysisParameters
                 analysisView={analysisView}
@@ -820,32 +865,58 @@ export function BacktestDrawer({
   );
 }
 
-type BacktestCutoffPickerProps = {
-  cutoffs: Draw[];
+function BacktestSimulationHint() {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <section aria-label="Como funciona o simulador" className="backtest-drawer__hint-card">
+      <button
+        aria-expanded={expanded}
+        className="backtest-drawer__hint-toggle"
+        onClick={() => setExpanded((current) => !current)}
+        type="button"
+      >
+        <span aria-hidden="true">i</span>
+        <strong>Entenda melhor</strong>
+      </button>
+      {expanded ? (
+        <p>
+          Escolha um sorteio alvo e o simulador trata esse resultado como se ele ainda não tivesse acontecido. Ele gera sugestões usando
+          apenas concursos anteriores, confere contra o resultado real que hoje já existe e tenta todas as sugestões diferentes que a estratégia
+          conseguir gerar. Se o retrocesso estiver ativo, ele volta no tempo concurso por concurso para procurar se alguma sugestão teria acertado
+          o prêmio principal.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+type BacktestTargetPickerProps = {
   disabled: boolean;
   onChange: (value: string) => void;
+  targets: Draw[];
   value: number | null;
 };
 
-function BacktestCutoffPicker({ cutoffs, disabled, onChange, value }: BacktestCutoffPickerProps) {
+function BacktestTargetPicker({ disabled, onChange, targets, value }: BacktestTargetPickerProps) {
   return (
-    <section aria-label="Selecionar concurso de corte" className="backtest-drawer__section">
+    <section aria-label="Selecionar sorteio alvo" className="backtest-drawer__section">
       <header className="backtest-drawer__section-header">
-        <h3>Voltar para</h3>
+        <h3>Sorteio alvo</h3>
         <span className="backtest-drawer__section-hint">
-          Posicione-se em um concurso passado para consultar a lista de sorteios anteriores.
+          Escolha o concurso que será simulado como se ainda não tivesse sido sorteado.
         </span>
       </header>
       <label className="backtest-drawer__field">
-        <span>Concurso de corte</span>
+        <span>Concurso alvo</span>
         <select
-          aria-label="Concurso de corte"
+          aria-label="Concurso alvo"
           className="backtest-drawer__select"
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           value={value ?? ""}
         >
-          {cutoffs.map((draw) => (
+          {targets.map((draw) => (
             <option key={draw.drawNumber} value={draw.drawNumber}>
               Concurso {draw.drawNumber} · {draw.date}
             </option>
@@ -897,7 +968,7 @@ function BacktestAnalysisParameters({
       <header className="backtest-drawer__section-header">
         <h3>Parâmetros da análise</h3>
         <span className="backtest-drawer__section-hint">
-          Janela anterior ao concurso de corte e visão estatística para a próxima etapa.
+          Janela anterior ao sorteio alvo e visão estatística para a próxima etapa.
         </span>
       </header>
 
@@ -927,7 +998,7 @@ function BacktestAnalysisParameters({
                 </strong>
               </div>
               <input
-                aria-label="Quantidade de concursos anteriores ao corte"
+                aria-label="Quantidade de concursos anteriores ao sorteio alvo"
                 className="period-slider"
                 disabled={disabled}
                 max={maximum}
@@ -975,7 +1046,7 @@ function BacktestAnalysisParameters({
             </div>
           ) : null}
           <p className="backtest-drawer__period-summary">
-            Usando até {selectedPeriodCount} {selectedPeriodCount === 1 ? "concurso anterior" : "concursos anteriores"} ao corte.
+            Usando até {selectedPeriodCount} {selectedPeriodCount === 1 ? "concurso anterior" : "concursos anteriores"} ao alvo.
           </p>
         </div>
 
@@ -1115,7 +1186,7 @@ function BacktestSimulationPanel({
           onChange={(event) => onAutoAdvanceCutoffChange(event.target.checked)}
           type="checkbox"
         />
-        <span>Retroceder concurso de corte ao esgotar sugestões</span>
+        <span>Retroceder sorteio alvo ao esgotar sugestões</span>
       </label>
 
       <div className="backtest-drawer__suggestion-size-control">
