@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LotteryDefinition } from "@/data/lotteries";
-import { ANALYSIS_VIEW_OPTIONS, type AnalysisView } from "@/lib/analysis";
+import { ANALYSIS_VIEW_OPTIONS, type AnalysisDrawRange, type AnalysisPeriod, type AnalysisView } from "@/lib/analysis";
 import type { Draw } from "@/lib/types";
 
 type BacktestDrawerProps = {
@@ -10,6 +10,9 @@ type BacktestDrawerProps = {
   onClose: () => void;
   draws: Draw[];
   lottery: LotteryDefinition | null;
+  quickAnalysisPeriod: AnalysisPeriod;
+  quickAnalysisView: AnalysisView;
+  quickCustomRange: AnalysisDrawRange;
 };
 
 type SimulatorPeriodPreset = 10 | 25 | 50 | 100 | "custom";
@@ -40,14 +43,22 @@ function clampPeriodCount(value: number, maximum: number): number {
   return Math.min(Math.max(roundedValue, 1), normalizedMaximum);
 }
 
+function getCustomRangeCount(range: AnalysisDrawRange): number {
+  return Math.max(1, Math.round(range.end) - Math.round(range.start) + 1);
+}
+
 export function BacktestDrawer({
   draws,
   lottery,
   onClose,
   open,
+  quickAnalysisPeriod,
+  quickAnalysisView,
+  quickCustomRange,
 }: BacktestDrawerProps) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const onCloseRef = useRef(onClose);
+  const wasOpenRef = useRef(false);
 
   const eligibleCutoffs = useMemo(() => getEligibleCutoffs(draws), [draws]);
   const [cutoffDrawNumber, setCutoffDrawNumber] = useState<number | null>(null);
@@ -110,6 +121,26 @@ export function BacktestDrawer({
   useEffect(() => {
     setCustomPeriodCount(clampPeriodCount(availableAnalysisDrawCount, availableAnalysisDrawCount));
   }, [availableAnalysisDrawCount]);
+
+  useEffect(() => {
+    const isOpening = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
+
+    if (!isOpening) {
+      return;
+    }
+
+    setAnalysisView(quickAnalysisView);
+
+    if (quickAnalysisPeriod === "all") {
+      setPeriodPreset("custom");
+      setCustomPeriodCount(clampPeriodCount(getCustomRangeCount(quickCustomRange), availableAnalysisDrawCount));
+      return;
+    }
+
+    setPeriodPreset(quickAnalysisPeriod);
+    setCustomPeriodCount(clampPeriodCount(availableAnalysisDrawCount, availableAnalysisDrawCount));
+  }, [availableAnalysisDrawCount, open, quickAnalysisPeriod, quickAnalysisView, quickCustomRange]);
 
   function handleCutoffChange(value: string) {
     const numeric = Number.parseInt(value, 10);

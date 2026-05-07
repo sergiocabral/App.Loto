@@ -1659,6 +1659,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       lottery={selectedLottery}
       onClose={closeBacktestDrawer}
       open={isBacktestOpen}
+      quickAnalysisPeriod={analysisPeriod}
+      quickAnalysisView={analysisView}
+      quickCustomRange={effectiveCustomAnalysisRange}
     />
     <Remark42Comments />
     <footer className="super-footer" aria-label="Apoie o Luckygames">
