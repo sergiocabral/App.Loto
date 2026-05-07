@@ -2354,6 +2354,55 @@ button.results-link:disabled {
   text-transform: uppercase;
 }
 
+.backtest-drawer__control-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.backtest-drawer__period-summary {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.backtest-drawer__period-controls {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(96px, 1fr);
+}
+
+.backtest-drawer__period-input {
+  display: grid;
+  gap: 5px;
+}
+
+.backtest-drawer__period-input span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.backtest-drawer__period-input input {
+  background: rgba(2, 6, 23, 0.44);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  height: 32px;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.backtest-drawer__period-input input:focus-visible {
+  outline: 3px solid rgba(56, 189, 248, 0.55);
+  outline-offset: 2px;
+}
+
 .backtest-drawer__select {
   appearance: none;
   background:
@@ -2378,6 +2427,11 @@ button.results-link:disabled {
   .backtest-drawer__panel {
     min-width: 0;
     width: 100vw;
+  }
+
+  .backtest-drawer__period-controls {
+    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 }
 
