@@ -7,6 +7,7 @@ import {
   buildAnalysisData,
   buildLuckySuggestion,
   getNumbersForAnalysis,
+  type AnalysisData,
   type AnalysisDrawRange,
   type AnalysisPeriod,
   type AnalysisView,
@@ -223,6 +224,33 @@ function getCurrentDomain(): string {
   }
 }
 
+function buildUniqueSimulationSuggestion(
+  lottery: LotteryDefinition,
+  view: AnalysisView,
+  data: AnalysisData,
+  existingKeys: Set<string>,
+  recencyScoreMode: RecencyScoreMode,
+): string[] | null {
+  function findUniqueByRecencyScoreMode(mode: RecencyScoreMode): string[] | null {
+    for (let attempt = 0; attempt < SIMULATION_DUPLICATE_ATTEMPT_LIMIT; attempt += 1) {
+      const numbers = buildLuckySuggestion(lottery, view, data, Math.random, mode);
+      const key = getSuggestionKey(numbers);
+
+      if (numbers.length && !existingKeys.has(key)) {
+        return numbers;
+      }
+    }
+
+    return null;
+  }
+
+  if (view === "recent") {
+    return findUniqueByRecencyScoreMode("float") ?? findUniqueByRecencyScoreMode("rounded");
+  }
+
+  return findUniqueByRecencyScoreMode(recencyScoreMode);
+}
+
 function getUniqueSuggestions(suggestions: SimulationSuggestion[]): SimulationSuggestion[] {
   const seen = new Set<number>();
   const unique: SimulationSuggestion[] = [];
@@ -379,14 +407,10 @@ export function BacktestDrawer({
           .map((suggestion) => suggestion.key),
       );
 
-      for (let attempt = 0; attempt < SIMULATION_DUPLICATE_ATTEMPT_LIMIT; attempt += 1) {
-        const numbers = buildLuckySuggestion(lottery, analysisView, analysisData, Math.random, quickRecencyScoreMode);
+      const numbers = buildUniqueSimulationSuggestion(lottery, analysisView, analysisData, existingKeys, quickRecencyScoreMode);
+
+      if (numbers) {
         const key = getSuggestionKey(numbers);
-
-        if (!numbers.length || existingKeys.has(key)) {
-          continue;
-        }
-
         const actualNumbers = new Set(getNumbersForAnalysis(targetDraw, quickAnalysisScope));
         const hitNumbers = numbers.filter((number) => actualNumbers.has(number));
         const suggestion: SimulationSuggestion = {
