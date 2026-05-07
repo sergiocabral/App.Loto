@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LotteryDefinition } from "@/data/lotteries";
 import { ANALYSIS_VIEW_OPTIONS, type AnalysisDrawRange, type AnalysisPeriod, type AnalysisView } from "@/lib/analysis";
 import type { Draw } from "@/lib/types";
@@ -68,9 +68,14 @@ export function BacktestDrawer({
   const [simulationCycle, setSimulationCycle] = useState(0);
   const [simulationRunning, setSimulationRunning] = useState(false);
 
-  useEffect(() => {
-    onCloseRef.current = onClose;
+  const handleClose = useCallback(() => {
+    setSimulationRunning(false);
+    onClose();
   }, [onClose]);
+
+  useEffect(() => {
+    onCloseRef.current = handleClose;
+  }, [handleClose]);
 
   useEffect(() => {
     if (!open) {
@@ -189,7 +194,7 @@ export function BacktestDrawer({
 
   return (
     <div className="backtest-drawer__root">
-      <button aria-label="Fechar simulador" className="backtest-drawer__backdrop" onClick={onClose} type="button" />
+      <button aria-label="Fechar simulador" className="backtest-drawer__backdrop" onClick={handleClose} type="button" />
       <div aria-labelledby="backtest-title" aria-modal="true" className="backtest-drawer__panel" role="dialog">
         <header className="backtest-drawer__header">
           <div>
@@ -197,7 +202,7 @@ export function BacktestDrawer({
             <h2 id="backtest-title">Sorteios anteriores</h2>
             {lottery ? <p>{formatLotteryName(lottery.slug)}</p> : null}
           </div>
-          <button aria-label="Fechar simulador" className="backtest-drawer__close" onClick={onClose} ref={closeButtonRef} type="button">
+          <button aria-label="Fechar simulador" className="backtest-drawer__close" onClick={handleClose} ref={closeButtonRef} type="button">
             X
           </button>
         </header>
