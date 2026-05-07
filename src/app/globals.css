@@ -2545,14 +2545,7 @@ button.results-link:disabled {
   align-items: center;
   display: flex;
   gap: 8px;
-  justify-content: space-between;
-}
-
-.backtest-drawer__simulation-report-header strong {
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 900;
-  text-transform: uppercase;
+  justify-content: flex-end;
 }
 
 .backtest-drawer__copy-button {
