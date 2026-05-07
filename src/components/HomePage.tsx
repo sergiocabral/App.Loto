@@ -662,6 +662,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [selectedSuggestedGameKey, setSelectedSuggestedGameKey] = useState<string | null>(null);
   const [selectedNumbers, setSelectedNumbers] = useState<Set<string>>(new Set());
   const [isBacktestOpen, setIsBacktestOpen] = useState(false);
+  const [backtestOpenRevision, setBacktestOpenRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
@@ -1387,6 +1388,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       return;
     }
 
+    setBacktestOpenRevision((current) => current + 1);
     setIsBacktestOpen(true);
   }
 
@@ -1656,12 +1658,15 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     </div>
     <BacktestDrawer
       draws={draws}
+      key={backtestOpenRevision}
       lottery={selectedLottery}
       onClose={closeBacktestDrawer}
       open={isBacktestOpen}
       quickAnalysisPeriod={analysisPeriod}
+      quickAnalysisScope={selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"}
       quickAnalysisView={analysisView}
       quickCustomRange={effectiveCustomAnalysisRange}
+      quickRecencyScoreMode={recentWeightDisplayMode}
     />
     <Remark42Comments />
     <footer className="super-footer" aria-label="Apoie o Luckygames">

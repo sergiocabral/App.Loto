@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LotteryDefinition } from "@/data/lotteries";
-import { ANALYSIS_VIEW_OPTIONS, type AnalysisDrawRange, type AnalysisPeriod, type AnalysisView } from "@/lib/analysis";
+import {
+  ANALYSIS_VIEW_OPTIONS,
+  buildAnalysisData,
+  buildLuckySuggestion,
+  getNumbersForAnalysis,
+  type AnalysisDrawRange,
+  type AnalysisPeriod,
+  type AnalysisView,
+  type DuplaSenaAnalysisScope,
+  type RecencyScoreMode,
+} from "@/lib/analysis";
 import type { Draw } from "@/lib/types";
 
 type BacktestDrawerProps = {
@@ -11,8 +21,10 @@ type BacktestDrawerProps = {
   draws: Draw[];
   lottery: LotteryDefinition | null;
   quickAnalysisPeriod: AnalysisPeriod;
+  quickAnalysisScope: DuplaSenaAnalysisScope;
   quickAnalysisView: AnalysisView;
   quickCustomRange: AnalysisDrawRange;
+  quickRecencyScoreMode: RecencyScoreMode;
 };
 
 type SimulatorPeriodPreset = 10 | 25 | 50 | 100 | "custom";
@@ -24,6 +36,31 @@ const SIMULATOR_PERIOD_OPTIONS: Array<{ value: SimulatorPeriodPreset; label: str
   { value: 100, label: "100" },
   { value: "custom", label: "Ajustar" },
 ];
+
+const SIMULATION_DUPLICATE_ATTEMPT_LIMIT = 80;
+
+type SimulationSuggestion = {
+  cutoffDate: string;
+  cutoffDrawNumber: number;
+  hitCount: number;
+  hitNumbers: string[];
+  key: string;
+  numbers: string[];
+  sequence: number;
+  targetDate: string;
+  targetDrawNumber: number;
+  totalNumbers: number;
+};
+
+type SimulationGroup = {
+  cutoffDate: string;
+  cutoffDrawNumber: number;
+  key: string;
+  latestSequence: number;
+  suggestions: SimulationSuggestion[];
+  targetDate: string;
+  targetDrawNumber: number;
+};
 
 function formatLotteryName(slug: string): string {
   return slug.replace(/([a-z])([A-Z])/g, "$1 $2");
@@ -47,26 +84,139 @@ function getCustomRangeCount(range: AnalysisDrawRange): number {
   return Math.max(1, Math.round(range.end) - Math.round(range.start) + 1);
 }
 
+function getSimulatorPeriodPreset(period: AnalysisPeriod): SimulatorPeriodPreset {
+  return period === "all" ? "custom" : period;
+}
+
+function getAvailableDrawCountForCutoff(draws: Draw[], cutoffDrawNumber: number | null): number {
+  if (cutoffDrawNumber === null) {
+    return 0;
+  }
+
+  const cutoffIndex = draws.findIndex((draw) => draw.drawNumber === cutoffDrawNumber);
+  return cutoffIndex >= 0 ? draws.length - cutoffIndex : 0;
+}
+
+function getNextOlderCutoffDrawNumber(cutoffs: Draw[], drawNumber: number): number | null {
+  const currentIndex = cutoffs.findIndex((draw) => draw.drawNumber === drawNumber);
+  return currentIndex >= 0 ? cutoffs[currentIndex + 1]?.drawNumber ?? null : null;
+}
+
+function getSuggestionKey(numbers: string[]): string {
+  return numbers.join("-");
+}
+
+function formatDrawReference(drawNumber: number, date: string): string {
+  return `concurso ${drawNumber} (${date})`;
+}
+
+function getSimulationGroups(suggestions: SimulationSuggestion[], activeCutoffDrawNumber: number | null): SimulationGroup[] {
+  const groups = new Map<number, SimulationGroup>();
+
+  for (const suggestion of suggestions) {
+    const existing = groups.get(suggestion.cutoffDrawNumber);
+
+    if (existing) {
+      existing.latestSequence = Math.max(existing.latestSequence, suggestion.sequence);
+      existing.suggestions.push(suggestion);
+      continue;
+    }
+
+    groups.set(suggestion.cutoffDrawNumber, {
+      cutoffDate: suggestion.cutoffDate,
+      cutoffDrawNumber: suggestion.cutoffDrawNumber,
+      key: String(suggestion.cutoffDrawNumber),
+      latestSequence: suggestion.sequence,
+      suggestions: [suggestion],
+      targetDate: suggestion.targetDate,
+      targetDrawNumber: suggestion.targetDrawNumber,
+    });
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      suggestions: [...group.suggestions].sort((left, right) => right.hitCount - left.hitCount || left.sequence - right.sequence),
+    }))
+    .sort((left, right) => {
+      if (left.cutoffDrawNumber === activeCutoffDrawNumber) {
+        return -1;
+      }
+
+      if (right.cutoffDrawNumber === activeCutoffDrawNumber) {
+        return 1;
+      }
+
+      return right.latestSequence - left.latestSequence;
+    });
+}
+
+function buildSimulationReport(suggestions: SimulationSuggestion[], groups: SimulationGroup[]): string {
+  if (!suggestions.length) {
+    return "Total de sugestões simuladas: 0\nMelhor sugestão: aguardando processamento\nConcursos processados: nenhum";
+  }
+
+  const bestSuggestions = [...suggestions].sort((left, right) => right.hitCount - left.hitCount || left.sequence - right.sequence).slice(0, 3);
+  const winners = bestSuggestions.filter((suggestion) => suggestion.hitCount === suggestion.totalNumbers && suggestion.totalNumbers > 0);
+  const processedDraws = groups
+    .map(
+      (group) =>
+        `${formatDrawReference(group.targetDrawNumber, group.targetDate)}: ${group.suggestions.length} ${
+          group.suggestions.length === 1 ? "sugestão" : "sugestões"
+        }`,
+    )
+    .join("\n");
+  const bestLines = bestSuggestions
+    .map(
+      (suggestion, index) =>
+        `${index + 1}. Sugestão ${suggestion.sequence}: ${suggestion.numbers.join(" ")} para ${formatDrawReference(
+          suggestion.targetDrawNumber,
+          suggestion.targetDate,
+        )} - ${suggestion.hitCount}/${suggestion.totalNumbers} acertos`,
+    )
+    .join("\n");
+  const winnerLines = winners.length
+    ? `\n\nPREMIO MAXIMO SIMULADO:\n${winners
+        .map((suggestion) => `Sugestão ${suggestion.sequence} teria acertado todos os ${suggestion.totalNumbers} números.`)
+        .join("\n")}`
+    : "";
+
+  return `Total de sugestões simuladas: ${suggestions.length}
+Concursos processados: ${groups.length}
+
+Melhores sugestões:
+${bestLines}${winnerLines}
+
+Concursos no relatório:
+${processedDraws}`;
+}
+
 export function BacktestDrawer({
   draws,
   lottery,
   onClose,
   open,
   quickAnalysisPeriod,
+  quickAnalysisScope,
   quickAnalysisView,
   quickCustomRange,
+  quickRecencyScoreMode,
 }: BacktestDrawerProps) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const onCloseRef = useRef(onClose);
-  const wasOpenRef = useRef(false);
 
   const eligibleCutoffs = useMemo(() => getEligibleCutoffs(draws), [draws]);
   const [cutoffDrawNumber, setCutoffDrawNumber] = useState<number | null>(null);
-  const [analysisView, setAnalysisView] = useState<AnalysisView>("most");
-  const [periodPreset, setPeriodPreset] = useState<SimulatorPeriodPreset>(10);
-  const [customPeriodCount, setCustomPeriodCount] = useState(1);
+  const [analysisView, setAnalysisView] = useState<AnalysisView>(quickAnalysisView);
+  const [periodPreset, setPeriodPreset] = useState<SimulatorPeriodPreset>(() => getSimulatorPeriodPreset(quickAnalysisPeriod));
+  const [customPeriodCount, setCustomPeriodCount] = useState(() => (quickAnalysisPeriod === "all" ? getCustomRangeCount(quickCustomRange) : 1));
+  const [autoAdvanceCutoff, setAutoAdvanceCutoff] = useState(false);
   const [simulationCycle, setSimulationCycle] = useState(0);
+  const [simulationCurrentCutoffDrawNumber, setSimulationCurrentCutoffDrawNumber] = useState<number | null>(null);
+  const [simulationResults, setSimulationResults] = useState<SimulationSuggestion[]>([]);
   const [simulationRunning, setSimulationRunning] = useState(false);
+  const [simulationStatusMessage, setSimulationStatusMessage] = useState("Pronto para iniciar.");
+  const [openSimulationGroups, setOpenSimulationGroups] = useState<Set<string>>(() => new Set());
 
   const handleClose = useCallback(() => {
     setSimulationRunning(false);
@@ -117,17 +267,22 @@ export function BacktestDrawer({
   }, [cutoffDrawNumber, eligibleCutoffs]);
 
   const availableAnalysisDrawCount = useMemo(() => {
-    if (activeCutoffDrawNumber === null) {
-      return 0;
-    }
-
-    const cutoffIndex = draws.findIndex((draw) => draw.drawNumber === activeCutoffDrawNumber);
-    return cutoffIndex >= 0 ? draws.length - cutoffIndex : 0;
+    return getAvailableDrawCountForCutoff(draws, activeCutoffDrawNumber);
   }, [activeCutoffDrawNumber, draws]);
 
-  useEffect(() => {
-    setCustomPeriodCount(clampPeriodCount(availableAnalysisDrawCount, availableAnalysisDrawCount));
-  }, [availableAnalysisDrawCount]);
+  const effectiveCustomPeriodCount = clampPeriodCount(customPeriodCount, availableAnalysisDrawCount);
+
+  const selectedSimulationPeriodCount = useMemo(
+    () => (periodPreset === "custom" ? effectiveCustomPeriodCount : Math.min(periodPreset, Math.max(1, availableAnalysisDrawCount))),
+    [availableAnalysisDrawCount, effectiveCustomPeriodCount, periodPreset],
+  );
+
+  const simulationGroups = useMemo(
+    () => getSimulationGroups(simulationResults, simulationCurrentCutoffDrawNumber),
+    [simulationCurrentCutoffDrawNumber, simulationResults],
+  );
+
+  const simulationReport = useMemo(() => buildSimulationReport(simulationResults, simulationGroups), [simulationGroups, simulationResults]);
 
   useEffect(() => {
     if (!simulationRunning) {
@@ -136,42 +291,116 @@ export function BacktestDrawer({
 
     const intervalId = window.setInterval(() => {
       setSimulationCycle((current) => current + 1);
+      if (!lottery || simulationCurrentCutoffDrawNumber === null) {
+        setSimulationRunning(false);
+        setSimulationStatusMessage("Sem concurso de corte para processar.");
+        return;
+      }
+
+      const cutoffIndex = draws.findIndex((draw) => draw.drawNumber === simulationCurrentCutoffDrawNumber);
+      const cutoffDraw = cutoffIndex >= 0 ? draws[cutoffIndex] : null;
+      const targetDraw = cutoffIndex > 0 ? draws[cutoffIndex - 1] : null;
+
+      if (!cutoffDraw || !targetDraw) {
+        setSimulationRunning(false);
+        setSimulationStatusMessage("Sem concurso seguinte para conferir.");
+        return;
+      }
+
+      const historicalDraws = draws.slice(cutoffIndex);
+      const analysisPeriod: AnalysisPeriod = periodPreset === "custom" ? "all" : periodPreset;
+      const requestedRange = periodPreset === "custom" ? { end: selectedSimulationPeriodCount, start: 1 } : undefined;
+      const analysisData = buildAnalysisData(historicalDraws, lottery, analysisPeriod, quickAnalysisScope, requestedRange);
+
+      if (!analysisData) {
+        const nextCutoffDrawNumber = autoAdvanceCutoff ? getNextOlderCutoffDrawNumber(eligibleCutoffs, simulationCurrentCutoffDrawNumber) : null;
+
+        if (nextCutoffDrawNumber !== null) {
+          setSimulationCurrentCutoffDrawNumber(nextCutoffDrawNumber);
+          setSimulationStatusMessage(`Avançando para o corte do concurso ${nextCutoffDrawNumber}.`);
+          return;
+        }
+
+        setSimulationRunning(false);
+        setSimulationStatusMessage(autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sem dados suficientes para gerar análise neste corte.");
+        return;
+      }
+
+      const existingKeys = new Set(
+        simulationResults
+          .filter((suggestion) => suggestion.cutoffDrawNumber === simulationCurrentCutoffDrawNumber)
+          .map((suggestion) => suggestion.key),
+      );
+
+      for (let attempt = 0; attempt < SIMULATION_DUPLICATE_ATTEMPT_LIMIT; attempt += 1) {
+        const numbers = buildLuckySuggestion(lottery, analysisView, analysisData, Math.random, quickRecencyScoreMode);
+        const key = getSuggestionKey(numbers);
+
+        if (!numbers.length || existingKeys.has(key)) {
+          continue;
+        }
+
+        const actualNumbers = new Set(getNumbersForAnalysis(targetDraw, quickAnalysisScope));
+        const hitNumbers = numbers.filter((number) => actualNumbers.has(number));
+        const suggestion: SimulationSuggestion = {
+          cutoffDate: cutoffDraw.date,
+          cutoffDrawNumber: cutoffDraw.drawNumber,
+          hitCount: hitNumbers.length,
+          hitNumbers,
+          key,
+          numbers,
+          sequence: simulationResults.length + 1,
+          targetDate: targetDraw.date,
+          targetDrawNumber: targetDraw.drawNumber,
+          totalNumbers: numbers.length,
+        };
+
+        setSimulationResults((current) => [...current, suggestion]);
+        setSimulationStatusMessage(`Sugestão ${suggestion.sequence} conferida para o concurso ${targetDraw.drawNumber}.`);
+        return;
+      }
+
+      const nextCutoffDrawNumber = autoAdvanceCutoff ? getNextOlderCutoffDrawNumber(eligibleCutoffs, simulationCurrentCutoffDrawNumber) : null;
+
+      if (nextCutoffDrawNumber !== null) {
+        setSimulationCurrentCutoffDrawNumber(nextCutoffDrawNumber);
+        setSimulationStatusMessage(`Avançando para o corte do concurso ${nextCutoffDrawNumber}.`);
+        return;
+      }
+
+      setSimulationRunning(false);
+      setSimulationStatusMessage(autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sugestões diferentes esgotadas para este corte.");
     }, 500);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [simulationRunning]);
-
-  useEffect(() => {
-    if (!open) {
-      setSimulationRunning(false);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    const isOpening = open && !wasOpenRef.current;
-    wasOpenRef.current = open;
-
-    if (!isOpening) {
-      return;
-    }
-
-    setAnalysisView(quickAnalysisView);
-
-    if (quickAnalysisPeriod === "all") {
-      setPeriodPreset("custom");
-      setCustomPeriodCount(clampPeriodCount(getCustomRangeCount(quickCustomRange), availableAnalysisDrawCount));
-      return;
-    }
-
-    setPeriodPreset(quickAnalysisPeriod);
-    setCustomPeriodCount(clampPeriodCount(availableAnalysisDrawCount, availableAnalysisDrawCount));
-  }, [availableAnalysisDrawCount, open, quickAnalysisPeriod, quickAnalysisView, quickCustomRange]);
+  }, [
+    analysisView,
+    autoAdvanceCutoff,
+    draws,
+    eligibleCutoffs,
+    lottery,
+    periodPreset,
+    quickAnalysisScope,
+    quickRecencyScoreMode,
+    selectedSimulationPeriodCount,
+    simulationCurrentCutoffDrawNumber,
+    simulationResults,
+    simulationRunning,
+  ]);
 
   function handleCutoffChange(value: string) {
     const numeric = Number.parseInt(value, 10);
-    setCutoffDrawNumber(Number.isFinite(numeric) ? numeric : null);
+
+    if (!Number.isFinite(numeric)) {
+      setCutoffDrawNumber(null);
+      return;
+    }
+
+    const nextAvailableDrawCount = getAvailableDrawCountForCutoff(draws, numeric);
+    setCutoffDrawNumber(numeric);
+    setCustomPeriodCount(clampPeriodCount(nextAvailableDrawCount, nextAvailableDrawCount));
   }
 
   function handleCustomPeriodCountChange(value: number) {
@@ -180,12 +409,40 @@ export function BacktestDrawer({
   }
 
   function startSimulation() {
+    if (activeCutoffDrawNumber === null) {
+      setSimulationStatusMessage("Selecione um concurso de corte para iniciar.");
+      return;
+    }
+
     setSimulationCycle(0);
+    setSimulationResults([]);
+    setSimulationCurrentCutoffDrawNumber(activeCutoffDrawNumber);
+    setOpenSimulationGroups(new Set());
+    setSimulationStatusMessage("Preparando a primeira sugestão.");
     setSimulationRunning(true);
   }
 
   function stopSimulation() {
     setSimulationRunning(false);
+    setSimulationStatusMessage("Simulação pausada.");
+  }
+
+  function toggleSimulationGroup(key: string) {
+    if (key === String(simulationCurrentCutoffDrawNumber)) {
+      return;
+    }
+
+    setOpenSimulationGroups((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
   }
 
   if (!open) {
@@ -223,7 +480,7 @@ export function BacktestDrawer({
               <BacktestAnalysisParameters
                 analysisView={analysisView}
                 availableDrawCount={availableAnalysisDrawCount}
-                customPeriodCount={customPeriodCount}
+                customPeriodCount={effectiveCustomPeriodCount}
                 disabled={simulationRunning}
                 onAnalysisViewChange={setAnalysisView}
                 onCustomPeriodCountChange={handleCustomPeriodCountChange}
@@ -231,10 +488,19 @@ export function BacktestDrawer({
                 periodPreset={periodPreset}
               />
               <BacktestSimulationPanel
+                activeCutoffDrawNumber={simulationCurrentCutoffDrawNumber}
+                autoAdvanceCutoff={autoAdvanceCutoff}
                 cycle={simulationCycle}
+                groups={simulationGroups}
+                onAutoAdvanceCutoffChange={setAutoAdvanceCutoff}
+                onGroupToggle={toggleSimulationGroup}
                 onStart={startSimulation}
                 onStop={stopSimulation}
+                openGroupKeys={openSimulationGroups}
+                report={simulationReport}
                 running={simulationRunning}
+                statusMessage={simulationStatusMessage}
+                suggestions={simulationResults}
               />
             </>
           )}
@@ -425,20 +691,40 @@ function BacktestAnalysisParameters({
 }
 
 type BacktestSimulationPanelProps = {
+  activeCutoffDrawNumber: number | null;
+  autoAdvanceCutoff: boolean;
   cycle: number;
+  groups: SimulationGroup[];
+  onAutoAdvanceCutoffChange: (checked: boolean) => void;
+  onGroupToggle: (key: string) => void;
   onStart: () => void;
   onStop: () => void;
+  openGroupKeys: Set<string>;
+  report: string;
   running: boolean;
+  statusMessage: string;
+  suggestions: SimulationSuggestion[];
 };
 
-function BacktestSimulationPanel({ cycle, onStart, onStop, running }: BacktestSimulationPanelProps) {
+function BacktestSimulationPanel({
+  activeCutoffDrawNumber,
+  autoAdvanceCutoff,
+  cycle,
+  groups,
+  onAutoAdvanceCutoffChange,
+  onGroupToggle,
+  onStart,
+  onStop,
+  openGroupKeys,
+  report,
+  running,
+  statusMessage,
+  suggestions,
+}: BacktestSimulationPanelProps) {
   return (
     <section aria-label="Simulação" className="backtest-drawer__section">
       <header className="backtest-drawer__section-header">
         <h3>Simulação</h3>
-        <span className="backtest-drawer__section-hint">
-          Laboratório em aquecimento: a automação entra na próxima etapa.
-        </span>
       </header>
 
       <div className="backtest-drawer__simulation-actions">
@@ -450,6 +736,16 @@ function BacktestSimulationPanel({ cycle, onStart, onStop, running }: BacktestSi
         </button>
       </div>
 
+      <label className="backtest-drawer__checkbox-field">
+        <input
+          checked={autoAdvanceCutoff}
+          disabled={running}
+          onChange={(event) => onAutoAdvanceCutoffChange(event.target.checked)}
+          type="checkbox"
+        />
+        <span>Retroceder concurso de corte ao esgotar sugestões</span>
+      </label>
+
       <div
         aria-live="polite"
         className={`backtest-drawer__simulation-status ${running ? "is-running" : ""}`}
@@ -457,8 +753,72 @@ function BacktestSimulationPanel({ cycle, onStart, onStop, running }: BacktestSi
         <span aria-hidden="true" className="backtest-drawer__spinner" />
         <div>
           <strong>{running ? "Rodando ensaio técnico" : "Laboratório em aquecimento"}</strong>
-          <span>{running ? `Ciclo ${cycle} em preparação` : "Pronto para receber a lógica de cálculo."}</span>
+          <span>{running ? `Ciclo ${cycle} em processamento` : statusMessage}</span>
         </div>
+      </div>
+
+      <div className="backtest-drawer__simulation-report" aria-label="Relatório da simulação">
+        <strong>Relatório</strong>
+        <pre>{report}</pre>
+      </div>
+
+      <div className="backtest-drawer__simulation-results" aria-label="Sugestões simuladas">
+        {suggestions.length ? (
+          groups.map((group) => {
+            const isActiveGroup = group.cutoffDrawNumber === activeCutoffDrawNumber;
+            const isOpen = isActiveGroup || openGroupKeys.has(group.key);
+
+            return (
+              <section className="backtest-drawer__result-group" key={group.key}>
+                <button
+                  aria-expanded={isOpen}
+                  className="backtest-drawer__result-group-toggle"
+                  onClick={() => onGroupToggle(group.key)}
+                  type="button"
+                >
+                  <span>
+                    Concurso {group.targetDrawNumber} · {group.targetDate}
+                  </span>
+                  <strong>
+                    {group.suggestions.length} {group.suggestions.length === 1 ? "sugestão" : "sugestões"}
+                  </strong>
+                </button>
+
+                {isOpen ? (
+                  <div className="backtest-drawer__suggestion-list">
+                    {group.suggestions.map((suggestion) => {
+                      const isWinner = suggestion.hitCount === suggestion.totalNumbers && suggestion.totalNumbers > 0;
+
+                      return (
+                        <article className={`backtest-drawer__suggestion-item ${isWinner ? "is-winner" : ""}`} key={suggestion.key}>
+                          <header>
+                            <strong>Sugestão {suggestion.sequence}</strong>
+                            <span>
+                              {suggestion.hitCount}/{suggestion.totalNumbers} acertos
+                            </span>
+                          </header>
+                          <div className="backtest-drawer__suggestion-numbers" aria-label={`Números da sugestão ${suggestion.sequence}`}>
+                            {suggestion.numbers.map((number) => {
+                              const isHit = suggestion.hitNumbers.includes(number);
+
+                              return (
+                                <span className={isHit ? "is-hit" : ""} key={number}>
+                                  {number}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })
+        ) : (
+          <p className="backtest-drawer__period-summary">Nenhuma sugestão simulada ainda.</p>
+        )}
       </div>
     </section>
   );
