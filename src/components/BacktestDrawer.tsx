@@ -31,7 +31,7 @@ type BacktestDrawerProps = {
 };
 
 type SimulatorPeriodPreset = 10 | 25 | 50 | 100 | "custom";
-type SimulationSpeed = 1 | 2 | 3;
+type SimulationSpeed = 1 | 2 | 3 | 4;
 
 const SIMULATOR_PERIOD_OPTIONS: Array<{ value: SimulatorPeriodPreset; label: string }> = [
   { value: 10, label: "10" },
@@ -47,11 +47,13 @@ const SIMULATION_SPEED_DELAYS: Record<SimulationSpeed, number> = {
   1: 250,
   2: 80,
   3: 10,
+  4: 1,
 };
 const SIMULATION_SPEED_OPTIONS: Array<{ value: SimulationSpeed; label: string }> = [
   { value: 1, label: "1x" },
   { value: 2, label: "2x" },
   { value: 3, label: "3x" },
+  { value: 4, label: "4x" },
 ];
 
 type SimulationSuggestion = {
