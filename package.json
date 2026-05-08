@@ -38,6 +38,7 @@
     "wrangler": "^4.86.0"
   },
   "overrides": {
+    "fast-xml-builder": "1.2.0",
     "postcss": "8.5.12"
   }
 }
