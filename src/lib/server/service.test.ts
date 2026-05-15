@@ -6,6 +6,7 @@ const repositoryMocks = vi.hoisted(() => ({
   getLatestDraw: vi.fn(),
   getNextMissingDrawNumber: vi.fn(),
   listDraws: vi.fn(),
+  saveAbsentDraw: vi.fn(),
   saveDraw: vi.fn(),
 }));
 
@@ -101,7 +102,27 @@ describe("lottery service", () => {
     expect(result.hasMore).toBe(false);
     expect(result.consecutiveMisses).toBe(3);
     expect(result.skippedDrawNumbers).toEqual([1, 2, 3]);
+    expect(repositoryMocks.saveAbsentDraw).not.toHaveBeenCalled();
     expect(repositoryMocks.saveDraw).not.toHaveBeenCalled();
+  });
+
+  it("persists a confirmed absent draw and continues with the next available draw", async () => {
+    const fetchedThirtyFive = draw(35, { lottery: "TimeMania", previousDrawNumber: 33, nextDrawNumber: 36 });
+    repositoryMocks.getNextMissingDrawNumber.mockResolvedValueOnce(34).mockResolvedValueOnce(35).mockResolvedValueOnce(36);
+    caixaMocks.fetchDrawFromCaixa.mockResolvedValueOnce(null).mockResolvedValueOnce(fetchedThirtyFive);
+    repositoryMocks.saveAbsentDraw.mockResolvedValue(undefined);
+    repositoryMocks.saveDraw.mockImplementation(async (value) => draw(value.drawNumber, value));
+    repositoryMocks.listDraws.mockResolvedValue([draw(35, { lottery: "TimeMania" }), draw(33, { lottery: "TimeMania" })]);
+
+    const { syncMissingDrawsFromCaixa } = await import("@/lib/server/service");
+    const result = await syncMissingDrawsFromCaixa("TimeMania", { batchSize: 2, startAt: 34 });
+
+    expect(result.stopReason).toBe("batch_completed");
+    expect(result.savedDraws.map((item) => item.drawNumber)).toEqual([35]);
+    expect(result.skippedDrawNumbers).toEqual([34]);
+    expect(repositoryMocks.saveAbsentDraw).toHaveBeenCalledWith("TimeMania", 34, { confirmedByDrawNumber: 35 });
+    expect(repositoryMocks.saveDraw).toHaveBeenCalledWith(fetchedThirtyFive);
+    expect(result.nextDrawNumber).toBe(36);
   });
 
   it("treats future 500 responses as probable end when current draw is greater than latest stored", async () => {
@@ -137,7 +158,7 @@ describe("lottery service", () => {
     expect(result.nextDrawNumber).toBe(5);
   });
 
-  it("stops when Caixa returns a previous or different draw", async () => {
+  it("stops when Caixa returns a previous draw", async () => {
     repositoryMocks.getNextMissingDrawNumber.mockResolvedValueOnce(10);
     caixaMocks.fetchDrawFromCaixa.mockResolvedValueOnce(draw(9));
     repositoryMocks.listDraws.mockResolvedValue([draw(9)]);
@@ -146,16 +167,36 @@ describe("lottery service", () => {
     const previousResult = await syncMissingDrawsFromCaixa("MegaSena", { batchSize: 1, startAt: 10 });
 
     expect(previousResult.stopReason).toBe("api_returned_previous_draw");
+  });
 
-    vi.clearAllMocks();
-    repositoryMocks.getNextMissingDrawNumber.mockResolvedValueOnce(10);
+  it("treats a later returned draw as a confirmed sequence gap", async () => {
+    repositoryMocks.getNextMissingDrawNumber.mockResolvedValueOnce(10).mockResolvedValueOnce(12);
     caixaMocks.fetchDrawFromCaixa.mockResolvedValueOnce(draw(11));
+    repositoryMocks.saveAbsentDraw.mockResolvedValue(undefined);
+    repositoryMocks.saveDraw.mockImplementation(async (value) => draw(value.drawNumber, value));
+    repositoryMocks.listDraws.mockResolvedValue([draw(11), draw(9)]);
+
+    const { syncMissingDrawsFromCaixa } = await import("@/lib/server/service");
+    const result = await syncMissingDrawsFromCaixa("MegaSena", { batchSize: 1, startAt: 10 });
+
+    expect(result.stopReason).toBe("batch_completed");
+    expect(result.savedDraws.map((item) => item.drawNumber)).toEqual([11]);
+    expect(result.skippedDrawNumbers).toEqual([10]);
+    expect(repositoryMocks.saveAbsentDraw).toHaveBeenCalledWith("MegaSena", 10, { confirmedByDrawNumber: 11 });
+  });
+
+  it("stops when Caixa returns a later draw beyond the missing-gap tolerance", async () => {
+    repositoryMocks.getNextMissingDrawNumber.mockResolvedValueOnce(10);
+    caixaMocks.fetchDrawFromCaixa.mockResolvedValueOnce(draw(20));
     repositoryMocks.listDraws.mockResolvedValue([draw(9)]);
 
-    const differentResult = await syncMissingDrawsFromCaixa("MegaSena", { batchSize: 1, startAt: 10 });
+    const { syncMissingDrawsFromCaixa } = await import("@/lib/server/service");
+    const result = await syncMissingDrawsFromCaixa("MegaSena", { batchSize: 1, startAt: 10 });
 
-    expect(differentResult.stopReason).toBe("api_returned_different_draw");
-    expect(differentResult.skippedDrawNumbers).toEqual([10]);
+    expect(result.stopReason).toBe("api_returned_different_draw");
+    expect(result.skippedDrawNumbers).toEqual([10]);
+    expect(repositoryMocks.saveAbsentDraw).not.toHaveBeenCalled();
+    expect(repositoryMocks.saveDraw).not.toHaveBeenCalled();
   });
 
   it("normalizes batch size and handles unknown lotteries", async () => {

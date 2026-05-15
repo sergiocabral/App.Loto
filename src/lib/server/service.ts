@@ -5,6 +5,7 @@ import {
   getLatestDraw,
   getNextMissingDrawNumber,
   listDraws,
+  saveAbsentDraw,
   saveDraw,
   type StoredDraw,
 } from "@/lib/server/repository";
@@ -93,6 +94,22 @@ function getErrorMessage(error: unknown): string {
 
 function isFutureDrawApiError(error: unknown): error is CaixaApiError {
   return error instanceof CaixaApiError && typeof error.status === "number" && error.status >= 500;
+}
+
+function appendUniqueDrawNumber(drawNumbers: number[], drawNumber: number): void {
+  if (!drawNumbers.includes(drawNumber)) {
+    drawNumbers.push(drawNumber);
+  }
+}
+
+async function saveConfirmedAbsentDraws(
+  lotterySlug: string,
+  drawNumbers: number[],
+  confirmedByDrawNumber: number,
+): Promise<void> {
+  for (const drawNumber of drawNumbers) {
+    await saveAbsentDraw(lotterySlug, drawNumber, { confirmedByDrawNumber });
+  }
 }
 
 async function isLikelyFutureDraw(lotterySlug: string, drawNumber: number): Promise<boolean> {
@@ -207,6 +224,7 @@ async function runCaixaSync(
   let currentDrawNumber: number | null = null;
   let nextDrawNumber: number | null = await getNextMissingDrawNumber(lotterySlug, startAt);
   let consecutiveMisses = 0;
+  let pendingAbsentDrawNumbers: number[] = [];
   let stopReason: CaixaSyncStopReason = "batch_completed";
   let errorMessage: string | undefined;
 
@@ -226,7 +244,8 @@ async function runCaixaSync(
 
       if (!fetchedDraw) {
         consecutiveMisses += 1;
-        skippedDrawNumbers.push(currentDrawNumber);
+        appendUniqueDrawNumber(skippedDrawNumbers, currentDrawNumber);
+        appendUniqueDrawNumber(pendingAbsentDrawNumbers, currentDrawNumber);
         warnService("syncMissingDrawsFromCaixa:not-found", {
           lottery: lotterySlug,
           currentDrawNumber,
@@ -256,16 +275,38 @@ async function runCaixaSync(
         break;
       }
 
-      if (fetchedDraw.drawNumber !== currentDrawNumber) {
-        stopReason = "api_returned_different_draw";
-        nextDrawNumber = null;
-        skippedDrawNumbers.push(currentDrawNumber);
-        warnService("syncMissingDrawsFromCaixa:different-draw", {
+      if (fetchedDraw.drawNumber > currentDrawNumber) {
+        const gapSize = fetchedDraw.drawNumber - currentDrawNumber;
+
+        if (gapSize > MAX_CONSECUTIVE_NOT_FOUND) {
+          stopReason = "api_returned_different_draw";
+          nextDrawNumber = null;
+          appendUniqueDrawNumber(skippedDrawNumbers, currentDrawNumber);
+          warnService("syncMissingDrawsFromCaixa:different-draw", {
+            lottery: lotterySlug,
+            requestedDrawNumber: currentDrawNumber,
+            responseDrawNumber: fetchedDraw.drawNumber,
+            maxGapSize: MAX_CONSECUTIVE_NOT_FOUND,
+          });
+          break;
+        }
+
+        for (let absentDrawNumber = currentDrawNumber; absentDrawNumber < fetchedDraw.drawNumber; absentDrawNumber += 1) {
+          appendUniqueDrawNumber(skippedDrawNumbers, absentDrawNumber);
+          appendUniqueDrawNumber(pendingAbsentDrawNumbers, absentDrawNumber);
+        }
+
+        warnService("syncMissingDrawsFromCaixa:gap-confirmed-by-api", {
           lottery: lotterySlug,
           requestedDrawNumber: currentDrawNumber,
           responseDrawNumber: fetchedDraw.drawNumber,
+          absentDrawNumbers: pendingAbsentDrawNumbers,
         });
-        break;
+      }
+
+      if (pendingAbsentDrawNumbers.length) {
+        await saveConfirmedAbsentDraws(lotterySlug, pendingAbsentDrawNumbers, fetchedDraw.drawNumber);
+        pendingAbsentDrawNumbers = [];
       }
 
       const storedDraw = await saveDraw(fetchedDraw);
@@ -273,13 +314,13 @@ async function runCaixaSync(
       consecutiveMisses = 0;
 
       const apiNextDrawNumber = fetchedDraw.nextDrawNumber ?? null;
-      const sequentialNextDrawNumber = currentDrawNumber + 1;
+      const sequentialNextDrawNumber = fetchedDraw.drawNumber + 1;
       const nextSearchStart = apiNextDrawNumber === sequentialNextDrawNumber ? apiNextDrawNumber : sequentialNextDrawNumber;
 
       if (apiNextDrawNumber && apiNextDrawNumber !== sequentialNextDrawNumber) {
         logService("syncMissingDrawsFromCaixa:api-next-ignored", {
           lottery: lotterySlug,
-          currentDrawNumber,
+          currentDrawNumber: fetchedDraw.drawNumber,
           apiNextDrawNumber,
           sequentialNextDrawNumber,
         });

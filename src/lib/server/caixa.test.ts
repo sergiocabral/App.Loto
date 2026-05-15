@@ -114,6 +114,27 @@ describe("Caixa API integration", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("returns null when Caixa wraps an upstream 404 in an HTTP 500 response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          exceptionMessage: JSON.stringify({
+            StatusCode: 404,
+            message: "Concurso não encontrado",
+          }),
+          message: "Ocorreu um erro inesperado.",
+        },
+        { status: 500 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDrawFromCaixa } = await import("@/lib/server/caixa");
+
+    await expect(fetchDrawFromCaixa("TimeMania", 34)).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("throws CaixaApiError after all HTTP 500 attempts fail", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("error", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);

@@ -103,6 +103,52 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function hasNotFoundStatus(value: unknown): boolean {
+  const record = asRecord(value);
+
+  if (!record) {
+    return false;
+  }
+
+  const statusCode = Number(record.StatusCode ?? record.statusCode);
+
+  if (statusCode === 404) {
+    return true;
+  }
+
+  const exceptionMessage = record.exceptionMessage;
+
+  if (typeof exceptionMessage !== "string") {
+    return false;
+  }
+
+  try {
+    return hasNotFoundStatus(JSON.parse(exceptionMessage));
+  } catch {
+    return /"StatusCode"\s*:\s*404/.test(exceptionMessage);
+  }
+}
+
+async function isNotFoundResponse(response: Response): Promise<boolean> {
+  if (response.status === 404) {
+    return true;
+  }
+
+  if (response.status !== 500 || !response.headers.get("content-type")?.includes("application/json")) {
+    return false;
+  }
+
+  try {
+    return hasNotFoundStatus(await response.clone().json());
+  } catch {
+    return false;
+  }
+}
+
 async function loadRawDraw(lottery: LotteryDefinition, drawNumber: number): Promise<CaixaLotteryResponse | null> {
   const startedAt = Date.now();
   const url = buildUrl(lottery, drawNumber);
@@ -122,7 +168,7 @@ async function loadRawDraw(lottery: LotteryDefinition, drawNumber: number): Prom
     try {
       const response = await fetchWithTimeout(url);
 
-      if (response.status === 404) {
+      if (await isNotFoundResponse(response)) {
         logCaixa("loadRawDraw:not-found", {
           lottery: lottery.slug,
           drawNumber,

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS lotteries (
 CREATE TABLE IF NOT EXISTS draws (
   lottery_slug TEXT NOT NULL REFERENCES lotteries(slug) ON DELETE CASCADE,
   draw_number INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'drawn' CHECK (status IN ('drawn', 'absent')),
   draw_date TEXT,
   previous_draw_number INTEGER,
   next_draw_number INTEGER,
@@ -37,6 +38,22 @@ CREATE INDEX IF NOT EXISTS draws_lottery_number_desc_idx
 
 CREATE INDEX IF NOT EXISTS draw_numbers_draw_idx
   ON draw_numbers (lottery_slug, draw_number, group_index, number_order);
+
+ALTER TABLE draws
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'drawn';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'draws_status_check'
+      AND conrelid = 'draws'::regclass
+  ) THEN
+    ALTER TABLE draws
+      ADD CONSTRAINT draws_status_check CHECK (status IN ('drawn', 'absent'));
+  END IF;
+END $$;
 
 DO $$
 BEGIN

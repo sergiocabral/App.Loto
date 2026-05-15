@@ -23,6 +23,7 @@ type NumberItem = {
 type DrawRow = {
   lottery_slug: string;
   draw_number: number;
+  status: DrawStatus;
   draw_date: string | null;
   previous_draw_number: number | null;
   next_draw_number: number | null;
@@ -31,6 +32,8 @@ type DrawRow = {
   updated_at: Date;
   number_items: unknown;
 };
+
+export type DrawStatus = "drawn" | "absent";
 
 function logRepository(message: string, details?: Record<string, unknown>): void {
   if (details) {
@@ -55,6 +58,7 @@ function elapsedMs(startedAt: number): number {
 }
 
 export type StoredDraw = Draw & {
+  status: DrawStatus;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -154,6 +158,7 @@ function toStoredDraw(row: DrawRow): StoredDraw {
   return {
     lottery: row.lottery_slug,
     drawNumber: row.draw_number,
+    status: row.status,
     date: row.draw_date ?? "",
     numbers,
     numberGroups,
@@ -197,6 +202,7 @@ async function ensureSchemaInternal(): Promise<void> {
     CREATE TABLE IF NOT EXISTS draws (
       lottery_slug TEXT NOT NULL REFERENCES lotteries(slug) ON DELETE CASCADE,
       draw_number INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'drawn' CHECK (status IN ('drawn', 'absent')),
       draw_date TEXT,
       previous_draw_number INTEGER,
       next_draw_number INTEGER,
@@ -229,6 +235,26 @@ async function ensureSchemaInternal(): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS draw_numbers_draw_idx
       ON draw_numbers (lottery_slug, draw_number, group_index, number_order);
+  `);
+
+  await pool.query(`
+    ALTER TABLE draws
+      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'drawn';
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'draws_status_check'
+          AND conrelid = 'draws'::regclass
+      ) THEN
+        ALTER TABLE draws
+          ADD CONSTRAINT draws_status_check CHECK (status IN ('drawn', 'absent'));
+      END IF;
+    END $$;
   `);
 
   await pool.query(`
@@ -302,14 +328,16 @@ const SAVE_DRAW_SQL = `
   INSERT INTO draws (
     lottery_slug,
     draw_number,
+    status,
     draw_date,
     previous_draw_number,
     next_draw_number,
     raw_payload,
     updated_at
   )
-  VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW())
+  VALUES ($1, $2, 'drawn', $3, $4, $5, $6::jsonb, NOW())
   ON CONFLICT (lottery_slug, draw_number) DO UPDATE SET
+    status = 'drawn',
     draw_date = EXCLUDED.draw_date,
     previous_draw_number = EXCLUDED.previous_draw_number,
     next_draw_number = EXCLUDED.next_draw_number,
@@ -318,6 +346,7 @@ const SAVE_DRAW_SQL = `
   RETURNING
     lottery_slug,
     draw_number,
+    status,
     draw_date,
     previous_draw_number,
     next_draw_number,
@@ -331,6 +360,7 @@ const DRAW_SELECT_SQL = `
   SELECT
     d.lottery_slug,
     d.draw_number,
+    d.status,
     d.draw_date,
     d.previous_draw_number,
     d.next_draw_number,
@@ -358,6 +388,7 @@ const DRAW_GROUP_BY_SQL = `
   GROUP BY
     d.lottery_slug,
     d.draw_number,
+    d.status,
     d.draw_date,
     d.previous_draw_number,
     d.next_draw_number,
@@ -513,6 +544,102 @@ export async function saveDraw(draw: Draw): Promise<StoredDraw> {
   }
 }
 
+export async function saveAbsentDraw(
+  lottery: string,
+  drawNumber: number,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  const startedAt = Date.now();
+  const normalizedDrawNumber = Math.max(1, Math.floor(drawNumber));
+  const sanitizedLottery = sanitizePostgresText(lottery);
+  const rawPayload = sanitizeRawPayload({
+    absent: true,
+    reason: "missing_at_source",
+    ...details,
+  });
+
+  logRepository("saveAbsentDraw:start", { lottery: sanitizedLottery, drawNumber: normalizedDrawNumber });
+  await ensureSchema();
+
+  const pool = getDatabasePool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const existing = await client.query<{ status: DrawStatus }>(
+      `
+        SELECT status
+        FROM draws
+        WHERE lottery_slug = $1 AND draw_number = $2
+        FOR UPDATE;
+      `,
+      [sanitizedLottery, normalizedDrawNumber],
+    );
+
+    if (existing.rows[0]?.status === "drawn") {
+      await client.query("COMMIT");
+      logRepository("saveAbsentDraw:existing-drawn", {
+        lottery: sanitizedLottery,
+        drawNumber: normalizedDrawNumber,
+        elapsedMs: elapsedMs(startedAt),
+      });
+      return;
+    }
+
+    await client.query(
+      `
+        INSERT INTO draws (
+          lottery_slug,
+          draw_number,
+          status,
+          draw_date,
+          previous_draw_number,
+          next_draw_number,
+          raw_payload,
+          updated_at
+        )
+        VALUES ($1, $2, 'absent', NULL, NULL, NULL, $3::jsonb, NOW())
+        ON CONFLICT (lottery_slug, draw_number) DO UPDATE SET
+          status = 'absent',
+          draw_date = NULL,
+          previous_draw_number = NULL,
+          next_draw_number = NULL,
+          raw_payload = EXCLUDED.raw_payload,
+          updated_at = NOW();
+      `,
+      [sanitizedLottery, normalizedDrawNumber, JSON.stringify(rawPayload)],
+    );
+
+    await client.query(
+      `
+        DELETE FROM draw_numbers
+        WHERE lottery_slug = $1 AND draw_number = $2;
+      `,
+      [sanitizedLottery, normalizedDrawNumber],
+    );
+
+    await client.query("COMMIT");
+
+    logRepository("saveAbsentDraw:done", {
+      lottery: sanitizedLottery,
+      drawNumber: normalizedDrawNumber,
+      elapsedMs: elapsedMs(startedAt),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    warnRepository("saveAbsentDraw:rollback", {
+      lottery: sanitizedLottery,
+      drawNumber: normalizedDrawNumber,
+      elapsedMs: elapsedMs(startedAt),
+      error: getSafeErrorDetails(error),
+    });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function saveDraws(draws: Draw[]): Promise<StoredDraw[]> {
   const startedAt = Date.now();
 
@@ -588,7 +715,7 @@ export async function getDraw(lottery: string, drawNumber: number): Promise<Stor
   const result = await pool.query<DrawRow>(
     `
       ${DRAW_SELECT_SQL}
-      WHERE d.lottery_slug = $1 AND d.draw_number = $2
+      WHERE d.lottery_slug = $1 AND d.draw_number = $2 AND d.status = 'drawn'
       ${DRAW_GROUP_BY_SQL}
       LIMIT 1;
     `,
@@ -615,7 +742,7 @@ export async function getLatestDraw(lottery: string): Promise<StoredDraw | null>
   const result = await pool.query<DrawRow>(
     `
       ${DRAW_SELECT_SQL}
-      WHERE d.lottery_slug = $1
+      WHERE d.lottery_slug = $1 AND d.status = 'drawn'
       ${DRAW_GROUP_BY_SQL}
       ORDER BY d.draw_number DESC
       LIMIT 1;
@@ -642,7 +769,7 @@ export async function listDraws(lottery: string): Promise<StoredDraw[]> {
   const result = await pool.query<DrawRow>(
     `
       ${DRAW_SELECT_SQL}
-      WHERE d.lottery_slug = $1
+      WHERE d.lottery_slug = $1 AND d.status = 'drawn'
       ${DRAW_GROUP_BY_SQL}
       ORDER BY d.draw_number DESC;
     `,
