@@ -4,6 +4,7 @@ import {
   getDraw,
   getLatestDraw,
   getNextMissingDrawNumber,
+  getNextStoredDrawNumber,
   listDraws,
   saveAbsentDraw,
   saveDraw,
@@ -252,6 +253,19 @@ async function runCaixaSync(
           consecutiveMisses,
           maxConsecutiveMisses: MAX_CONSECUTIVE_NOT_FOUND,
         });
+
+        const confirmedByStoredDrawNumber = await getNextStoredDrawNumber(lotterySlug, currentDrawNumber);
+
+        if (confirmedByStoredDrawNumber) {
+          await saveConfirmedAbsentDraws(lotterySlug, pendingAbsentDrawNumbers, confirmedByStoredDrawNumber);
+          logService("syncMissingDrawsFromCaixa:gap-confirmed-by-storage", {
+            lottery: lotterySlug,
+            absentDrawNumbers: pendingAbsentDrawNumbers,
+            confirmedByDrawNumber: confirmedByStoredDrawNumber,
+          });
+          pendingAbsentDrawNumbers = [];
+          consecutiveMisses = 0;
+        }
 
         if (consecutiveMisses >= MAX_CONSECUTIVE_NOT_FOUND) {
           stopReason = "not_found_limit";

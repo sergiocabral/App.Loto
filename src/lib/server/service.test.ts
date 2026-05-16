@@ -5,6 +5,7 @@ const repositoryMocks = vi.hoisted(() => ({
   getDraw: vi.fn(),
   getLatestDraw: vi.fn(),
   getNextMissingDrawNumber: vi.fn(),
+  getNextStoredDrawNumber: vi.fn(),
   listDraws: vi.fn(),
   saveAbsentDraw: vi.fn(),
   saveDraw: vi.fn(),
@@ -123,6 +124,31 @@ describe("lottery service", () => {
     expect(repositoryMocks.saveAbsentDraw).toHaveBeenCalledWith("TimeMania", 34, { confirmedByDrawNumber: 35 });
     expect(repositoryMocks.saveDraw).toHaveBeenCalledWith(fetchedThirtyFive);
     expect(result.nextDrawNumber).toBe(36);
+  });
+
+  it("persists an absent draw confirmed by a later stored draw", async () => {
+    repositoryMocks.getNextMissingDrawNumber
+      .mockResolvedValueOnce(34)
+      .mockResolvedValueOnce(126)
+      .mockResolvedValueOnce(127)
+      .mockResolvedValueOnce(128);
+    repositoryMocks.getNextStoredDrawNumber
+      .mockResolvedValueOnce(35)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    caixaMocks.fetchDrawFromCaixa.mockResolvedValue(null);
+    repositoryMocks.saveAbsentDraw.mockResolvedValue(undefined);
+    repositoryMocks.listDraws.mockResolvedValue([draw(125, { lottery: "TimeMania" }), draw(35, { lottery: "TimeMania" })]);
+
+    const { syncMissingDrawsFromCaixa } = await import("@/lib/server/service");
+    const result = await syncMissingDrawsFromCaixa("TimeMania", { batchSize: 5, startAt: 34 });
+
+    expect(result.stopReason).toBe("not_found_limit");
+    expect(result.skippedDrawNumbers).toEqual([34, 126, 127, 128]);
+    expect(repositoryMocks.getNextStoredDrawNumber).toHaveBeenNthCalledWith(1, "TimeMania", 34);
+    expect(repositoryMocks.saveAbsentDraw).toHaveBeenCalledTimes(1);
+    expect(repositoryMocks.saveAbsentDraw).toHaveBeenCalledWith("TimeMania", 34, { confirmedByDrawNumber: 35 });
   });
 
   it("treats future 500 responses as probable end when current draw is greater than latest stored", async () => {

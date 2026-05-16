@@ -760,6 +760,37 @@ export async function getLatestDraw(lottery: string): Promise<StoredDraw | null>
   return result.rowCount && result.rows[0] ? toStoredDraw(result.rows[0]) : null;
 }
 
+export async function getNextStoredDrawNumber(lottery: string, afterDrawNumber: number): Promise<number | null> {
+  const startedAt = Date.now();
+  const normalizedAfterDrawNumber = Math.max(0, Math.floor(afterDrawNumber));
+  logRepository("getNextStoredDrawNumber:start", { lottery, afterDrawNumber: normalizedAfterDrawNumber });
+  await ensureSchema();
+
+  const pool = getDatabasePool();
+  const result = await pool.query<{ draw_number: number }>(
+    `
+      SELECT draw_number
+      FROM draws
+      WHERE lottery_slug = $1
+        AND status = 'drawn'
+        AND draw_number > $2
+      ORDER BY draw_number ASC
+      LIMIT 1;
+    `,
+    [lottery, normalizedAfterDrawNumber],
+  );
+
+  const nextStoredDrawNumber = result.rows[0]?.draw_number ?? null;
+  logRepository("getNextStoredDrawNumber:done", {
+    lottery,
+    afterDrawNumber: normalizedAfterDrawNumber,
+    nextStoredDrawNumber,
+    elapsedMs: elapsedMs(startedAt),
+  });
+
+  return nextStoredDrawNumber;
+}
+
 export async function listDraws(lottery: string): Promise<StoredDraw[]> {
   const startedAt = Date.now();
   logRepository("listDraws:start", { lottery });
