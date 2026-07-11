@@ -185,8 +185,14 @@ async function ensureSchemaInternal(): Promise<void> {
   const startedAt = Date.now();
   logRepository("ensureSchema:start", { lotteries: LOTTERIES.length });
   const pool = getDatabasePool();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
-  await pool.query(`
+  try {
+    await client.query("BEGIN");
+    transactionStarted = true;
+
+    await client.query(`
     CREATE TABLE IF NOT EXISTS lotteries (
       slug TEXT PRIMARY KEY,
       api_slug TEXT NOT NULL UNIQUE,
@@ -198,7 +204,7 @@ async function ensureSchemaInternal(): Promise<void> {
     );
   `);
 
-  await pool.query(`
+    await client.query(`
     CREATE TABLE IF NOT EXISTS draws (
       lottery_slug TEXT NOT NULL REFERENCES lotteries(slug) ON DELETE CASCADE,
       draw_number INTEGER NOT NULL,
@@ -213,7 +219,7 @@ async function ensureSchemaInternal(): Promise<void> {
     );
   `);
 
-  await pool.query(`
+    await client.query(`
     CREATE TABLE IF NOT EXISTS draw_numbers (
       lottery_slug TEXT NOT NULL,
       draw_number INTEGER NOT NULL,
@@ -227,22 +233,22 @@ async function ensureSchemaInternal(): Promise<void> {
     );
   `);
 
-  await pool.query(`
+    await client.query(`
     CREATE INDEX IF NOT EXISTS draws_lottery_number_desc_idx
       ON draws (lottery_slug, draw_number DESC);
   `);
 
-  await pool.query(`
+    await client.query(`
     CREATE INDEX IF NOT EXISTS draw_numbers_draw_idx
       ON draw_numbers (lottery_slug, draw_number, group_index, number_order);
   `);
 
-  await pool.query(`
+    await client.query(`
     ALTER TABLE draws
       ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'drawn';
   `);
 
-  await pool.query(`
+    await client.query(`
     DO $$
     BEGIN
       IF NOT EXISTS (
@@ -257,7 +263,7 @@ async function ensureSchemaInternal(): Promise<void> {
     END $$;
   `);
 
-  await pool.query(`
+    await client.query(`
     DO $$
     BEGIN
       IF EXISTS (
@@ -292,33 +298,49 @@ async function ensureSchemaInternal(): Promise<void> {
     END $$;
   `);
 
-  await pool.query(`
+    await client.query(`
     UPDATE draws
     SET raw_payload = raw_payload - 'textLines' - 'sourceUrl'
     WHERE raw_payload ? 'textLines'
        OR raw_payload ? 'sourceUrl';
   `);
 
-  await pool.query(`
+    await client.query(`
     UPDATE draws
     SET raw_payload = raw_payload - 'source'
     WHERE raw_payload->>'source' = 'luckygames.tips';
   `);
 
-  for (const lottery of LOTTERIES) {
-    await pool.query(
-      `
-        INSERT INTO lotteries (slug, api_slug, count_numbers, numbers_per_draw, groups, updated_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
-        ON CONFLICT (slug) DO UPDATE SET
-          api_slug = EXCLUDED.api_slug,
-          count_numbers = EXCLUDED.count_numbers,
-          numbers_per_draw = EXCLUDED.numbers_per_draw,
-          groups = EXCLUDED.groups,
-          updated_at = NOW();
-      `,
-      [lottery.slug, lottery.apiSlug, lottery.countNumbers, lottery.numbersPerDraw, lottery.groups ?? []],
-    );
+    for (const lottery of LOTTERIES) {
+      await client.query(
+        `
+          INSERT INTO lotteries (slug, api_slug, count_numbers, numbers_per_draw, groups, updated_at)
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (slug) DO UPDATE SET
+            api_slug = EXCLUDED.api_slug,
+            count_numbers = EXCLUDED.count_numbers,
+            numbers_per_draw = EXCLUDED.numbers_per_draw,
+            groups = EXCLUDED.groups,
+            updated_at = NOW();
+        `,
+        [lottery.slug, lottery.apiSlug, lottery.countNumbers, lottery.numbersPerDraw, lottery.groups ?? []],
+      );
+    }
+
+    await client.query("COMMIT");
+    transactionStarted = false;
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], "Schema initialization and rollback both failed.");
+      }
+    }
+
+    throw error;
+  } finally {
+    client.release();
   }
 
   logRepository("ensureSchema:done", { lotteries: LOTTERIES.length, elapsedMs: elapsedMs(startedAt) });

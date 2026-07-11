@@ -63,8 +63,13 @@ describe("runtime scripts", () => {
 
   it("always closes the migration pool after a schema failure", async () => {
     const end = vi.fn().mockResolvedValue(undefined);
-    const query = vi.fn().mockRejectedValue(new Error("schema failed"));
-    const createPool = vi.fn(() => ({ end, query }));
+    const release = vi.fn();
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("schema failed"))
+      .mockResolvedValueOnce(undefined);
+    const createPool = vi.fn(() => ({ connect: vi.fn().mockResolvedValue({ query, release }), end }));
 
     await expect(
       migrate({
@@ -73,6 +78,26 @@ describe("runtime scripts", () => {
         readFile: vi.fn(() => "select 1"),
       }),
     ).rejects.toThrow("schema failed");
+
+    expect(end).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "select 1", "ROLLBACK"]);
+  });
+
+  it("closes the migration pool when acquiring a client fails", async () => {
+    const end = vi.fn().mockResolvedValue(undefined);
+    const createPool = vi.fn(() => ({
+      connect: vi.fn().mockRejectedValue(new Error("connection failed")),
+      end,
+    }));
+
+    await expect(
+      migrate({
+        createPool,
+        environment: { POSTGRES_HOST: "db.example", POSTGRES_PASSWORD: "secret", POSTGRES_USER: "app" },
+        readFile: vi.fn(() => "select 1"),
+      }),
+    ).rejects.toThrow("connection failed");
 
     expect(end).toHaveBeenCalledOnce();
   });

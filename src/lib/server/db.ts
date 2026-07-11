@@ -16,8 +16,27 @@ function boolFromEnv(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes((value ?? "").toLowerCase());
 }
 
+function integerFromEnv(
+  name: string,
+  defaultValue: string,
+  { min = 0, max = Number.MAX_SAFE_INTEGER }: { min?: number; max?: number } = {},
+): number {
+  const rawValue = (getServerEnvValue(name) ?? defaultValue).trim();
+
+  if (!/^\d+$/.test(rawValue)) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}.`);
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}.`);
+  }
+
+  return value;
+}
+
 function getHyperdriveConnectionString(): string | undefined {
-  const explicitConnectionString = getServerEnvValue("HYPERDRIVE_CONNECTION_STRING");
+  const explicitConnectionString = getServerEnvValue("HYPERDRIVE_CONNECTION_STRING")?.trim();
 
   if (explicitConnectionString) {
     return explicitConnectionString;
@@ -37,7 +56,6 @@ function getPostgresConfig(): PostgresConfig {
   const user = getServerEnvValue("POSTGRES_USER");
   const password = getServerEnvValue("POSTGRES_PASSWORD");
   const database = getServerEnvValue("POSTGRES_DATABASE") ?? user;
-  const port = Number.parseInt(getServerEnvValue("POSTGRES_PORT") ?? "5432", 10);
   const useSsl = boolFromEnv(getServerEnvValue("POSTGRES_SSL"));
   const allowInsecureSsl = boolFromEnv(getServerEnvValue("POSTGRES_SSL_ALLOW_INSECURE"));
 
@@ -48,12 +66,13 @@ function getPostgresConfig(): PostgresConfig {
   const ssl = useSsl ? { rejectUnauthorized: !allowInsecureSsl } : undefined;
   const baseConfig = {
     ssl,
-    max: Number.parseInt(getServerEnvValue("POSTGRES_POOL_MAX") ?? (isCloudflareRuntime() ? "1" : "10"), 10),
-    maxUses: Number.parseInt(getServerEnvValue("POSTGRES_POOL_MAX_USES") ?? (isCloudflareRuntime() ? "1" : "0"), 10) || undefined,
-    connectionTimeoutMillis: Number.parseInt(getServerEnvValue("POSTGRES_CONNECTION_TIMEOUT_MS") ?? "5000", 10),
-    idleTimeoutMillis: Number.parseInt(getServerEnvValue("POSTGRES_IDLE_TIMEOUT_MS") ?? "30000", 10),
-    query_timeout: Number.parseInt(getServerEnvValue("POSTGRES_QUERY_TIMEOUT_MS") ?? "30000", 10),
-    statement_timeout: Number.parseInt(getServerEnvValue("POSTGRES_STATEMENT_TIMEOUT_MS") ?? "30000", 10),
+    max: integerFromEnv("POSTGRES_POOL_MAX", isCloudflareRuntime() ? "1" : "10", { min: 1 }),
+    maxUses:
+      integerFromEnv("POSTGRES_POOL_MAX_USES", isCloudflareRuntime() ? "1" : "0", { min: 0 }) || undefined,
+    connectionTimeoutMillis: integerFromEnv("POSTGRES_CONNECTION_TIMEOUT_MS", "5000", { min: 0 }),
+    idleTimeoutMillis: integerFromEnv("POSTGRES_IDLE_TIMEOUT_MS", "30000", { min: 0 }),
+    query_timeout: integerFromEnv("POSTGRES_QUERY_TIMEOUT_MS", "30000", { min: 0 }),
+    statement_timeout: integerFromEnv("POSTGRES_STATEMENT_TIMEOUT_MS", "30000", { min: 0 }),
   } satisfies PostgresConfig;
 
   if (hyperdriveConnectionString) {
@@ -84,7 +103,7 @@ function getPostgresConfig(): PostgresConfig {
     user,
     password,
     database,
-    port,
+    port: integerFromEnv("POSTGRES_PORT", "5432", { min: 1, max: 65_535 }),
   };
 }
 

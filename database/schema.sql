@@ -83,6 +83,8 @@ BEGIN
         number_value = EXCLUDED.number_value,
         updated_at = NOW();
     $migration$;
+
+    ALTER TABLE draws DROP COLUMN numbers;
   END IF;
 END $$;
 
