@@ -731,7 +731,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   );
 
   useEffect(() => {
-    if (!selectedLottery || syncInfo.running) {
+    if (!selectedLottery) {
       return;
     }
 
@@ -789,7 +789,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     return () => {
       ignoreResult = true;
     };
-  }, [selectedLottery, activeDrawNumber, syncInfo.running]);
+  }, [selectedLottery, activeDrawNumber]);
 
   useEffect(() => {
     if (!shouldPrefetchLotteryHistory()) {

@@ -13,8 +13,8 @@
     "cloudflare:check": "opennextjs-cloudflare build && wrangler deploy --dry-run",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lint": "eslint",
-    "test": "vitest run --project node --project jsdom --project postgres --coverage.enabled",
-    "test:watch": "vitest --project node --project jsdom",
+    "test": "NODE_ENV=test vitest run --project node --project jsdom --project postgres --coverage.enabled",
+    "test:watch": "NODE_ENV=test vitest --project node --project jsdom",
     "db:migrate": "node scripts/migrate.cjs"
   },
   "dependencies": {
