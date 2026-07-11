@@ -116,6 +116,8 @@ O comando executa os projetos Vitest `node`, `jsdom` e `postgres`, exige que tod
 - `coverage/coverage-summary.json`;
 - `coverage/index.html`.
 
+A suíte aplica pisos globais de 80% para statements, functions e lines e 70% para branches. `analysis.ts`, `security.ts`, `service.ts` e os handlers de API exigem 90% de lines/functions e 85% de branches. `repository.ts` exige 90% de lines/functions e 70% de branches: os ramos restantes são guardas internas para agregados SQL que o schema não permite produzir, chamadas de log sem detalhes que não fazem parte da API e falhas compostas do driver durante rollback; os contratos públicos e transacionais continuam cobertos contra PostgreSQL real.
+
 O projeto `postgres` usa um PostgreSQL descartável iniciado por Testcontainers com a imagem `postgres:17.5-alpine`. É necessário ter Docker, Podman ou Colima ativo; quando nenhum deles está disponível, o harness usa `pg_config`, `initdb` e `pg_ctl` para criar um cluster local temporário. Ele substitui qualquer `POSTGRES_*` local por credenciais efêmeras e não usa banco compartilhado, credenciais ou dados reais. A primeira execução com containers pode demorar enquanto a imagem é baixada.
 
 Para o ciclo rápido de testes unitários e de DOM, sem cobertura e sem containers:
