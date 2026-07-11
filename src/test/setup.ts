@@ -1,16 +1,8 @@
-import { afterAll, afterEach, beforeAll, vi } from "vitest";
-
-beforeAll(() => {
-  vi.spyOn(console, "info").mockImplementation(() => {});
-  vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.spyOn(console, "error").mockImplementation(() => {});
-});
+import { afterEach, vi } from "vitest";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
-});
-
-afterAll(() => {
   vi.restoreAllMocks();
 });

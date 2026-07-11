@@ -1,15 +1,20 @@
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
-  },
   test: {
-    environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    setupFiles: ["./src/test/setup.ts"],
+    passWithNoTests: true,
+    coverage: {
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test/**"],
+      provider: "v8",
+      reporter: ["text-summary", "json-summary", "html"],
+      thresholds: {
+        statements: 31,
+        branches: 31,
+        functions: 26,
+        lines: 31,
+      },
+    },
+    projects: ["./vitest.node.config.ts", "./vitest.jsdom.config.ts", "./vitest.postgres.config.ts"],
   },
 });

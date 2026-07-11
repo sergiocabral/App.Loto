@@ -13,7 +13,8 @@
     "cloudflare:check": "opennextjs-cloudflare build && wrangler deploy --dry-run",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lint": "eslint",
-    "test": "vitest run",
+    "test": "vitest run --project node --project jsdom --project postgres --coverage.enabled",
+    "test:watch": "vitest --project node --project jsdom",
     "db:migrate": "node scripts/migrate.cjs"
   },
   "dependencies": {
@@ -26,13 +27,20 @@
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.19.4",
+    "@testcontainers/postgresql": "^12.0.4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.5",
     "esbuild": "^0.28.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "jsdom": "^29.1.1",
     "typescript": "^5",
     "vitest": "^4.1.5",
     "wrangler": "^4.103.0"

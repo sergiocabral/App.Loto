@@ -29,7 +29,7 @@ Aplicação Next.js para consultar resultados das Loterias da Caixa, persistir c
 
 ## Requisitos
 
-- Node.js 20 ou superior.
+- Node.js 20.19 ou superior.
 - npm.
 - PostgreSQL acessível pela aplicação.
 - Conta Cloudflare com Workers habilitado, apenas para deploy em Cloudflare Workers.
@@ -101,6 +101,30 @@ Os scripts `dev` e `start` aceitam outra porta pela variável `APP_PORT`, sem al
 ```bash
 APP_PORT=4500 npm start
 ```
+
+## Testes
+
+Execute a suíte completa e gere a cobertura com:
+
+```bash
+npm test
+```
+
+O comando executa os projetos Vitest `node`, `jsdom` e `postgres`, exige que todos passem e grava os relatórios em `coverage/`:
+
+- resumo no terminal (`text-summary`);
+- `coverage/coverage-summary.json`;
+- `coverage/index.html`.
+
+O projeto `postgres` usa um PostgreSQL descartável iniciado por Testcontainers com a imagem `postgres:17.5-alpine`. É necessário ter Docker, Podman ou Colima ativo; ele substitui qualquer `POSTGRES_*` local por credenciais efêmeras do container e não usa banco compartilhado, credenciais ou dados reais. A primeira execução pode demorar enquanto a imagem é baixada.
+
+Para o ciclo rápido de testes unitários e de DOM, sem cobertura e sem containers:
+
+```bash
+npm run test:watch
+```
+
+Se `npm test` informar que o runtime de containers não está disponível, inicie Docker, Podman ou Colima e execute o comando novamente. Não há fallback que pule os testes PostgreSQL. Para investigar uma falha de cobertura, abra `coverage/index.html` ou consulte `coverage/coverage-summary.json`; arquivos de produção não importados em `src/**/*.{ts,tsx}` também entram na medição.
 
 ## Rodando localmente como Cloudflare Worker
 
