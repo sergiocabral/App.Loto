@@ -48,6 +48,14 @@ function createChatRequest(message = "Analise estes dados."): Request {
   });
 }
 
+function createRequestWithBody(body: unknown, headers: HeadersInit = { "content-type": "application/json" }): Request {
+  return new Request("http://localhost/api/chat", {
+    body: JSON.stringify(body),
+    headers,
+    method: "POST",
+  });
+}
+
 async function readJson(response: Response) {
   return (await response.json()) as Record<string, unknown>;
 }
@@ -284,5 +292,83 @@ describe("chat route", () => {
     expect(response.status).toBe(200);
     expect(String(payload.reply)).toContain("Não posso ajudar");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sanitizes malformed context entries and requires a final user message", async () => {
+    const route = await import("@/app/api/chat/route");
+    const response = await route.POST(
+      createRequestWithBody({
+        context: {
+          analysisSummary: {
+            delayed: "invalid",
+            drawCount: 2,
+            least: [null, { hits: -1, lastDrawNumber: 0, number: " 01 ", overdue: -2 }],
+            most: [{}],
+            numbers: [{ hits: 20_000, lastDrawNumber: 2, number: "02", overdue: 2_000_000 }],
+            periodLabel: "",
+            scopeLabel: "",
+            viewLabel: "",
+          },
+          filterNumbers: "invalid",
+          lotteryName: "",
+          lotterySlug: "MegaSena",
+          totalFilteredDraws: "invalid",
+          visibleDraws: [null, { drawNumber: "invalid" }, { date: "", drawNumber: 1, numberGroups: [null, [" 01 ", 2]], numbers: "invalid" }],
+        },
+        messages: [null, { content: "ignored", role: "system" }, { content: "Resposta anterior", role: "assistant" }],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await readJson(response)).toEqual({ error: "A user message is required." });
+  });
+
+  it("rejects invalid bodies and contexts before contacting OpenAI", async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>();
+    vi.stubGlobal("fetch", fetchMock);
+    const route = await import("@/app/api/chat/route");
+
+    const wrongContentType = await route.POST(createRequestWithBody({}, { "content-type": "text/plain" }));
+    const invalidContext = await route.POST(createRequestWithBody({ context: [], messages: [] }));
+
+    expect(wrongContentType.status).toBe(415);
+    expect(invalidContext.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("retries a reasoning model without unsupported reasoning options", async () => {
+    envMocks.getOpenAIChatConfig.mockReturnValue({ apiKey: "sk-test-secret", model: "gpt-5-nano-2025-08-07" });
+    const fetchMock = vi
+      .fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "reasoning_effort is unsupported" } }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "Resposta compatível." } }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const route = await import("@/app/api/chat/route");
+
+    expect((await route.POST(createChatRequest())).status).toBe(200);
+    const retryBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string) as Record<string, unknown>;
+    expect(retryBody).not.toHaveProperty("reasoning_effort");
+    expect(retryBody).not.toHaveProperty("verbosity");
+  });
+
+  it("returns 500 for unexpected upstream failures", async () => {
+    envMocks.getOpenAIChatConfig.mockReturnValue({ apiKey: "sk-test-secret", model: "gpt-4.1-mini" });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network unavailable")));
+    const route = await import("@/app/api/chat/route");
+
+    const response = await route.POST(createChatRequest());
+    expect(response.status).toBe(500);
+    expect(await readJson(response)).toEqual({ error: "Não consegui responder agora. Tente novamente em instantes." });
+  });
+
+  it("rate limits repeated chat mutations", async () => {
+    const route = await import("@/app/api/chat/route");
+    let response!: Response;
+
+    for (let index = 0; index <= 30; index += 1) {
+      response = await route.POST(createRequestWithBody({ context: null, messages: [] }, { "cf-connecting-ip": "203.0.113.99", "content-type": "application/json" }));
+    }
+
+    expect(response.status).toBe(429);
   });
 });

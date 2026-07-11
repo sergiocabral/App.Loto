@@ -196,4 +196,20 @@ describe("lottery repository with PostgreSQL", () => {
     const persisted = await pool!.query("SELECT 1 FROM draws WHERE lottery_slug = 'MegaSena' AND draw_number = 70");
     expect(persisted.rowCount).toBe(0);
   });
+
+  it("handles empty storage queries and derives the next draw from persisted state", async () => {
+    await expect(repository.saveDraws([])).resolves.toEqual([]);
+    await expect(repository.getLatestDraw("MegaSena")).resolves.toBeNull();
+    await expect(repository.getNextStoredDrawNumber("MegaSena", -10)).resolves.toBeNull();
+    await expect(repository.listDraws("MegaSena")).resolves.toEqual([]);
+    await expect(repository.getNextMissingDrawNumber("MegaSena", -10)).resolves.toBe(1);
+    await expect(repository.getNextDrawNumberFromStorage("MegaSena")).resolves.toBe(1);
+
+    await repository.saveDraw(buildDraw({ drawNumber: 8 }));
+    await expect(repository.getNextDrawNumberFromStorage("MegaSena")).resolves.toBe(9);
+
+    const emptyDraw = await repository.saveDraw(buildDraw({ drawNumber: 9, numberGroups: undefined, numbers: [] }));
+    expect(emptyDraw.numbers).toEqual([]);
+    expect(emptyDraw.numberGroups).toEqual([]);
+  });
 });

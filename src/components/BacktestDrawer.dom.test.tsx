@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { act, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLottery } from "@/data/lotteries";
 import { buildDraw } from "@/test/fixtures/builders";
@@ -18,7 +19,7 @@ const draws = [
   buildDraw({ date: "03/01/2026", drawNumber: 3, numbers: ["02", "12", "13", "14", "15", "16"] }),
 ];
 
-function renderDrawer(onClose = vi.fn()) {
+function renderDrawer(onClose = vi.fn(), overrides: Partial<ComponentProps<typeof BacktestDrawer>> = {}) {
   return {
     onClose,
     ...render(
@@ -32,6 +33,7 @@ function renderDrawer(onClose = vi.fn()) {
         quickAnalysisView="frequency"
         quickCustomRange={{ end: 10, start: 1 }}
         quickRecencyScoreMode="rounded"
+        {...overrides}
       />,
     ),
   };
@@ -41,6 +43,7 @@ describe("BacktestDrawer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.4);
+    trackEvent.mockClear();
   });
 
   afterEach(() => {
@@ -93,5 +96,59 @@ describe("BacktestDrawer", () => {
     expect(trackEvent).toHaveBeenCalledWith("Mudou velocidade simulador", expect.objectContaining({ speed: 4 }));
     expect(trackEvent).toHaveBeenCalledWith("Alternou retrocesso simulador", expect.objectContaining({ autoAdvanceCutoff: false }));
     expect(trackEvent).toHaveBeenCalledWith("Mudou tamanho sugestão simulador", expect.objectContaining({ suggestionNumberCount: 8 }));
+  });
+
+  it("renders no drawer while closed and an explicit placeholder without enough history", () => {
+    renderDrawer(vi.fn(), { open: false });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    renderDrawer(vi.fn(), { draws: [draws[0]] });
+    expect(screen.getByText("Sem concursos anteriores suficientes")).toBeInTheDocument();
+  });
+
+  it("changes the target, custom period and analysis strategy", () => {
+    renderDrawer();
+
+    fireEvent.click(screen.getByRole("button", { name: "Entenda melhor" }));
+    expect(screen.getByText(/trata esse resultado como se ele ainda não tivesse acontecido/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ajustar" }));
+    expect(screen.getByLabelText("Quantidade exata de concursos anteriores")).toHaveValue(2);
+    fireEvent.click(screen.getByRole("button", { name: "Reduzir período em 1 concurso" }));
+    expect(screen.getByLabelText("Quantidade exata de concursos anteriores")).toHaveValue(1);
+    fireEvent.change(screen.getByLabelText("Quantidade exata de concursos anteriores"), { target: { value: "99" } });
+    expect(screen.getByLabelText("Quantidade exata de concursos anteriores")).toHaveValue(2);
+    fireEvent.change(screen.getByLabelText("Tipo de Análise"), { target: { value: "delayed" } });
+    fireEvent.change(screen.getByLabelText("Concurso alvo"), { target: { value: "4" } });
+
+    expect(trackEvent).toHaveBeenCalledWith("Mudou corte simulador", expect.objectContaining({ targetDrawNumber: 4 }));
+    expect(trackEvent).toHaveBeenCalledWith("Mudou período simulador", expect.objectContaining({ period: "ajustar" }));
+    expect(trackEvent).toHaveBeenCalledWith("Mudou análise simulador", expect.objectContaining({ analysisView: "delayed" }));
+  });
+
+  it("processes all eligible targets, groups results and copies a suggestion", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    renderDrawer();
+
+    fireEvent.click(screen.getByRole("button", { name: "4x" }));
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar" }));
+    for (let step = 0; step < 6; step += 1) {
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+    }
+
+    expect(screen.getByText("Todos os concursos disponíveis foram processados.")).toBeInTheDocument();
+    expect(screen.getAllByText(/sugestão$/).length).toBeGreaterThan(0);
+
+    const groupButtons = screen.getAllByRole("button", { name: /Concurso [34]/ });
+    fireEvent.click(groupButtons[0]);
+    fireEvent.click(groupButtons[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /Copiar números da sugestão/ })[0]);
+    await act(async () => Promise.resolve());
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^\d{2}( \d{2})+$/));
+    expect(trackEvent).toHaveBeenCalledWith("Copiou sugestão simulador", expect.objectContaining({ sequence: 1 }));
   });
 });

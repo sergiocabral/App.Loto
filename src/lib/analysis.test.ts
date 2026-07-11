@@ -16,6 +16,8 @@ import {
   getAnalysisFilterText,
   getAnalysisPeriodLabel,
   getAnalysisScopeLabel,
+  getAnalysisViewLabel,
+  getAnalysisWeight,
   getDisplayGroups,
   getNumbersForAnalysis,
   getRecentAppearanceWeight,
@@ -121,6 +123,8 @@ describe("analysis helpers", () => {
     expect(getAnalysisScopeLabel("all")).toBe("Todos os sorteios");
     expect(getAnalysisScopeLabel("first")).toBe("1º sorteio");
     expect(getAnalysisScopeLabel("second")).toBe("2º sorteio");
+    expect(getAnalysisViewLabel("most")).toBe("Mais sorteados");
+    expect(getAnalysisViewLabel("unknown" as AnalysisView)).toBe("Análise");
   });
 
   it("builds analysis data with hits, overdue and intensity", () => {
@@ -279,6 +283,30 @@ describe("analysis helpers", () => {
       expect(getAnalysisDescription(view, data)).toContain("Considerando 5 concursos");
       expect(getSuggestionDescription(view, data)).toContain("5 concursos");
     }
+  });
+
+  it("weights each analysis view and describes a scoped custom range", () => {
+    const data = buildAnalysisData(draws, megaSena, "all", "first", { end: 4, start: 2 })!;
+    const item = data.stats.find((stat) => stat.number === "01")!;
+
+    expect(data.selectedDraws.map((selected) => selected.drawNumber)).toEqual([4, 3, 2]);
+    expect(data.periodLabel).toBe("3 concursos selecionados");
+    expect(getAnalysisFilterText(data)).toBe("3 concursos selecionados no 1º sorteio");
+    for (const view of ["most", "least", "delayed", "map", "recent"] satisfies AnalysisView[]) {
+      expect(getAnalysisWeight(item, view, data)).toBeGreaterThan(0);
+    }
+  });
+
+  it("normalizes reversed, overflowing and single-draw custom ranges", () => {
+    expect(buildAnalysisData(draws, megaSena, "all", "all", { end: -5, start: 99 })?.selectedDraws.map((item) => item.drawNumber)).toEqual([
+      2,
+      1,
+    ]);
+    expect(buildAnalysisData(draws, megaSena, "all", "all", { end: 2, start: 2 })?.selectedDraws.map((item) => item.drawNumber)).toEqual([
+      4,
+      3,
+    ]);
+    expect(buildAnalysisData([draw(1, ["01"])], megaSena, "all", "all", { end: 9, start: 9 })?.selectedDraws).toHaveLength(1);
   });
 
   it("shuffles without mutating the original array", () => {

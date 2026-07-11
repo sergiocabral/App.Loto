@@ -254,4 +254,55 @@ describe("HomePage", () => {
     expect(copyText).toHaveBeenCalledTimes(2);
     expect(screen.getByText("Sugestão copiada.")).toBeInTheDocument();
   });
+
+  it("consulta um concurso, limpa filtros, abre o simulador e volta ao início", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const lottery = getLotteryFromUrl(input);
+      const draws = drawsFor(lottery, 3);
+      const drawNumber = new URL(String(input), "http://localhost").searchParams.get("draw");
+
+      return Promise.resolve(
+        jsonResponse(
+          drawNumber
+            ? { draw: draws.find((draw) => draw.drawNumber === Number(drawNumber)) ?? null, draws }
+            : { draws },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    await renderHomePage();
+    await user.click(screen.getByRole("button", { name: /^Mega Sena/ }));
+    expect(await screen.findByRole("heading", { name: "Histórico de Mega Sena" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Concurso" }));
+    const drawInput = screen.getByLabelText("Número do concurso");
+    await user.type(drawInput, "0");
+    await user.click(screen.getByRole("button", { name: "Consultar" }));
+    expect(await screen.findByText("Informe um número de concurso válido.")).toBeInTheDocument();
+
+    await user.clear(drawInput);
+    await user.type(drawInput, "2");
+    await user.click(screen.getByRole("button", { name: "Consultar" }));
+    expect(await screen.findByRole("heading", { name: "Concurso 2" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/lotteries/MegaSena?draw=2", { cache: "no-store" });
+
+    await user.click(screen.getByRole("button", { name: "Limpar filtro" }));
+    expect(await screen.findByRole("heading", { name: "Histórico de Mega Sena" })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Selecionar número 01" }).at(-1)!);
+    await user.click(within(screen.getByRole("region", { name: "Números selecionados" })).getByRole("button", { name: "Filtrar" }));
+    expect(await screen.findByRole("heading", { name: "Concursos com 01" })).toBeInTheDocument();
+    await user.click(within(screen.getByRole("region", { name: "Números selecionados" })).getByRole("button", { name: "Limpar" }));
+    expect(await screen.findByRole("heading", { name: "Histórico de Mega Sena" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Simulador" }));
+    expect(screen.getByRole("dialog", { name: "Sorteios anteriores" })).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Fechar simulador" }).at(-1)!);
+    expect(screen.queryByRole("dialog", { name: "Sorteios anteriores" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Voltar para o início sem loteria selecionada" }));
+    expect(screen.getByRole("region", { name: "Selecione uma loteria" })).toBeInTheDocument();
+  });
 });

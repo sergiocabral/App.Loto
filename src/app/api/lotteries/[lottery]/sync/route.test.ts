@@ -193,4 +193,20 @@ describe("lottery sync cron route", () => {
     expect(response.status).toBe(404);
     expect(serviceMocks.syncMissingDrawsFromCaixa).not.toHaveBeenCalled();
   });
+
+  it("returns a safe error when synchronization fails", async () => {
+    envMocks.getCronSyncSecret.mockReturnValueOnce("secret-value");
+    serviceMocks.syncMissingDrawsFromCaixa.mockRejectedValueOnce(new Error("database password=hidden"));
+    const route = await import("@/app/api/lotteries/[lottery]/sync/route");
+
+    const response = await route.GET(
+      new Request("http://localhost/api/lotteries/MegaSena/sync", {
+        headers: { authorization: "Bearer secret-value" },
+      }),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+
+    expect(response.status).toBe(500);
+    expect((await readText(response)).trim()).toBe("ERROR Não foi possível sincronizar os dados agora.");
+  });
 });

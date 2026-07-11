@@ -258,4 +258,19 @@ describe("lottery service", () => {
     expect(repositoryMocks.listDraws).toHaveBeenCalledWith("MegaSena");
     expect(caixaMocks.fetchDrawFromCaixa).not.toHaveBeenCalled();
   });
+
+  it("handles invalid batch values, empty histories and unknown collection requests", async () => {
+    repositoryMocks.getNextMissingDrawNumber.mockResolvedValueOnce(1);
+    caixaMocks.fetchDrawFromCaixa.mockResolvedValueOnce(null);
+    repositoryMocks.listDraws.mockResolvedValue([]);
+    const { collectMissingDraws, loadLotteryHistory, syncMissingDrawsFromCaixa } = await import("@/lib/server/service");
+
+    await expect(syncMissingDrawsFromCaixa("MegaSena", { batchSize: Number.NaN })).resolves.toMatchObject({ batchSize: 5 });
+    await expect(loadLotteryHistory("Unknown")).resolves.toEqual([]);
+    await expect(collectMissingDraws("Unknown")).resolves.toMatchObject({
+      draws: [],
+      hasMore: false,
+      nextDrawNumber: null,
+    });
+  });
 });
