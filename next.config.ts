@@ -21,6 +21,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: [
+    "luckygames.tips",
+    "www.luckygames.tips",
+    "dev.luckygames.tips",
+  ],
   outputFileTracingIncludes: {
     "/*": ["./node_modules/pg-cloudflare/dist/index.js"],
   },
