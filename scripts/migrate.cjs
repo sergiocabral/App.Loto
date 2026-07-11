@@ -8,35 +8,58 @@ const { Pool } = require("pg");
 config({ path: path.resolve(__dirname, "../.env") });
 config({ path: path.resolve(__dirname, "../.env.local"), override: true });
 
-const host = process.env.POSTGRES_HOST;
-const user = process.env.POSTGRES_USER;
-const password = process.env.POSTGRES_PASSWORD;
-const database = process.env.POSTGRES_DATABASE || process.env.POSTGRES_USER;
-const port = Number.parseInt(process.env.POSTGRES_PORT || "5432", 10);
-const ssl = ["1", "true", "yes", "on"].includes(String(process.env.POSTGRES_SSL || "").toLowerCase())
-  ? { rejectUnauthorized: !["1", "true", "yes", "on"].includes(String(process.env.POSTGRES_SSL_ALLOW_INSECURE || "").toLowerCase()) }
-  : undefined;
-
-if (process.env.NODE_ENV === "production" && process.env.POSTGRES_SSL_ALLOW_INSECURE === "true") {
-  console.error("POSTGRES_SSL_ALLOW_INSECURE cannot be enabled in production.");
-  process.exit(1);
+function isEnabled(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
 }
 
-if (!host || !user || !password || !database) {
-  console.error("Missing PostgreSQL configuration. Check POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DATABASE.");
-  process.exit(1);
+function getMigrationConfig(environment = process.env) {
+  const host = environment.POSTGRES_HOST;
+  const user = environment.POSTGRES_USER;
+  const password = environment.POSTGRES_PASSWORD;
+  const database = environment.POSTGRES_DATABASE || user;
+  const port = Number.parseInt(environment.POSTGRES_PORT || "5432", 10);
+  const allowInsecureSsl = isEnabled(environment.POSTGRES_SSL_ALLOW_INSECURE);
+
+  if (environment.NODE_ENV === "production" && allowInsecureSsl) {
+    throw new Error("POSTGRES_SSL_ALLOW_INSECURE cannot be enabled in production.");
+  }
+
+  if (!host || !user || !password || !database) {
+    throw new Error("Missing PostgreSQL configuration. Check POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DATABASE.");
+  }
+
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("POSTGRES_PORT must be an integer between 1 and 65535.");
+  }
+
+  return {
+    database,
+    host,
+    password,
+    port,
+    ssl: isEnabled(environment.POSTGRES_SSL) ? { rejectUnauthorized: !allowInsecureSsl } : undefined,
+    user,
+  };
 }
 
-const schema = fs.readFileSync(path.resolve(__dirname, "../database/schema.sql"), "utf8");
-const pool = new Pool({ host, user, password, database, port, ssl });
+async function migrate({ environment = process.env, readFile = fs.readFileSync, createPool = (options) => new Pool(options), logger = console } = {}) {
+  const config = getMigrationConfig(environment);
+  const schema = readFile(path.resolve(__dirname, "../database/schema.sql"), "utf8");
+  const pool = createPool(config);
 
-pool
-  .query(schema)
-  .then(() => {
-    console.log("Database schema is ready.");
-  })
-  .catch((error) => {
+  try {
+    await pool.query(schema);
+    logger.log("Database schema is ready.");
+  } finally {
+    await pool.end();
+  }
+}
+
+if (require.main === module) {
+  migrate().catch((error) => {
     console.error(error);
     process.exitCode = 1;
-  })
-  .finally(() => pool.end());
+  });
+}
+
+module.exports = { getMigrationConfig, isEnabled, migrate };

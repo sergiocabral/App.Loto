@@ -16,18 +16,18 @@ function resolvePort(value = process.env.APP_PORT ?? process.env.PORT) {
   return port;
 }
 
-function run() {
-  const command = process.argv[2];
+function run({ args = process.argv.slice(2), environment = process.env, spawnChild = spawn, processId = process.execPath, killProcess = process.kill, parentPid = process.pid } = {}) {
+  const command = args[0];
 
   if (!VALID_COMMANDS.has(command)) {
     throw new Error(`Expected one of: ${[...VALID_COMMANDS].join(", ")}`);
   }
 
-  const args = process.argv.slice(3);
-  const hasPortArgument = args.some((arg) => arg === "-p" || arg === "--port" || arg.startsWith("--port="));
-  const nextArgs = hasPortArgument ? [command, ...args] : [command, "--port", resolvePort(), ...args];
-  const child = spawn(process.execPath, [require.resolve("next/dist/bin/next"), ...nextArgs], {
-    env: process.env,
+  const commandArgs = args.slice(1);
+  const hasPortArgument = commandArgs.some((arg) => arg === "-p" || arg === "--port" || arg.startsWith("--port="));
+  const nextArgs = hasPortArgument ? [command, ...commandArgs] : [command, "--port", resolvePort(environment.APP_PORT ?? environment.PORT), ...commandArgs];
+  const child = spawnChild(processId, [require.resolve("next/dist/bin/next"), ...nextArgs], {
+    env: environment,
     stdio: "inherit",
   });
 
@@ -36,9 +36,9 @@ function run() {
     process.exitCode = 1;
   });
 
-  child.once("exit", (code, signal) => {
-    if (signal) {
-      process.kill(process.pid, signal);
+  child.once("exit", (code, exitSignal) => {
+    if (exitSignal) {
+      killProcess(parentPid, exitSignal);
       return;
     }
 
@@ -55,4 +55,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { DEFAULT_PORT, resolvePort };
+module.exports = { DEFAULT_PORT, resolvePort, run };
