@@ -80,7 +80,7 @@ npm run dev
 Acesse:
 
 ```text
-http://localhost:3000
+http://localhost:4000
 ```
 
 Para rodar localmente em modo produção Next.js:
@@ -93,7 +93,13 @@ npm run start
 O `next start` também sobe, por padrão, em:
 
 ```text
-http://localhost:3000
+http://localhost:4000
+```
+
+Os scripts `dev` e `start` aceitam outra porta pela variável `APP_PORT`, sem alteração de código. Se ela não estiver definida, os scripts respeitam a variável convencional `PORT` fornecida pela plataforma:
+
+```bash
+APP_PORT=4500 npm start
 ```
 
 ## Rodando localmente como Cloudflare Worker
@@ -147,6 +153,7 @@ O `wrangler.jsonc` usa `keep_vars: true`, então variáveis e secrets configurad
 
 | Variável | Localhost | Cloudflare Workers | Uso |
 | --- | --- | --- | --- |
+| `APP_PORT` | Opcional | Opcional | Porta dos scripts `dev` e `start`. Tem precedência sobre `PORT`; padrão local: `4000`. |
 | `POSTGRES_HOST` | Obrigatória, exceto com Hyperdrive string | Configurada em `wrangler.jsonc` ou painel | Host do PostgreSQL. |
 | `POSTGRES_PORT` | Opcional | Configurada em `wrangler.jsonc` ou painel | Porta do PostgreSQL. Padrão: `5432`. |
 | `POSTGRES_USER` | Obrigatória, exceto com Hyperdrive string | Configurada em `wrangler.jsonc` ou painel | Usuário do banco. |
@@ -193,6 +200,8 @@ Observações:
 ## Exemplo de `.env` para localhost
 
 ```env
+APP_PORT=4000
+
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_USER=luckygames
