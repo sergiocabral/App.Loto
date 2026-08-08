@@ -213,6 +213,18 @@ O `wrangler.jsonc` usa `keep_vars: true`, então variáveis e secrets configurad
 | `CHATGPT_BUTTON2` | Opcional | Opcional | Sobrescreve o 2º botão de sugestão do chat no formato `Rótulo|Mensagem|Prompt`. |
 | `CHATGPT_BUTTON3` | Opcional | Opcional | Sobrescreve o 3º botão de sugestão do chat no formato `Rótulo|Mensagem|Prompt`. |
 | `CHATGPT_BUTTON4` | Opcional | Opcional | Sobrescreve o 4º botão de sugestão do chat no formato `Rótulo|Mensagem|Prompt`. |
+| `ACCESS_COOKIE_SECRET` | Obrigatória p/ passe | Secret obrigatório p/ passe | Segredo HMAC do cookie de acesso assinado. Mínimo 32 caracteres. Sem ele, nenhum acesso premium é reconhecido. |
+| `MP_ACCESS_TOKEN` | Opcional | Secret | Token do Mercado Pago (`TEST-...` em sandbox, `APP_USR-...` em produção). Sem ele, o checkout responde `503`. |
+| `MP_WEBHOOK_SECRET` | Opcional | Secret | Segredo de assinatura do webhook do Mercado Pago. Sem ele, o webhook rejeita todas as chamadas. |
+| `MP_API_BASE_URL` | Opcional | Opcional | Sobrescreve a base da API do Mercado Pago. Padrão: `https://api.mercadopago.com`. Útil apenas em testes. |
+| `PASS_PRICE_30D_BRL` | Opcional | Opcional | Preço do passe de 30 dias em reais. Padrão: `10`. Aceita `1` a `10000`. |
+| `PASS_PRICE_LIFETIME_BRL` | Opcional | Opcional | Preço do passe vitalício em reais. Padrão: `50`. Aceita `1` a `10000`. |
+| `SMTP_HOST` | Opcional | Opcional | Host SMTP para envio do magic link. Sem SMTP configurado, o e-mail de ativação não é enviado. |
+| `SMTP_PORT` | Opcional | Opcional | Porta SMTP. Padrão: `587` (STARTTLS). |
+| `SMTP_SECURE` | Opcional | Opcional | `true` para TLS direto (porta 465); `false` usa STARTTLS. Padrão: `false`. |
+| `SMTP_USER` | Opcional | Opcional | Usuário SMTP. |
+| `SMTP_PASSWORD` | Opcional | Secret | Senha SMTP. Nunca versionar. |
+| `SMTP_FROM` | Opcional | Opcional | Remetente dos e-mails, ex.: `"Luckygames.tips" <luckygames@luckygames.tips>`. |
 
 Observações:
 
@@ -222,6 +234,43 @@ Observações:
 - `OPENAI_CHAT_MAX_REPLY_CHARS`, `OPENAI_CHAT_COMPLETION_TOKENS` e `OPENAI_CHAT_RETRY_COMPLETION_TOKENS` permitem ajustar capacidade/custo do Chat GPT sem alterar código. Para respostas mais completas, aumente primeiro `OPENAI_CHAT_MAX_REPLY_CHARS`; aumente tokens apenas se a OpenAI encerrar por limite.
 - `OFFICIAL_DOMAIN_NAME` deve ser apenas domínio, como `luckygames.tips`. Não use `https://`, `/`, porta ou path.
 - `SYNC_CRON_SECRET` deve ser configurado como secret se você pretende usar o endpoint GET de sincronização por cron.
+- Para habilitar o passe pago, configure `ACCESS_COOKIE_SECRET`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` e as variáveis `SMTP_*` como secrets. Rotacionar `ACCESS_COOKIE_SECRET` invalida todos os cookies de acesso; os usuários se recuperam pedindo um novo magic link em "Já tenho acesso".
+
+## Passe pago (Mercado Pago Pix + magic link)
+
+O app é gratuito por padrão. Alguns recursos ficam atrás de um passe pago quando o passe está configurado no servidor:
+
+- **Simulador**: livre para até 3 execuções por dia (contador em `localStorage`, sem conta); o checkbox "Retroceder sorteio alvo ao esgotar sugestões" é exclusivo do passe.
+- **Chat GPT**: 3 mensagens por dia sem passe (contador em cookie assinado); 100 por dia com passe (contador no banco, por licença).
+- **Ver todos os sorteios** (`/raw/[loteria]`) e o download em `format=legacy`: exclusivos do passe.
+
+Planos: passe de 30 dias e passe vitalício, com preços definidos por `PASS_PRICE_30D_BRL`/`PASS_PRICE_LIFETIME_BRL` (não há tela de administração; ajuste por variável de ambiente).
+
+Não há conta com senha. A identidade é o e-mail: após o pagamento aprovado, o webhook do Mercado Pago ativa a licença e o app envia um **magic link** por e-mail. Clicar no link grava um cookie httpOnly assinado (HMAC) de longa duração no dispositivo. Em outro dispositivo, o usuário digita o e-mail em "Já tenho acesso" e recebe um novo link.
+
+### Fluxo de dados
+
+1. `POST /api/billing/checkout` (`{email, plan}`) cria uma licença `pending` e uma preferência de checkout no Mercado Pago; retorna `initPoint`, para onde o navegador é redirecionado. O comprador escolhe Pix (ou cartão) na página do Mercado Pago.
+2. `POST /api/billing/webhook` valida a assinatura `x-signature`, busca o pagamento na API (`fetchPayment` — nunca confia no corpo do webhook), confere o valor contra o plano e então ativa a licença e dispara o e-mail de ativação. Recompra de 30 dias estende `expires_at`; vitalício zera a expiração. Reembolso/chargeback revoga a licença.
+3. `GET /api/access/activate?token=...` consome o token de uso único, grava o cookie e redireciona para `/?acesso=ativado`.
+4. `POST /api/access/request-link` (`{email}`) reenvia o link para quem já tem passe ativo, com rate limit por IP e por e-mail e resposta genérica (sem revelar se o e-mail existe).
+5. `GET /api/access/status` informa ao frontend se o dispositivo tem passe, o plano, a validade e a cota de chat já usada.
+
+### Configuração do Mercado Pago
+
+1. Crie uma aplicação no painel do Mercado Pago e copie o `Access Token` (use o de teste, `TEST-...`, para sandbox).
+2. Em "Suas integrações > Webhooks", cadastre `https://SEU_DOMINIO/api/billing/webhook` e copie o segredo de assinatura para `MP_WEBHOOK_SECRET`.
+3. Configure `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `ACCESS_COOKIE_SECRET` e as variáveis `SMTP_*` como secrets.
+4. O mesmo código atende sandbox e produção; o ambiente é determinado apenas pelo tipo do token.
+
+### Testando localmente
+
+- E-mail: use um SMTP de teste como Mailpit (`docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`) com `SMTP_HOST=localhost SMTP_PORT=1025 SMTP_SECURE=false` para inspecionar os magic links.
+- Webhook: exponha o app com um túnel (cloudflared/ngrok) e cadastre a URL no painel do Mercado Pago, ou simule com `curl` calculando o HMAC do manifesto `id:{data.id};request-id:{req};ts:{ts};` e apontando `MP_API_BASE_URL` para um mock.
+
+### Privacidade (LGPD)
+
+O e-mail é armazenado apenas em minúsculas, com finalidade única de entregar o acesso; não há uso para marketing. Exclusão sob demanda: `DELETE FROM licenses WHERE email = '...'` (as tabelas de tokens, pagamentos e uso do chat têm cascata).
 
 ## Exemplo de `.env` para localhost
 
