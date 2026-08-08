@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server";
 import { getLottery } from "@/data/lotteries";
+import { ACCESS_COOKIE_NAME, getRequestCookieValue } from "@/lib/server/accessCookie";
+import {
+  buildFreeChatQuotaSetCookieHeader,
+  FREE_CHAT_DAILY_LIMIT,
+  PREMIUM_CHAT_DAILY_LIMIT,
+  readFreeChatQuota,
+} from "@/lib/server/chatQuota";
 import { getOpenAIChatConfig } from "@/lib/server/env";
+import {
+  getEntitlementFromCookieValue,
+  getSaoPauloDateString,
+  incrementChatUsage,
+} from "@/lib/server/licensing";
 import { checkMutationRateLimit, getSafeErrorDetails, readJsonObjectBody } from "@/lib/server/security";
 
 type ChatRole = "assistant" | "user";
@@ -574,6 +586,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ reply: clampReplyLength(guardrailReply, DEFAULT_MAX_REPLY_CHARS) });
   }
 
+  let freeQuotaSetCookie: string | null = null;
+
+  const entitlement = await getEntitlementFromCookieValue(getRequestCookieValue(request, ACCESS_COOKIE_NAME));
+
+  if (entitlement.licensed) {
+    try {
+      const usage = await incrementChatUsage(entitlement.licenseId, getSaoPauloDateString(), PREMIUM_CHAT_DAILY_LIMIT);
+
+      if (!usage.allowed) {
+        return NextResponse.json(
+          {
+            code: "chat_quota",
+            error: `Você atingiu o limite diário de ${PREMIUM_CHAT_DAILY_LIMIT} mensagens. O contador zera à meia-noite.`,
+            scope: "premium",
+          },
+          { status: 429 },
+        );
+      }
+    } catch (error) {
+      // Falha de banco não bloqueia quem pagou; fica registrada para investigação.
+      logChatError("POST:premium-quota-error", error, { licenseId: entitlement.licenseId });
+    }
+  } else {
+    const quota = readFreeChatQuota(request);
+
+    if (quota.count >= FREE_CHAT_DAILY_LIMIT) {
+      return NextResponse.json(
+        {
+          code: "chat_quota",
+          error: `Você usou as ${FREE_CHAT_DAILY_LIMIT} mensagens grátis de hoje. Libere o acesso completo para continuar.`,
+          scope: "free",
+        },
+        { status: 429 },
+      );
+    }
+
+    const requestHostname = new URL(request.url).hostname;
+    freeQuotaSetCookie = buildFreeChatQuotaSetCookieHeader(
+      { count: quota.count + 1, date: quota.date },
+      { secure: requestHostname !== "localhost" && requestHostname !== "127.0.0.1" },
+    );
+  }
+
   try {
     logChat("POST:start", {
       lottery: context.lotterySlug,
@@ -589,7 +644,13 @@ export async function POST(request: Request) {
     ]);
 
     logChat("POST:done", { elapsedMs: Date.now() - startedAt, lottery: context.lotterySlug });
-    return NextResponse.json({ reply });
+    const response = NextResponse.json({ reply });
+
+    if (freeQuotaSetCookie) {
+      response.headers.append("set-cookie", freeQuotaSetCookie);
+    }
+
+    return response;
   } catch (error) {
     logChatError("POST:error", error, { elapsedMs: Date.now() - startedAt, lottery: context.lotterySlug });
     const status = error instanceof ChatConfigurationError ? 503 : error instanceof OpenAIUpstreamError ? 502 : 500;

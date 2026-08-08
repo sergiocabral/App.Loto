@@ -10,10 +10,18 @@ type ChatConfigMock = {
 };
 
 const envMocks = vi.hoisted(() => ({
+  getAccessCookieSecret: vi.fn<() => string | undefined>(() => undefined),
   getOpenAIChatConfig: vi.fn<() => ChatConfigMock | null>(),
 }));
 
+const licensingMocks = vi.hoisted(() => ({
+  getEntitlementFromCookieValue: vi.fn(async () => ({ licensed: false as const })),
+  getSaoPauloDateString: vi.fn(() => "2026-08-08"),
+  incrementChatUsage: vi.fn(async () => ({ allowed: true, count: 1 })),
+}));
+
 vi.mock("@/lib/server/env", () => envMocks);
+vi.mock("@/lib/server/licensing", () => licensingMocks);
 
 function createChatRequest(message = "Analise estes dados."): Request {
   return new Request("http://localhost/api/chat", {
@@ -370,5 +378,77 @@ describe("chat route", () => {
     }
 
     expect(response.status).toBe(429);
+  });
+
+  it("counts free chat messages in a signed cookie and blocks after the daily limit", async () => {
+    const secret = "chat-route-secret-with-32-chars!!!!!";
+    envMocks.getAccessCookieSecret.mockReturnValue(secret);
+    envMocks.getOpenAIChatConfig.mockReturnValue({ apiKey: "sk-test-secret", model: "gpt-4.1-mini" });
+    licensingMocks.getSaoPauloDateString.mockReturnValue("2026-08-08");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: "Resposta." } }] }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const route = await import("@/app/api/chat/route");
+    const { buildFreeChatQuotaSetCookieHeader } = await import("@/lib/server/chatQuota");
+
+    const firstResponse = await route.POST(createChatRequest());
+    expect(firstResponse.status).toBe(200);
+    const setCookie = firstResponse.headers.get("set-cookie");
+    expect(setCookie).toContain("lg_chat_quota=");
+
+    const exhaustedHeader = buildFreeChatQuotaSetCookieHeader({ count: 3, date: "2026-08-08" }, { secure: false });
+    const blockedRequest = new Request("http://localhost/api/chat", {
+      body: await createChatRequest().text(),
+      headers: {
+        "content-type": "application/json",
+        cookie: exhaustedHeader!.split(";")[0],
+      },
+      method: "POST",
+    });
+
+    const blocked = await route.POST(blockedRequest);
+    expect(blocked.status).toBe(429);
+    await expect(readJson(blocked)).resolves.toMatchObject({ code: "chat_quota", scope: "free" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("enforces the premium daily quota for licensed users", async () => {
+    envMocks.getOpenAIChatConfig.mockReturnValue({ apiKey: "sk-test-secret", model: "gpt-4.1-mini" });
+    licensingMocks.getEntitlementFromCookieValue.mockResolvedValue({
+      email: "user@example.com",
+      expiresAt: null,
+      licensed: true,
+      licenseId: 7,
+      plan: "lifetime",
+    });
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ choices: [{ message: { content: "Resposta." } }] }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const route = await import("@/app/api/chat/route");
+
+    licensingMocks.incrementChatUsage.mockResolvedValueOnce({ allowed: true, count: 5 });
+    const allowed = await route.POST(createChatRequest());
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get("set-cookie")).toBeNull();
+    expect(licensingMocks.incrementChatUsage).toHaveBeenCalledWith(7, "2026-08-08", 100);
+
+    licensingMocks.incrementChatUsage.mockResolvedValueOnce({ allowed: false, count: 100 });
+    const blocked = await route.POST(createChatRequest());
+    expect(blocked.status).toBe(429);
+    await expect(readJson(blocked)).resolves.toMatchObject({ code: "chat_quota", scope: "premium" });
+
+    licensingMocks.incrementChatUsage.mockRejectedValueOnce(new Error("db down"));
+    const degraded = await route.POST(createChatRequest());
+    expect(degraded.status).toBe(200);
   });
 });
