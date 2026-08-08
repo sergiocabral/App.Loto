@@ -6,7 +6,23 @@ const serviceMocks = vi.hoisted(() => ({
   loadLotteryHistory: vi.fn(),
 }));
 
+const licensingMocks = vi.hoisted(() => ({
+  getEntitlementFromCookieValue: vi.fn(async () => ({
+    email: "user@example.com",
+    expiresAt: null,
+    licensed: true as const,
+    licenseId: 7,
+    plan: "lifetime" as const,
+  })),
+}));
+
+const headersMocks = vi.hoisted(() => ({
+  cookies: vi.fn(async () => ({ get: () => ({ value: "cookie-value" }) })),
+}));
+
 vi.mock("@/lib/server/service", () => serviceMocks);
+vi.mock("@/lib/server/licensing", () => licensingMocks);
+vi.mock("next/headers", () => headersMocks);
 
 function draw(drawNumber: number, overrides: Partial<Draw> = {}): Draw {
   return {
@@ -135,5 +151,21 @@ describe("raw results page", () => {
     expect(serviceMocks.getStoredDraw).not.toHaveBeenCalled();
     expect(serviceMocks.loadLotteryHistory).not.toHaveBeenCalled();
     expect(stringifyElement(element)).toContain("Concurso inválido");
+  });
+
+  it("renders the paywall instead of results when there is no active license", async () => {
+    licensingMocks.getEntitlementFromCookieValue.mockResolvedValueOnce({ licensed: false as const });
+    const { default: RawLotteryPage } = await import("@/app/raw/[lottery]/page");
+
+    const element = await RawLotteryPage({
+      params: Promise.resolve({ lottery: "Quina" }),
+      searchParams: Promise.resolve({}),
+    });
+    const rendered = stringifyElement(element);
+
+    expect(serviceMocks.loadLotteryHistory).not.toHaveBeenCalled();
+    expect(serviceMocks.getStoredDraw).not.toHaveBeenCalled();
+    expect(rendered).toContain("Conteúdo exclusivo do acesso completo");
+    expect(rendered).not.toContain("format=legacy");
   });
 });

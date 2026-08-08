@@ -1,6 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { getLottery } from "@/data/lotteries";
+import { PaywallContent } from "@/components/PaywallDialog";
+import { ACCESS_COOKIE_NAME } from "@/lib/server/accessCookie";
+import { getPassPlans } from "@/lib/server/billing";
+import { getEntitlementFromCookieValue } from "@/lib/server/licensing";
 import { loadLotteryHistory, getStoredDraw } from "@/lib/server/service";
 import { parsePositiveInteger } from "@/lib/server/security";
 import { renderDrawText, renderHistoryText } from "@/lib/render";
@@ -69,6 +74,42 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
           </Link>
           <h1>Jogo não encontrado</h1>
           <p>Volte para a consulta principal e selecione uma loteria disponível.</p>
+          <Link className="raw-page-link" href="/">
+            Voltar para o Luckygames
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  const cookieStore = await cookies();
+  const entitlement = await getEntitlementFromCookieValue(cookieStore.get(ACCESS_COOKIE_NAME)?.value);
+
+  if (!entitlement.licensed) {
+    const plans = getPassPlans();
+
+    return (
+      <main className="raw-page-shell">
+        <section className="raw-page-card">
+          <header className="raw-page-header">
+            <Link aria-label="Voltar para o início" className="brand-home raw-page-brand" href="/">
+              <Image alt="Luckygames" className="brand-icon" height={56} priority src="/gohorse.png" width={56} />
+              <span>Luckygames</span>
+            </Link>
+            <div className="raw-page-title-row">
+              <div>
+                <h1>{formatLotteryName(lottery.slug)} — todos os sorteios</h1>
+                <span>Conteúdo exclusivo do acesso completo</span>
+              </div>
+            </div>
+          </header>
+          <PaywallContent
+            plans={{
+              lifetime: { priceBRL: plans.lifetime.priceBRL },
+              pass30: { priceBRL: plans.pass30.priceBRL },
+            }}
+            source="raw"
+          />
           <Link className="raw-page-link" href="/">
             Voltar para o Luckygames
           </Link>
