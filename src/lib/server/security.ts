@@ -26,7 +26,7 @@ type JsonBodyResult =
       error: string;
     };
 
-function getClientIp(request: Request): string {
+export function getClientIp(request: Request): string {
   const cloudflareIp = request.headers.get("cf-connecting-ip")?.trim();
   const realIp = request.headers.get("x-real-ip")?.trim();
   const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -146,23 +146,55 @@ export async function readJsonObjectBody(request: Request, maxBodyBytes = MAX_PO
   }
 }
 
-export function checkMutationRateLimit(request: Request, scope: string): SecurityCheck {
+export function checkScopedRateLimit(
+  identifier: string,
+  scope: string,
+  limit: number,
+  windowMs: number,
+): SecurityCheck {
   const now = Date.now();
-  const key = `${getClientIp(request)}:${scope}`;
+  const key = `${identifier}:${scope}`;
   const bucket = rateLimitBuckets.get(key);
 
   if (!bucket || bucket.resetAt <= now) {
-    rateLimitBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
     return { ok: true };
   }
 
   bucket.count += 1;
 
-  if (bucket.count > MUTATION_RATE_LIMIT) {
-    return { ok: false, status: 429, error: "Too many mutation requests" };
+  if (bucket.count > limit) {
+    return { ok: false, status: 429, error: "Too many requests" };
   }
 
   return { ok: true };
+}
+
+export function checkMutationRateLimit(request: Request, scope: string): SecurityCheck {
+  const check = checkScopedRateLimit(getClientIp(request), scope, MUTATION_RATE_LIMIT, RATE_LIMIT_WINDOW_MS);
+
+  if (!check.ok) {
+    return { ok: false, status: 429, error: "Too many mutation requests" };
+  }
+
+  return check;
+}
+
+const MAX_EMAIL_LENGTH = 254;
+const EMAIL_PATTERN = /^[a-z0-9!#$%&'*+/=?^_`{|}~.-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+export function parseEmail(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (!normalized || normalized.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
 }
 
 export function resetSecurityRateLimitsForTests(): void {

@@ -173,4 +173,51 @@ describe("server security helpers", () => {
     vi.advanceTimersByTime(60_000);
     expect(checkMutationRateLimit(requestWithHeaders(headers), "sync")).toEqual({ ok: true });
   });
+
+  it("applies scoped rate limits per identifier, scope, limit and window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const { checkScopedRateLimit, resetSecurityRateLimitsForTests } = await import("@/lib/server/security");
+    resetSecurityRateLimitsForTests();
+
+    expect(checkScopedRateLimit("user@example.com", "request-link", 2, 3_600_000)).toEqual({ ok: true });
+    expect(checkScopedRateLimit("user@example.com", "request-link", 2, 3_600_000)).toEqual({ ok: true });
+    expect(checkScopedRateLimit("user@example.com", "request-link", 2, 3_600_000)).toEqual({
+      ok: false,
+      status: 429,
+      error: "Too many requests",
+    });
+    expect(checkScopedRateLimit("other@example.com", "request-link", 2, 3_600_000)).toEqual({ ok: true });
+    expect(checkScopedRateLimit("user@example.com", "other-scope", 2, 3_600_000)).toEqual({ ok: true });
+
+    vi.advanceTimersByTime(3_600_000);
+    expect(checkScopedRateLimit("user@example.com", "request-link", 2, 3_600_000)).toEqual({ ok: true });
+  });
+
+  it("exposes the client IP resolution used by rate limiting", async () => {
+    const { getClientIp } = await import("@/lib/server/security");
+
+    expect(getClientIp(requestWithHeaders({ "cf-connecting-ip": "198.51.100.1", "x-real-ip": "198.51.100.2" }))).toBe(
+      "198.51.100.1",
+    );
+    expect(getClientIp(requestWithHeaders({ "x-real-ip": "198.51.100.2" }))).toBe("198.51.100.2");
+    expect(getClientIp(requestWithHeaders({ "x-forwarded-for": "198.51.100.3, 198.51.100.4" }))).toBe("198.51.100.3");
+    expect(getClientIp(requestWithHeaders())).toBe("unknown");
+  });
+
+  it("normalizes and validates e-mail addresses", async () => {
+    const { parseEmail } = await import("@/lib/server/security");
+
+    expect(parseEmail("  User@Example.COM ")).toBe("user@example.com");
+    expect(parseEmail("user+tag@sub.example.co")).toBe("user+tag@sub.example.co");
+    expect(parseEmail("")).toBeNull();
+    expect(parseEmail("   ")).toBeNull();
+    expect(parseEmail("no-at-sign.example.com")).toBeNull();
+    expect(parseEmail("user@")).toBeNull();
+    expect(parseEmail("user@-bad.com")).toBeNull();
+    expect(parseEmail("user@domain")).toBeNull();
+    expect(parseEmail(`${"a".repeat(250)}@example.com`)).toBeNull();
+    expect(parseEmail(123)).toBeNull();
+    expect(parseEmail(null)).toBeNull();
+  });
 });
