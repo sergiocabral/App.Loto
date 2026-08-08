@@ -107,6 +107,19 @@ const MAX_CONTEXT_DRAWS = 120;
 const MAX_MESSAGES = 12;
 const MAX_MESSAGE_CHARS = 900;
 const DEFAULT_MAX_REPLY_CHARS = 4_000;
+
+// Regra de aposta simples por loteria: quantidade de dezenas e faixa válida.
+// Serve para o modelo montar combinações sugeridas realmente jogáveis.
+const LOTTERY_BET_RULES: Record<string, string> = {
+  DiaDeSorte: "7 números de 01 a 31, mais um Mês da Sorte",
+  DuplaSena: "6 números de 01 a 50 (o concurso tem dois sorteios com essas mesmas dezenas apostadas)",
+  LotoFacil: "15 números de 01 a 25",
+  LotoMania: "50 números de 00 a 99",
+  MegaSena: "6 números de 01 a 60",
+  Quina: "5 números de 01 a 80",
+  TimeMania: "10 números de 01 a 80, mais um Time do Coração",
+};
+
 const DEFAULT_COMPLETION_TOKENS = 1_200;
 const DEFAULT_RETRY_COMPLETION_TOKENS = 2_400;
 const REASONING_COMPLETION_TOKENS = 8_192;
@@ -353,6 +366,9 @@ function buildSystemPrompt(context: ChatContext, chatConfig: Pick<OpenAIChatConf
     "Para análise de Benford, responda apenas se houver dados suficientes e foque em números ou faixas que se destacam, sem aula teórica.",
     "Formate respostas em Markdown simples com títulos curtos, listas e negrito quando ajudar a leitura.",
     `Loteria: ${context.lotteryName} (${context.lotterySlug}).`,
+    LOTTERY_BET_RULES[context.lotterySlug]
+      ? `Regra da aposta atual: uma aposta simples tem ${LOTTERY_BET_RULES[context.lotterySlug]}. Toda combinação sugerida deve ter exatamente essa quantidade de dezenas, dentro da faixa indicada, sem repetição, ordenadas de forma crescente.`
+      : "Respeite a quantidade de dezenas e a faixa de números da loteria atual em qualquer combinação sugerida.",
     `Contexto da conversa: ${contextLabel}.`,
     filterDescription,
     `Total de concursos no contexto da conversa: ${context.totalFilteredDraws}. Concursos individuais enviados nesta chamada: ${context.visibleDraws.length}.`,
