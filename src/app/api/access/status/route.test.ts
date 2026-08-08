@@ -40,6 +40,7 @@ describe("GET /api/access/status", () => {
     await expect(response.json()).resolves.toEqual({
       chat: { limit: 3, used: 0 },
       licensed: false,
+      plans: { lifetime: { priceBRL: 50 }, pass30: { priceBRL: 10 } },
     });
   });
 
@@ -55,6 +56,7 @@ describe("GET /api/access/status", () => {
     await expect(response.json()).resolves.toEqual({
       chat: { limit: 3, used: 2 },
       licensed: false,
+      plans: { lifetime: { priceBRL: 50 }, pass30: { priceBRL: 10 } },
     });
   });
 
@@ -75,6 +77,7 @@ describe("GET /api/access/status", () => {
       expiresAt: expiresAt.toISOString(),
       licensed: true,
       plan: "pass30",
+      plans: { lifetime: { priceBRL: 50 }, pass30: { priceBRL: 10 } },
     });
     expect(licensingMocks.getChatUsage).toHaveBeenCalledWith(7, "2026-08-08");
   });
@@ -96,6 +99,7 @@ describe("GET /api/access/status", () => {
       expiresAt: null,
       licensed: true,
       plan: "lifetime",
+      plans: { lifetime: { priceBRL: 50 }, pass30: { priceBRL: 10 } },
     });
   });
 
@@ -108,6 +112,7 @@ describe("GET /api/access/status", () => {
     await expect(response.json()).resolves.toEqual({
       chat: { limit: 3, used: 0 },
       licensed: false,
+      plans: { lifetime: { priceBRL: 50 }, pass30: { priceBRL: 10 } },
     });
   });
 });

@@ -1,4 +1,5 @@
 import { ACCESS_COOKIE_NAME, getRequestCookieValue } from "@/lib/server/accessCookie";
+import { getPassPlans } from "@/lib/server/billing";
 import { FREE_CHAT_DAILY_LIMIT, PREMIUM_CHAT_DAILY_LIMIT, readFreeChatQuota } from "@/lib/server/chatQuota";
 import {
   getChatUsage,
@@ -21,6 +22,15 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function buildPublicPlans() {
+  const plans = getPassPlans();
+
+  return {
+    lifetime: { priceBRL: plans.lifetime.priceBRL },
+    pass30: { priceBRL: plans.pass30.priceBRL },
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const cookieValue = getRequestCookieValue(request, ACCESS_COOKIE_NAME);
@@ -31,6 +41,7 @@ export async function GET(request: Request) {
       return jsonResponse({
         chat: { limit: FREE_CHAT_DAILY_LIMIT, used: freeQuota.count },
         licensed: false,
+        plans: buildPublicPlans(),
       });
     }
 
@@ -47,9 +58,14 @@ export async function GET(request: Request) {
       expiresAt: entitlement.expiresAt ? entitlement.expiresAt.toISOString() : null,
       licensed: true,
       plan: entitlement.plan,
+      plans: buildPublicPlans(),
     });
   } catch (error) {
     console.error(ACCESS_LOG_PREFIX, "status:error", { error: getSafeErrorDetails(error) });
-    return jsonResponse({ chat: { limit: FREE_CHAT_DAILY_LIMIT, used: 0 }, licensed: false });
+    return jsonResponse({
+      chat: { limit: FREE_CHAT_DAILY_LIMIT, used: 0 },
+      licensed: false,
+      plans: buildPublicPlans(),
+    });
   }
 }
