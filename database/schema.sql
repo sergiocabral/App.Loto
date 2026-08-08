@@ -96,3 +96,47 @@ WHERE raw_payload ? 'textLines'
 UPDATE draws
 SET raw_payload = raw_payload - 'source'
 WHERE raw_payload->>'source' = 'luckygames.tips';
+
+CREATE TABLE IF NOT EXISTS licenses (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE CHECK (email = lower(email)),
+  plan TEXT NOT NULL CHECK (plan IN ('pass30', 'lifetime')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'revoked')),
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS licenses_status_idx
+  ON licenses (status, expires_at);
+
+CREATE TABLE IF NOT EXISTS access_tokens (
+  token_hash TEXT PRIMARY KEY,
+  license_id BIGINT NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL DEFAULT 'login' CHECK (purpose IN ('activation', 'login')),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS access_tokens_license_idx
+  ON access_tokens (license_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS payment_events (
+  payment_id TEXT PRIMARY KEY,
+  license_id BIGINT REFERENCES licenses(id) ON DELETE SET NULL,
+  plan TEXT NOT NULL,
+  status TEXT NOT NULL,
+  amount NUMERIC(10,2),
+  raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS chat_usage (
+  license_id BIGINT NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+  usage_date DATE NOT NULL,
+  message_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (license_id, usage_date)
+);
