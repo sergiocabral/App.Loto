@@ -44,6 +44,8 @@ type ChatAnalysisSummary = {
 type ChatApiPayload = {
   reply?: string;
   error?: string;
+  code?: string;
+  scope?: string;
 };
 
 type ChatSuggestionsPayload = {
@@ -63,6 +65,7 @@ type ResultsChatPanelProps = {
   isLoading: boolean;
   lottery: LotteryDefinition;
   numberFilter: string[];
+  onRequirePaywall?: () => void;
 };
 
 type ResultsChatPanelSessionProps = ResultsChatPanelProps & {
@@ -376,6 +379,7 @@ export function ResultsChatPanel({
   isLoading,
   lottery,
   numberFilter,
+  onRequirePaywall,
 }: ResultsChatPanelProps) {
   const lotteryName = useMemo(() => formatLotteryName(lottery.slug), [lottery.slug]);
   const contextDraws = useMemo(() => draws.slice(0, CHAT_CONTEXT_DRAW_LIMIT).map(toContextDraw), [draws]);
@@ -408,6 +412,7 @@ export function ResultsChatPanel({
       lotteryName={lotteryName}
       numberFilter={numberFilter}
       onOpenChange={setIsOpen}
+      onRequirePaywall={onRequirePaywall}
     />
   );
 }
@@ -426,6 +431,7 @@ function ResultsChatPanelSession({
   lotteryName,
   numberFilter,
   onOpenChange,
+  onRequirePaywall,
 }: ResultsChatPanelSessionProps) {
   const contextDrawCount = analysisSummary?.drawCount ?? draws.length;
   const canChat = contextDrawCount > 0 && !isLoading;
@@ -442,6 +448,7 @@ function ResultsChatPanelSession({
   const [isSending, setIsSending] = useState(false);
   const [suggestions, setSuggestions] = useState<ChatSuggestion[]>(DEFAULT_CHAT_SUGGESTIONS);
   const [chatError, setChatError] = useState<ChatError | null>(null);
+  const [quotaScope, setQuotaScope] = useState<"free" | "premium" | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
 
   function getCurrentChatAnalyticsData() {
@@ -542,6 +549,19 @@ function ResultsChatPanelSession({
       });
       const payload = (await response.json()) as ChatApiPayload;
 
+      if (response.status === 429 && payload.code === "chat_quota") {
+        const scope = payload.scope === "premium" ? "premium" : "free";
+        const quotaMessage = payload.error || "Você atingiu o limite diário de mensagens do chat.";
+
+        setQuotaScope(scope);
+        setChatError({ contextKey: requestContextKey, message: quotaMessage });
+        trackEvent(ANALYTICS_EVENTS.chatLimitReached, {
+          ...getCurrentChatAnalyticsData(),
+          scope,
+        });
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(payload.error || `Falha HTTP ${response.status}`);
       }
@@ -638,6 +658,12 @@ function ResultsChatPanelSession({
         </div>
 
         {chatError?.contextKey === contextKey ? <p className="chat-error">{chatError.message}</p> : null}
+
+        {quotaScope === "free" && onRequirePaywall ? (
+          <button className="chat-quota-cta" onClick={onRequirePaywall} type="button">
+            Liberar acesso completo
+          </button>
+        ) : null}
 
         <form className="chat-input-form" onSubmit={sendMessage}>
           <textarea

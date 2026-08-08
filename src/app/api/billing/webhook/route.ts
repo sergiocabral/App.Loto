@@ -2,7 +2,6 @@ import {
   fetchPayment,
   getPassPlans,
   isPaymentAmountValid,
-  parsePassPlan,
   verifyWebhookSignature,
   type MercadoPagoPayment,
 } from "@/lib/server/billing";

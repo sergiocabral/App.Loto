@@ -151,4 +151,32 @@ describe("BacktestDrawer", () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^\d{2}( \d{2})+$/));
     expect(trackEvent).toHaveBeenCalledWith("Copiou sugestão simulador", expect.objectContaining({ sequence: 1 }));
   });
+
+  it("blocks free users after the daily simulation limit and gates the premium checkbox", () => {
+    const onRequirePaywall = vi.fn();
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      removeItem: (key: string) => store.delete(key),
+      setItem: (key: string, value: string) => store.set(key, value),
+    });
+    renderDrawer(vi.fn(), { licensed: false, onRequirePaywall });
+
+    const checkbox = screen.getByRole("checkbox", { name: /Retroceder sorteio alvo ao esgotar sugestões/ });
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    expect(onRequirePaywall).toHaveBeenCalledTimes(1);
+    expect(checkbox).not.toBeChecked();
+    expect(trackEvent).toHaveBeenCalledWith("Bloqueou recurso premium", expect.objectContaining({ feature: "autoAdvanceCutoff" }));
+
+    for (let run = 0; run < 3; run += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Iniciar" }));
+      fireEvent.click(screen.getByRole("button", { name: "Parar" }));
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar" }));
+    expect(screen.getByText(/Você usou as 3 simulações grátis de hoje/)).toBeInTheDocument();
+    expect(onRequirePaywall).toHaveBeenCalledTimes(2);
+    expect(trackEvent).toHaveBeenCalledWith("Atingiu limite simulador", expect.objectContaining({ runsToday: 3 }));
+  });
 });

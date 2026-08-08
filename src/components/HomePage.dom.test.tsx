@@ -56,6 +56,29 @@ function getLotteryFromUrl(input: RequestInfo | URL): string {
   return match[1];
 }
 
+const ACCESS_STATUS_ANONYMOUS = {
+  chat: { limit: 3, used: 0 },
+  licensed: false,
+  plans: { lifetime: { priceBRL: 50 }, pass30: { priceBRL: 10 } },
+};
+
+function isAccessStatusUrl(input: RequestInfo | URL): boolean {
+  return String(input).includes("/api/access/status");
+}
+
+function withAccessStatus(
+  handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  status: unknown = ACCESS_STATUS_ANONYMOUS,
+) {
+  return (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isAccessStatusUrl(input)) {
+      return Promise.resolve(jsonResponse(status));
+    }
+
+    return handler(input, init);
+  };
+}
+
 async function renderHomePage() {
   const { HomePage } = await import("./HomePage");
   return render(<HomePage />);
@@ -86,7 +109,7 @@ describe("HomePage", () => {
 
       return Promise.resolve(jsonResponse({ draws: drawsFor(lottery) }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withAccessStatus(fetchMock));
     const user = userEvent.setup();
 
     await renderHomePage();
@@ -114,7 +137,7 @@ describe("HomePage", () => {
       const draws = lottery === "LotoFacil" ? [] : drawsFor(lottery, 30);
       return Promise.resolve(jsonResponse({ draws }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withAccessStatus(fetchMock));
     const user = userEvent.setup();
 
     await renderHomePage();
@@ -144,7 +167,7 @@ describe("HomePage", () => {
       const lottery = getLotteryFromUrl(input);
       return Promise.resolve(lottery === "Quina" ? jsonResponse({ error: "serviço indisponível" }, 503) : jsonResponse({ draws: drawsFor(lottery) }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withAccessStatus(fetchMock));
     const user = userEvent.setup();
 
     await renderHomePage();
@@ -186,7 +209,7 @@ describe("HomePage", () => {
 
       return Promise.resolve(jsonResponse({ draws: drawsFor(getLotteryFromUrl(input), 3) }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withAccessStatus(fetchMock));
     const user = userEvent.setup();
 
     await renderHomePage();
@@ -229,7 +252,7 @@ describe("HomePage", () => {
 
   it("seleciona, copia e gera sugestões a partir da análise carregada", async () => {
     const copyText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(jsonResponse({ draws: drawsFor(getLotteryFromUrl(input), 3) }))));
+    vi.stubGlobal("fetch", withAccessStatus((input: RequestInfo | URL) => Promise.resolve(jsonResponse({ draws: drawsFor(getLotteryFromUrl(input), 3) }))));
     const user = userEvent.setup();
     vi.stubGlobal("navigator", { clipboard: { writeText: copyText } });
 
@@ -269,7 +292,7 @@ describe("HomePage", () => {
         ),
       );
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withAccessStatus(fetchMock));
     const user = userEvent.setup();
 
     await renderHomePage();

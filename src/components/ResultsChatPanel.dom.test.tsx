@@ -14,7 +14,10 @@ vi.mock("@/lib/analytics", async (importOriginal) => {
 
 const lottery = getLottery("MegaSena")!;
 
-function renderPanel(draws = [buildDraw({ drawNumber: 2 }), buildDraw({ drawNumber: 1 })]) {
+function renderPanel(
+  draws = [buildDraw({ drawNumber: 2 }), buildDraw({ drawNumber: 1 })],
+  props: { onRequirePaywall?: () => void } = {},
+) {
   return render(
     <ResultsChatPanel
       activeDrawNumber=""
@@ -24,6 +27,7 @@ function renderPanel(draws = [buildDraw({ drawNumber: 2 }), buildDraw({ drawNumb
       isLoading={false}
       lottery={lottery}
       numberFilter={[]}
+      onRequirePaywall={props.onRequirePaywall}
     />,
   );
 }
@@ -76,5 +80,28 @@ describe("ResultsChatPanel", () => {
     await user.click(screen.getByRole("button", { name: "Enviar" }));
     await screen.findByText("Disponível novamente");
     expect(trackEvent).toHaveBeenCalledWith("Falhou chat", expect.any(Object));
+  });
+
+  it("shows a paywall call to action when the free chat quota is exhausted", async () => {
+    const onRequirePaywall = vi.fn();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ suggestions: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "chat_quota", error: "Você usou as 3 mensagens grátis de hoje.", scope: "free" }, { status: 429 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderPanel(undefined, { onRequirePaywall });
+
+    await user.click(screen.getByText("Chat GPT", { selector: "summary strong" }));
+    fireEvent.change(screen.getByLabelText("Mensagem para o Chat GPT"), { target: { value: "Teste" } });
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+
+    await screen.findByText("Você usou as 3 mensagens grátis de hoje.");
+    const cta = screen.getByRole("button", { name: "Liberar acesso completo" });
+    await user.click(cta);
+
+    expect(onRequirePaywall).toHaveBeenCalledTimes(1);
+    expect(trackEvent).toHaveBeenCalledWith("Atingiu limite chat", expect.objectContaining({ scope: "free" }));
   });
 });

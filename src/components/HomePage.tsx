@@ -3,10 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { BacktestDrawer } from "@/components/BacktestDrawer";
+import { PaywallDialog, type PaywallSource } from "@/components/PaywallDialog";
 import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { DEFAULT_ACCESS_STATUS, fetchAccessStatus, type AccessStatus } from "@/lib/client/accessStatus";
 import { createSequentialLoadQueue } from "@/lib/client/sequentialLoadQueue";
 import {
   ANALYSIS_PERIOD_OPTIONS,
@@ -381,6 +383,19 @@ function buildRawPageUrl(lotterySlug: string, drawNumber: string): string {
   return `/raw/${lotterySlug}${query ? `?${query}` : ""}`;
 }
 
+function readAccessNoticeFromUrl(): "ativado" | "invalido" | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const acesso = new URL(window.location.href).searchParams.get("acesso");
+    return acesso === "ativado" || acesso === "invalido" ? acesso : null;
+  } catch {
+    return null;
+  }
+}
+
 function getHistoryStatusMessage(draws: Draw[]): string {
   return draws.length ? `${draws.length} concursos encontrados.` : "Nenhum resultado encontrado.";
 }
@@ -663,10 +678,43 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const [selectedNumbers, setSelectedNumbers] = useState<Set<string>>(new Set());
   const [isBacktestOpen, setIsBacktestOpen] = useState(false);
   const [backtestOpenRevision, setBacktestOpenRevision] = useState(0);
+  const [accessStatus, setAccessStatus] = useState<AccessStatus>(DEFAULT_ACCESS_STATUS);
+  const [paywallSource, setPaywallSource] = useState<PaywallSource | null>(null);
+  const [accessNotice, setAccessNotice] = useState<"ativado" | "invalido" | null>(readAccessNoticeFromUrl);
   const [error, setError] = useState<string | null>(null);
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
   const selectionClickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void fetchAccessStatus().then((status) => {
+      if (!cancelled) {
+        setAccessStatus(status);
+      }
+    });
+
+    try {
+      const url = new URL(window.location.href);
+      const acesso = url.searchParams.get("acesso");
+
+      if (acesso === "ativado" || acesso === "invalido") {
+        if (acesso === "ativado") {
+          trackEvent(ANALYTICS_EVENTS.accessActivated);
+        }
+
+        url.searchParams.delete("acesso");
+        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+      }
+    } catch {
+      // A limpeza da URL é melhor esforço; nunca deve travar o app.
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isSyncing = syncInfo.running;
   const drawCount = draws.length || (selectedDraw ? 1 : 0);
@@ -1439,6 +1487,18 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
 
   return (
     <>
+      {accessNotice ? (
+        <div className={`access-notice ${accessNotice === "ativado" ? "is-success" : "is-error"}`} role="status">
+          <span>
+            {accessNotice === "ativado"
+              ? "Acesso completo ativado neste dispositivo. Bom proveito!"
+              : "Este link de acesso é inválido ou expirou. Peça um novo em \"Já tenho acesso\"."}
+          </span>
+          <button aria-label="Fechar aviso" onClick={() => setAccessNotice(null)} type="button">
+            ×
+          </button>
+        </div>
+      ) : null}
       <div className="dashboard">
       <section className="hero-card">
         <div>
@@ -1533,6 +1593,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
               isLoading={status === "loading"}
               lottery={selectedLottery}
               numberFilter={numberFilter}
+              onRequirePaywall={() => setPaywallSource("chat")}
             />
           ) : null}
 
@@ -1569,7 +1630,21 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
               <a
                 className="legacy-link results-link"
                 href={legacyHref}
-                onClick={() => {
+                onClick={(event) => {
+                  if (!accessStatus.licensed) {
+                    event.preventDefault();
+
+                    if (selectedLottery) {
+                      trackEvent(ANALYTICS_EVENTS.premiumFeatureBlocked, {
+                        ...getLotteryAnalyticsData(selectedLottery),
+                        feature: "rawResults",
+                      });
+                    }
+
+                    setPaywallSource("raw");
+                    return;
+                  }
+
                   if (selectedLottery) {
                     trackEvent(ANALYTICS_EVENTS.openRawResults, {
                       ...getLotteryAnalyticsData(selectedLottery),
@@ -1581,6 +1656,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
                 target="_blank"
               >
                 Ver todos os sorteios
+                {!accessStatus.licensed ? <span className="paywall__badge">Premium</span> : null}
               </a>
             </div>
           </div>
@@ -1670,14 +1746,22 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     <BacktestDrawer
       draws={draws}
       key={backtestOpenRevision}
+      licensed={accessStatus.licensed}
       lottery={selectedLottery}
       onClose={closeBacktestDrawer}
+      onRequirePaywall={() => setPaywallSource("simulator")}
       open={isBacktestOpen}
       quickAnalysisPeriod={analysisPeriod}
       quickAnalysisScope={selectedLottery?.slug === "DuplaSena" ? duplaSenaAnalysisScope : "all"}
       quickAnalysisView={analysisView}
       quickCustomRange={effectiveCustomAnalysisRange}
       quickRecencyScoreMode={recentWeightDisplayMode}
+    />
+    <PaywallDialog
+      onClose={() => setPaywallSource(null)}
+      open={paywallSource !== null}
+      plans={accessStatus.plans}
+      source={paywallSource ?? "link"}
     />
     <Remark42Comments />
     <footer className="super-footer" aria-label="Apoie o Luckygames">

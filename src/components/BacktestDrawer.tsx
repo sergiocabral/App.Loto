@@ -22,7 +22,9 @@ type BacktestDrawerProps = {
   open: boolean;
   onClose: () => void;
   draws: Draw[];
+  licensed?: boolean;
   lottery: LotteryDefinition | null;
+  onRequirePaywall?: () => void;
   quickAnalysisPeriod: AnalysisPeriod;
   quickAnalysisScope: DuplaSenaAnalysisScope;
   quickAnalysisView: AnalysisView;
@@ -40,6 +42,47 @@ const SIMULATOR_PERIOD_OPTIONS: Array<{ value: SimulatorPeriodPreset; label: str
   { value: 100, label: "100" },
   { value: "custom", label: "Ajustar" },
 ];
+
+const SIMULATOR_FREE_RUNS_PER_DAY = 3;
+const SIMULATOR_RUNS_STORAGE_KEY = "lg-simulator-runs";
+
+const SAO_PAULO_DAY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+});
+
+function readFreeSimulatorRunsToday(): number {
+  try {
+    const stored = window.localStorage.getItem(SIMULATOR_RUNS_STORAGE_KEY);
+
+    if (!stored) {
+      return 0;
+    }
+
+    const parsed = JSON.parse(stored) as { count?: unknown; date?: unknown };
+
+    if (parsed.date !== SAO_PAULO_DAY_FORMATTER.format(new Date()) || typeof parsed.count !== "number") {
+      return 0;
+    }
+
+    return Number.isSafeInteger(parsed.count) && parsed.count > 0 ? parsed.count : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeFreeSimulatorRunsToday(count: number): void {
+  try {
+    window.localStorage.setItem(
+      SIMULATOR_RUNS_STORAGE_KEY,
+      JSON.stringify({ count, date: SAO_PAULO_DAY_FORMATTER.format(new Date()) }),
+    );
+  } catch {
+    // Sem localStorage (ex.: navegação privada), o limite diário simplesmente não persiste.
+  }
+}
 
 const SIMULATION_DUPLICATE_ATTEMPT_LIMIT = 80;
 const SIMULATION_NUMBER_LINE_SIZE = 7;
@@ -365,8 +408,10 @@ function getUniqueSuggestions(suggestions: SimulationSuggestion[]): SimulationSu
 
 export function BacktestDrawer({
   draws,
+  licensed = true,
   lottery,
   onClose,
+  onRequirePaywall,
   open,
   quickAnalysisPeriod,
   quickAnalysisScope,
@@ -384,7 +429,7 @@ export function BacktestDrawer({
   const [analysisView, setAnalysisView] = useState<AnalysisView>(quickAnalysisView);
   const [periodPreset, setPeriodPreset] = useState<SimulatorPeriodPreset>(() => getSimulatorPeriodPreset(quickAnalysisPeriod));
   const [customPeriodCount, setCustomPeriodCount] = useState(() => (quickAnalysisPeriod === "all" ? getCustomRangeCount(quickCustomRange) : 1));
-  const [autoAdvanceCutoff, setAutoAdvanceCutoff] = useState(true);
+  const [autoAdvanceCutoff, setAutoAdvanceCutoff] = useState(licensed);
   const [simulationSpeed, setSimulationSpeed] = useState<SimulationSpeed>(2);
   const [suggestionNumberCount, setSuggestionNumberCount] = useState(minimumSuggestionNumberCount);
   const [simulationCurrentCutoffDrawNumber, setSimulationCurrentCutoffDrawNumber] = useState<number | null>(null);
@@ -671,6 +716,17 @@ export function BacktestDrawer({
   }
 
   function handleAutoAdvanceCutoffChange(value: boolean) {
+    if (!licensed) {
+      trackEvent(
+        ANALYTICS_EVENTS.premiumFeatureBlocked,
+        getSimulatorAnalyticsData({
+          feature: "autoAdvanceCutoff",
+        }),
+      );
+      onRequirePaywall?.();
+      return;
+    }
+
     setAutoAdvanceCutoff(value);
     trackEvent(
       ANALYTICS_EVENTS.simulatorAutoAdvanceChanged,
@@ -723,6 +779,26 @@ export function BacktestDrawer({
     if (activeCutoffDrawNumber === null) {
       setSimulationStatusMessage("Selecione um sorteio alvo para iniciar.");
       return;
+    }
+
+    if (!licensed) {
+      const runsToday = readFreeSimulatorRunsToday();
+
+      if (runsToday >= SIMULATOR_FREE_RUNS_PER_DAY) {
+        setSimulationStatusMessage(
+          `Você usou as ${SIMULATOR_FREE_RUNS_PER_DAY} simulações grátis de hoje. Libere o acesso completo para continuar.`,
+        );
+        trackEvent(
+          ANALYTICS_EVENTS.simulatorLimitReached,
+          getSimulatorAnalyticsData({
+            runsToday,
+          }),
+        );
+        onRequirePaywall?.();
+        return;
+      }
+
+      writeFreeSimulatorRunsToday(runsToday + 1);
     }
 
     setSimulationResults([]);
@@ -842,6 +918,7 @@ export function BacktestDrawer({
                 autoAdvanceCutoff={autoAdvanceCutoff}
                 closedGroupKeys={closedSimulationGroups}
                 groups={simulationGroups}
+                licensed={licensed}
                 onAutoAdvanceCutoffChange={handleAutoAdvanceCutoffChange}
                 onGroupToggle={toggleSimulationGroup}
                 onReportCopy={handleReportCopy}
@@ -1078,6 +1155,7 @@ type BacktestSimulationPanelProps = {
   autoAdvanceCutoff: boolean;
   closedGroupKeys: Set<string>;
   groups: SimulationGroup[];
+  licensed: boolean;
   minimumSuggestionNumberCount: number;
   onAutoAdvanceCutoffChange: (checked: boolean) => void;
   onGroupToggle: (key: string) => void;
@@ -1101,6 +1179,7 @@ function BacktestSimulationPanel({
   autoAdvanceCutoff,
   closedGroupKeys,
   groups,
+  licensed,
   minimumSuggestionNumberCount,
   onAutoAdvanceCutoffChange,
   onGroupToggle,
@@ -1183,12 +1262,15 @@ function BacktestSimulationPanel({
 
       <label className="backtest-drawer__checkbox-field">
         <input
-          checked={autoAdvanceCutoff}
+          checked={licensed ? autoAdvanceCutoff : false}
           disabled={running}
           onChange={(event) => onAutoAdvanceCutoffChange(event.target.checked)}
           type="checkbox"
         />
-        <span>Retroceder sorteio alvo ao esgotar sugestões</span>
+        <span>
+          Retroceder sorteio alvo ao esgotar sugestões
+          {!licensed ? <span className="paywall__badge">Premium</span> : null}
+        </span>
       </label>
 
       <div className="backtest-drawer__suggestion-size-control">

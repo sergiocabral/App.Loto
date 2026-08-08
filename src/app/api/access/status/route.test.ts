@@ -9,7 +9,7 @@ const licensingMocks = vi.hoisted(() => ({
 vi.mock("@/lib/server/licensing", () => licensingMocks);
 
 import { GET } from "@/app/api/access/status/route";
-import { buildFreeChatQuotaSetCookieHeader, FREE_CHAT_QUOTA_COOKIE_NAME } from "@/lib/server/chatQuota";
+import { buildFreeChatQuotaSetCookieHeader } from "@/lib/server/chatQuota";
 
 const SECRET = "status-route-secret-with-32-chars!!!";
 
