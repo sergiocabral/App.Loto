@@ -74,3 +74,99 @@ export function getOpenAIChatConfig(): OpenAIChatConfig | null {
 export function isOpenAIChatConfigured(): boolean {
   return Boolean(getOpenAIChatConfig());
 }
+
+const MIN_ACCESS_COOKIE_SECRET_LENGTH = 32;
+
+export function getAccessCookieSecret(): string | undefined {
+  const secret = getServerEnvValue("ACCESS_COOKIE_SECRET")?.trim();
+
+  if (!secret || secret.length < MIN_ACCESS_COOKIE_SECRET_LENGTH) {
+    return undefined;
+  }
+
+  return secret;
+}
+
+type SmtpConfig = {
+  from: string;
+  host: string;
+  password: string;
+  port: number;
+  secure: boolean;
+  user: string;
+};
+
+export function getSmtpConfig(): SmtpConfig | null {
+  const host = getServerEnvValue("SMTP_HOST")?.trim();
+  const user = getServerEnvValue("SMTP_USER")?.trim();
+  const password = getServerEnvValue("SMTP_PASSWORD");
+  const from = getServerEnvValue("SMTP_FROM")?.trim();
+
+  if (!host || !user || !password || !from) {
+    return null;
+  }
+
+  return {
+    from,
+    host,
+    password,
+    port: getOptionalServerEnvInteger("SMTP_PORT", 1, 65_535) ?? 587,
+    secure: getServerEnvValue("SMTP_SECURE")?.trim().toLowerCase() === "true",
+    user,
+  };
+}
+
+type MercadoPagoConfig = {
+  accessToken: string;
+  apiBaseUrl: string;
+  webhookSecret?: string;
+};
+
+const DEFAULT_MERCADO_PAGO_API_BASE_URL = "https://api.mercadopago.com";
+
+export function getMercadoPagoConfig(): MercadoPagoConfig | null {
+  const accessToken = getServerEnvValue("MP_ACCESS_TOKEN")?.trim();
+
+  if (!accessToken) {
+    return null;
+  }
+
+  return {
+    accessToken,
+    apiBaseUrl: getServerEnvValue("MP_API_BASE_URL")?.trim() || DEFAULT_MERCADO_PAGO_API_BASE_URL,
+    webhookSecret: getServerEnvValue("MP_WEBHOOK_SECRET")?.trim() || undefined,
+  };
+}
+
+type PassPricing = {
+  lifetimePriceBRL: number;
+  pass30PriceBRL: number;
+};
+
+const DEFAULT_PASS30_PRICE_BRL = 10;
+const DEFAULT_LIFETIME_PRICE_BRL = 50;
+const MIN_PASS_PRICE_BRL = 1;
+const MAX_PASS_PRICE_BRL = 10_000;
+
+function getOptionalServerEnvPrice(name: string): number | undefined {
+  const rawValue = getServerEnvValue(name)?.trim().replace(",", ".");
+
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const value = Number(rawValue);
+
+  if (!Number.isFinite(value) || value < MIN_PASS_PRICE_BRL || value > MAX_PASS_PRICE_BRL) {
+    return undefined;
+  }
+
+  return Math.round(value * 100) / 100;
+}
+
+export function getPassPricing(): PassPricing {
+  return {
+    lifetimePriceBRL: getOptionalServerEnvPrice("PASS_PRICE_LIFETIME_BRL") ?? DEFAULT_LIFETIME_PRICE_BRL,
+    pass30PriceBRL: getOptionalServerEnvPrice("PASS_PRICE_30D_BRL") ?? DEFAULT_PASS30_PRICE_BRL,
+  };
+}
