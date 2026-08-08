@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLottery } from "@/data/lotteries";
+import { ACCESS_COOKIE_NAME, getRequestCookieValue } from "@/lib/server/accessCookie";
+import { getEntitlementFromCookieValue } from "@/lib/server/licensing";
 import {
   collectMissingDraws,
   getStoredDraw,
@@ -73,6 +75,19 @@ async function handleGet(request: Request, lotteryParam: string, startedAt: numb
   }
 
   const wantsLegacyFormat = url.searchParams.get("format") === "legacy";
+
+  if (wantsLegacyFormat) {
+    const entitlement = await getEntitlementFromCookieValue(getRequestCookieValue(request, ACCESS_COOKIE_NAME));
+
+    if (!entitlement.licensed) {
+      logApi("GET:legacy-format-blocked", { lottery: lottery.slug, elapsedMs: elapsedMs(startedAt) });
+      return NextResponse.json(
+        { code: "premium_required", error: "Recurso exclusivo para quem tem passe ativo." },
+        { status: 403 },
+      );
+    }
+  }
+
   const drawNumberParam = url.searchParams.get("draw");
 
   if (url.searchParams.has("draw")) {

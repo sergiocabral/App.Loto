@@ -8,7 +8,18 @@ const serviceMocks = vi.hoisted(() => ({
   syncMissingDrawsFromCaixa: vi.fn(),
 }));
 
+const licensingMocks = vi.hoisted(() => ({
+  getEntitlementFromCookieValue: vi.fn(async () => ({
+    email: "user@example.com",
+    expiresAt: null,
+    licensed: true as const,
+    licenseId: 7,
+    plan: "lifetime" as const,
+  })),
+}));
+
 vi.mock("@/lib/server/service", () => serviceMocks);
+vi.mock("@/lib/server/licensing", () => licensingMocks);
 
 function draw(drawNumber: number, overrides: Partial<Draw> = {}): Draw {
   return {
@@ -89,6 +100,36 @@ describe("lottery route handlers", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/plain");
     expect(await response.text()).toBe("");
+  });
+
+  it("blocks legacy text exports without an active license", async () => {
+    licensingMocks.getEntitlementFromCookieValue.mockResolvedValueOnce({ licensed: false as const });
+    const route = await import("@/app/api/lotteries/[lottery]/route");
+
+    const blockedHistory = await route.GET(new Request("http://localhost/api/lotteries/MegaSena?format=legacy"), {
+      params: Promise.resolve({ lottery: "MegaSena" }),
+    });
+
+    expect(blockedHistory.status).toBe(403);
+    expect(await readJson(blockedHistory)).toEqual({
+      code: "premium_required",
+      error: "Recurso exclusivo para quem tem passe ativo.",
+    });
+    expect(serviceMocks.loadLotteryHistory).not.toHaveBeenCalled();
+
+    licensingMocks.getEntitlementFromCookieValue.mockResolvedValueOnce({ licensed: false as const });
+    const blockedDraw = await route.GET(
+      new Request("http://localhost/api/lotteries/MegaSena?format=legacy&draw=3000"),
+      { params: Promise.resolve({ lottery: "MegaSena" }) },
+    );
+
+    expect(blockedDraw.status).toBe(403);
+    expect(serviceMocks.getStoredDraw).not.toHaveBeenCalled();
+
+    const jsonStillPublic = await route.GET(new Request("http://localhost/api/lotteries/MegaSena?draw=3000"), {
+      params: Promise.resolve({ lottery: "MegaSena" }),
+    });
+    expect(jsonStillPublic.status).toBe(200);
   });
 
   it("rejects invalid GET draw values", async () => {
