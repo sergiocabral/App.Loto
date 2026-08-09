@@ -396,6 +396,55 @@ function readAccessNoticeFromUrl(): "ativado" | "invalido" | null {
   }
 }
 
+function formatAccessExpiry(expiresAt?: string | null): string | null {
+  if (!expiresAt) {
+    return null;
+  }
+
+  const date = new Date(expiresAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+}
+
+function AccessStatusBadge({ status }: { status: AccessStatus }) {
+  if (!status.licensed) {
+    return null;
+  }
+
+  const isLifetime = status.plan === "lifetime";
+  const expiry = formatAccessExpiry(status.expiresAt);
+  const title = isLifetime ? "Acesso Vitalício" : "Acesso Premium";
+  const detail = isLifetime ? "Membro para sempre" : expiry ? `Válido até ${expiry}` : "Acesso ativo";
+
+  return (
+    <div
+      className={`access-badge ${isLifetime ? "is-lifetime" : "is-pass30"}`}
+      role="status"
+      aria-label={`${title}. ${detail}.`}
+    >
+      <span className="access-badge__icon" aria-hidden="true">
+        {isLifetime ? (
+          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+            <path d="M3 8l4.5 3.5L12 4l4.5 7.5L21 8l-1.8 10.5H4.8L3 8zm2.3 12.5h13.4v1.5H5.3v-1.5z" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+            <path d="M12 2l2.9 6.3 6.9.7-5.1 4.6 1.4 6.8L12 17.9 5.9 20.4l1.4-6.8L2.2 9l6.9-.7L12 2z" />
+          </svg>
+        )}
+      </span>
+      <span className="access-badge__text">
+        <strong>{title}</strong>
+        <span>{detail}</span>
+      </span>
+    </div>
+  );
+}
+
 function getHistoryStatusMessage(draws: Draw[]): string {
   return draws.length ? `${draws.length} concursos encontrados.` : "Nenhum resultado encontrado.";
 }
@@ -1501,6 +1550,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       ) : null}
       <div className="dashboard">
       <section className="hero-card">
+        <AccessStatusBadge status={accessStatus} />
         <div>
           <Link aria-label="Voltar para o início sem loteria selecionada" className="brand-home" href="/" onClick={returnToHome}>
             <Image alt="Luckygames" className="brand-icon" height={72} priority src="/gohorse.png" width={72} />
