@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { DEFAULT_ACCESS_STATUS, formatPriceBRL, type AccessPlanPrices } from "@/lib/client/accessStatus";
 
-export type PaywallSource = "chat" | "link" | "raw" | "simulator";
+export type PaywallSource = "chat" | "cta" | "link" | "raw" | "simulator";
 
 type PaywallPlan = "lifetime" | "pass30";
 
@@ -20,6 +20,7 @@ type PaywallDialogProps = PaywallContentProps & {
 
 const SOURCE_MESSAGES: Record<PaywallSource, string> = {
   chat: "Você usou as mensagens grátis do chat de hoje.",
+  cta: "Desbloqueie o acesso completo: simulador ilimitado, chat turbinado e a lista completa de sorteios.",
   link: "Este recurso faz parte do acesso completo.",
   raw: "A lista completa de sorteios com download faz parte do acesso completo.",
   simulator: "Você usou as simulações grátis de hoje.",

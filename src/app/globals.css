@@ -3813,6 +3813,34 @@ button.results-link:disabled {
   line-height: 1.15;
 }
 
+/* Botão "sair deste dispositivo" dentro do selo de status. */
+.access-badge__logout {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 26px;
+  justify-content: center;
+  margin-left: 2px;
+  opacity: 0.8;
+  transition: opacity 150ms ease, background 150ms ease;
+  width: 26px;
+}
+
+.access-badge__logout:hover {
+  background: rgba(255, 255, 255, 0.22);
+  opacity: 1;
+}
+
+.access-badge__logout:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+}
+
 .access-badge__text strong {
   font-size: 13px;
   font-weight: 800;
@@ -3823,6 +3851,48 @@ button.results-link:disabled {
   font-size: 11px;
   font-weight: 600;
   opacity: 0.82;
+}
+
+/* CTA para quem ainda não assinou: botão vibrante que abre o paywall. */
+button.access-badge.is-cta {
+  animation: access-cta-pulse 2.8s ease-in-out infinite;
+  background: linear-gradient(135deg, #7c3aed, #db2777 55%, #f59e0b);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 8px 22px rgba(124, 58, 237, 0.4);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+button.access-badge.is-cta:hover {
+  box-shadow: 0 12px 30px rgba(219, 39, 119, 0.5);
+  transform: translateY(-1px) scale(1.02);
+}
+
+button.access-badge.is-cta:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+.access-badge.is-cta .access-badge__icon {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+@keyframes access-cta-pulse {
+  0%, 100% {
+    box-shadow: 0 8px 22px rgba(124, 58, 237, 0.4);
+  }
+  50% {
+    box-shadow: 0 8px 30px rgba(219, 39, 119, 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.access-badge.is-cta {
+    animation: none;
+  }
 }
 
 /* Passe de 30 dias: azul/ciano, discreto. */

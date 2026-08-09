@@ -5,10 +5,10 @@ import Link from "next/link";
 import { BacktestDrawer } from "@/components/BacktestDrawer";
 import { PaywallDialog, type PaywallSource } from "@/components/PaywallDialog";
 import { ResultsChatPanel } from "@/components/ResultsChatPanel";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { DEFAULT_ACCESS_STATUS, fetchAccessStatus, type AccessStatus } from "@/lib/client/accessStatus";
+import { DEFAULT_ACCESS_STATUS, fetchAccessStatus, formatPriceBRL, type AccessStatus } from "@/lib/client/accessStatus";
 import { createSequentialLoadQueue } from "@/lib/client/sequentialLoadQueue";
 import {
   ANALYSIS_PERIOD_OPTIONS,
@@ -410,9 +410,36 @@ function formatAccessExpiry(expiresAt?: string | null): string | null {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
-function AccessStatusBadge({ status }: { status: AccessStatus }) {
+function AccessStatusBadge({
+  status,
+  onUpgrade,
+  onLogout,
+}: {
+  status: AccessStatus;
+  onUpgrade: () => void;
+  onLogout: () => void;
+}) {
   if (!status.licensed) {
-    return null;
+    const cheapestPrice = Math.min(status.plans.pass30.priceBRL, status.plans.lifetime.priceBRL);
+
+    return (
+      <button
+        className="access-badge is-cta"
+        type="button"
+        onClick={onUpgrade}
+        aria-label="Assinar o acesso completo Premium"
+      >
+        <span className="access-badge__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+            <path d="M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" />
+          </svg>
+        </span>
+        <span className="access-badge__text">
+          <strong>Seja Premium</strong>
+          <span>Desbloqueie tudo · a partir de {formatPriceBRL(cheapestPrice)}</span>
+        </span>
+      </button>
+    );
   }
 
   const isLifetime = status.plan === "lifetime";
@@ -441,6 +468,19 @@ function AccessStatusBadge({ status }: { status: AccessStatus }) {
         <strong>{title}</strong>
         <span>{detail}</span>
       </span>
+      <button
+        className="access-badge__logout"
+        type="button"
+        onClick={onLogout}
+        aria-label="Sair do acesso neste dispositivo"
+        title="Sair deste dispositivo"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="15" height="15">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -763,6 +803,21 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const handleAccessLogout = useCallback(async () => {
+    if (typeof window !== "undefined" && !window.confirm("Sair do acesso completo neste dispositivo?")) {
+      return;
+    }
+
+    try {
+      await fetch("/api/access/logout", { method: "POST", cache: "no-store" });
+    } catch {
+      // Mesmo se a chamada falhar, refletimos a saída na interface; o cookie expira sozinho.
+    }
+
+    setAccessStatus(DEFAULT_ACCESS_STATUS);
+    trackEvent(ANALYTICS_EVENTS.accessLoggedOut);
   }, []);
 
   const isSyncing = syncInfo.running;
@@ -1550,7 +1605,11 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       ) : null}
       <div className="dashboard">
       <section className="hero-card">
-        <AccessStatusBadge status={accessStatus} />
+        <AccessStatusBadge
+          status={accessStatus}
+          onUpgrade={() => setPaywallSource("cta")}
+          onLogout={handleAccessLogout}
+        />
         <div>
           <Link aria-label="Voltar para o início sem loteria selecionada" className="brand-home" href="/" onClick={returnToHome}>
             <Image alt="Luckygames" className="brand-icon" height={72} priority src="/gohorse.png" width={72} />

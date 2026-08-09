@@ -1,5 +1,6 @@
 export const ANALYTICS_EVENTS = {
   accessActivated: "Ativou acesso",
+  accessLoggedOut: "Saiu do acesso",
   chatAnswerReceived: "Recebeu resposta chat",
   chatClosed: "Fechou chat",
   chatFailed: "Falhou chat",
