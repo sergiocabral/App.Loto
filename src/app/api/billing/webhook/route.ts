@@ -100,6 +100,15 @@ export async function POST(request: Request) {
   // validar um id e o fetchPayment usar outro (evita agir sobre pagamento não autenticado).
   const dataId = queryDataId ?? payload.dataId;
 
+  // Só notificações de pagamento nos interessam. As demais (merchant_order etc.) são
+  // reconhecidas com 200 antes de validar assinatura, para o Mercado Pago parar de
+  // reenviá-las (o manifest da assinatura só cobre o data.id de payment, então elas
+  // sempre falhariam a validação e gerariam retries infinitos).
+  if (payload.type !== "payment") {
+    logWebhook("webhook:ignored-type", { type: payload.type });
+    return textResponse("OK ignored");
+  }
+
   const signatureValid = verifyWebhookSignature({
     dataId,
     requestId: request.headers.get("x-request-id"),
@@ -109,11 +118,6 @@ export async function POST(request: Request) {
   if (!signatureValid) {
     logWebhook("webhook:invalid-signature", { hasSignature: Boolean(request.headers.get("x-signature")) });
     return textResponse("ERROR invalid signature", 401);
-  }
-
-  if (payload.type !== "payment") {
-    logWebhook("webhook:ignored-type", { type: payload.type });
-    return textResponse("OK ignored");
   }
 
   if (!dataId) {

@@ -138,6 +138,16 @@ describe("POST /api/billing/webhook", () => {
     expect(licensingMocks.applyApprovedPayment).not.toHaveBeenCalled();
   });
 
+  it("acknowledges non-payment topics with 200 even when the signature is invalid", async () => {
+    billingMocks.verifyWebhookSignature.mockReturnValue(false);
+
+    const response = await POST(webhookRequest({ body: { type: "merchant_order", data: { id: "mo-1" } } }));
+
+    expect(response.status).toBe(200);
+    expect(billingMocks.verifyWebhookSignature).not.toHaveBeenCalled();
+    expect(billingMocks.fetchPayment).not.toHaveBeenCalled();
+  });
+
   it("infers the plan from the amount when metadata is missing", async () => {
     billingMocks.fetchPayment.mockResolvedValueOnce({
       ...APPROVED_PAYMENT,
