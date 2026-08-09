@@ -1,0 +1,20 @@
+node_modules
+.next
+.git
+.github
+coverage
+.wrangler
+*.log
+deployment-*.txt
+
+# Segredos: nunca copiar envs para a imagem (o Coolify injeta em runtime).
+.env
+.env.*
+!.env.example
+
+# Não precisa no runtime/build da imagem.
+**/*.test.ts
+**/*.test.tsx
+tsconfig.tsbuildinfo
+README.md
+AGENTS.md

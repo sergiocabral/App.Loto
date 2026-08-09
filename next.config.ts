@@ -21,6 +21,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Gera .next/standalone (server.js + apenas as dependências realmente usadas),
+  // usado pela imagem Docker de produção para um container muito menor.
+  output: "standalone",
   allowedDevOrigins: [
     "luckygames.tips",
     "www.luckygames.tips",
@@ -39,6 +42,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-initOpenNextCloudflareForDev();
+// Só inicializa o adapter Cloudflare em desenvolvimento (next dev). No build de
+// produção (Node/standalone) isso tentaria spawnar o workerd, que não roda em Alpine (musl).
+if (process.env.NODE_ENV === "development") {
+  initOpenNextCloudflareForDev();
+}
 
 export default nextConfig;
