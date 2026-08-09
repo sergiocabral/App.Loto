@@ -24,6 +24,12 @@ const nextConfig: NextConfig = {
   // Gera .next/standalone (server.js + apenas as dependências realmente usadas),
   // usado pela imagem Docker de produção para um container muito menor.
   output: "standalone",
+  // O type-check e o lint rodam localmente (npm run build) e na suíte de testes.
+  // Pulá-los no build de produção evita o OOM na etapa "Running TypeScript" do
+  // servidor compartilhado do Coolify (dezenas de containers, memória apertada),
+  // onde o processo era morto logo após compilar.
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
   allowedDevOrigins: [
     "luckygames.tips",
     "www.luckygames.tips",
