@@ -8,6 +8,8 @@ const originalEnvironment = { ...process.env };
 
 async function loadEnvironment() {
   vi.resetModules();
+  // Impede o side effect de dotenv em env.ts de recarregar o .env real da máquina durante o teste.
+  process.env.NEXT_RUNTIME_PROVIDER = "cloudflare";
   return import("@/lib/server/env");
 }
 

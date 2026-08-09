@@ -23,6 +23,7 @@ import {
   getRecentAppearanceWeight,
   getSuggestionDescription,
   getSuggestionSize,
+  isWinningBet,
   parseNumberFilter,
   shuffleItems,
   sortNumbersForDisplay,
@@ -196,6 +197,52 @@ describe("analysis helpers", () => {
 
     expect(firstScope?.most.at(0)).toMatchObject({ number: "01", hits: 2 });
     expect(secondScope?.most.at(0)).toMatchObject({ number: "07", hits: 2 });
+  });
+
+  it("declares a winning bet when it covers one full draw of the contest", () => {
+    const duplaDraw = draw(
+      10,
+      ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"],
+      "DuplaSena",
+      [
+        ["01", "02", "03", "04", "05", "06"],
+        ["07", "08", "09", "10", "11", "12"],
+      ],
+    );
+    const megaDraw = draw(5, ["01", "02", "03", "04", "05", "06"]);
+
+    expect(isWinningBet(duplaDraw, "all", ["01", "02", "03", "04", "05", "06"])).toBe(true);
+    expect(isWinningBet(duplaDraw, "all", ["07", "08", "09", "10", "11", "12"])).toBe(true);
+    expect(isWinningBet(duplaDraw, "all", ["01", "02", "03", "04", "05", "07"])).toBe(false);
+    expect(isWinningBet(duplaDraw, "second", ["07", "08", "09", "10", "11", "12"])).toBe(true);
+    expect(isWinningBet(duplaDraw, "second", ["01", "02", "03", "04", "05", "06"])).toBe(false);
+    expect(isWinningBet(megaDraw, "all", ["01", "02", "03", "04", "05", "06", "07"])).toBe(true);
+    expect(isWinningBet(megaDraw, "all", ["01", "02", "03", "04", "05", "07"])).toBe(false);
+    expect(isWinningBet(draw(1, []), "all", ["01"])).toBe(false);
+  });
+
+  it("counts DuplaSena numbers twice when they appear in both draws of the same contest", () => {
+    const duplaDraws = [
+      draw(
+        1,
+        ["05", "01", "02", "03", "04", "06", "05", "07", "08", "09", "10", "11"],
+        "DuplaSena",
+        [
+          ["05", "01", "02", "03", "04", "06"],
+          ["05", "07", "08", "09", "10", "11"],
+        ],
+      ),
+    ];
+
+    const data = buildAnalysisData(duplaDraws, duplaSena, "all", "all");
+    const repeated = data?.stats.find((item) => item.number === "05");
+    const single = data?.stats.find((item) => item.number === "01");
+
+    expect(repeated).toMatchObject({ hits: 2, overdue: 0 });
+    expect(repeated?.recencyScore).toBeCloseTo(2);
+    expect(single).toMatchObject({ hits: 1 });
+    expect(single?.recencyScore).toBeCloseTo(1);
+    expect(data?.maxHits).toBe(2);
   });
 
   it("groups trends by equal values in requested order", () => {

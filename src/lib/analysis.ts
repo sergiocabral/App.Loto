@@ -198,6 +198,14 @@ export function getNumbersForAnalysis(draw: Draw, scope: DuplaSenaAnalysisScope)
   return groups.flat();
 }
 
+// Na Dupla Sena, o prêmio principal sai ao cobrir todas as dezenas de UM dos sorteios do concurso.
+export function isWinningBet(draw: Draw, scope: DuplaSenaAnalysisScope, betNumbers: string[]): boolean {
+  const bet = new Set(betNumbers);
+  const groups = scope === "all" ? getDisplayGroups(draw) : [getNumbersForAnalysis(draw, scope)];
+
+  return groups.some((group) => group.length > 0 && group.every((number) => bet.has(number)));
+}
+
 export function buildNumberRange(lottery: LotteryDefinition): string[] {
   if (lottery.slug === "LotoMania") {
     return Array.from({ length: 100 }, (_, index) => String(index).padStart(2, "0"));
@@ -394,10 +402,11 @@ export function buildAnalysisData(
   const overdueByNumber = new Map<string, number>();
 
   selectedDraws.forEach((draw, drawIndex) => {
-    const uniqueNumbers = new Set(getNumbersForAnalysis(draw, scope));
+    // Na Dupla Sena com escopo "Todos", um número presente nos dois sorteios do concurso conta duas vezes.
+    const drawNumbers = getNumbersForAnalysis(draw, scope);
     const recencyWeight = getRecentAppearanceWeight(drawIndex);
 
-    for (const number of uniqueNumbers) {
+    for (const number of drawNumbers) {
       hits.set(number, (hits.get(number) ?? 0) + 1);
       recencyScores.set(number, (recencyScores.get(number) ?? 0) + recencyWeight);
 

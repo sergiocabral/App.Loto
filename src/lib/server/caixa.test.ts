@@ -104,6 +104,61 @@ describe("Caixa API integration", () => {
     ]);
   });
 
+  it("rejects a DuplaSena payload that lost the second draw instead of storing half a contest", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          numero: 123,
+          dataApuracao: "01/01/2026",
+          listaDezenas: ["01", "02", "03", "04", "05", "06"],
+        }),
+      ),
+    );
+
+    const { fetchDrawFromCaixa } = await import("@/lib/server/caixa");
+
+    await expect(fetchDrawFromCaixa("DuplaSena", 123)).resolves.toBeNull();
+  });
+
+  it("splits DuplaSena numbers when listaDezenas carries both draws combined", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          numero: 123,
+          dataApuracao: "01/01/2026",
+          dezenasSorteadasOrdemSorteio: ["12", "01", "11", "02", "10", "03", "09", "04", "08", "05", "07", "06"],
+        }),
+      ),
+    );
+
+    const { fetchDrawFromCaixa } = await import("@/lib/server/caixa");
+    const draw = await fetchDrawFromCaixa("DuplaSena", 123);
+
+    expect(draw?.numberGroups).toEqual([
+      ["01", "02", "03", "04", "05", "06"],
+      ["07", "08", "09", "10", "11", "12"],
+    ]);
+  });
+
+  it("rejects a draw whose number count does not match the lottery definition", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          numero: 3000,
+          dataApuracao: "26/04/2026",
+          dezenasSorteadasOrdemSorteio: ["18", "02", "26", "08", "28"],
+        }),
+      ),
+    );
+
+    const { fetchDrawFromCaixa } = await import("@/lib/server/caixa");
+
+    await expect(fetchDrawFromCaixa("MegaSena", 3000)).resolves.toBeNull();
+  });
+
   it("returns null for 404 without retrying", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);

@@ -8,6 +8,7 @@ import {
   buildLuckySuggestion,
   getNumbersForAnalysis,
   getSuggestionSize,
+  isWinningBet,
   type AnalysisData,
   type AnalysisDrawRange,
   type AnalysisPeriod,
@@ -111,6 +112,7 @@ type SimulationSuggestion = {
   targetDate: string;
   targetDrawNumber: number;
   totalNumbers: number;
+  winner: boolean;
 };
 
 type SimulationGroup = {
@@ -196,7 +198,7 @@ function getSuggestionKey(numbers: string[]): string {
 }
 
 function isWinningSimulationSuggestion(suggestion: SimulationSuggestion): boolean {
-  return suggestion.drawnNumbersCount > 0 && suggestion.hitCount >= suggestion.drawnNumbersCount;
+  return suggestion.winner;
 }
 
 function getSimulationGroups(suggestions: SimulationSuggestion[]): SimulationGroup[] {
@@ -615,6 +617,7 @@ export function BacktestDrawer({
           targetDate: targetDraw.date,
           targetDrawNumber: targetDraw.drawNumber,
           totalNumbers: numbers.length,
+          winner: isWinningBet(targetDraw, quickAnalysisScope, numbers),
         };
 
         setSimulationResults((current) => [...current, suggestion]);

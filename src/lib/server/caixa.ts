@@ -44,32 +44,50 @@ function buildUrl(lottery: LotteryDefinition, drawNumber: number): string {
   return `${CAIXA_BASE_URL}/${lottery.apiSlug}/${drawNumber}`;
 }
 
+function getExpectedGroupSizes(lottery: LotteryDefinition): number[] {
+  return lottery.groups?.length ? lottery.groups : [lottery.numbersPerDraw];
+}
+
+function matchesExpectedGroupSizes(groups: string[][], expectedSizes: number[]): boolean {
+  return groups.length === expectedSizes.length && groups.every((group, index) => group.length === expectedSizes[index]);
+}
+
+function splitNumbersBySizes(numbers: string[], sizes: number[]): string[][] {
+  let offset = 0;
+  return sizes.map((size) => {
+    const group = numbers.slice(offset, offset + size);
+    offset += size;
+    return group;
+  });
+}
+
 function extractNumberGroups(lottery: LotteryDefinition, raw: CaixaLotteryResponse): string[][] {
+  const expectedSizes = getExpectedGroupSizes(lottery);
+  const candidates: string[][][] = [];
+
   if (lottery.groups?.length) {
-    const combinedNumbers = normalizeNumbers(raw.dezenasSorteadasOrdemSorteio);
     const firstGroup = normalizeNumbers(raw.listaDezenas ?? raw.dezenasSorteadasOrdemSorteio);
     const secondGroup = normalizeNumbers(raw.listaDezenasSegundoSorteio);
-    const explicitGroups = [firstGroup, secondGroup].filter((group) => group.length > 0);
-
-    if (explicitGroups.length) {
-      return explicitGroups;
-    }
-
-    if (!combinedNumbers.length) {
-      return [];
-    }
-
-    let offset = 0;
-    return lottery.groups
-      .map((groupSize) => {
-        const group = combinedNumbers.slice(offset, offset + groupSize);
-        offset += groupSize;
-        return group;
-      })
-      .filter((group) => group.length > 0);
+    candidates.push([firstGroup, secondGroup].filter((group) => group.length > 0));
+    candidates.push(splitNumbersBySizes(normalizeNumbers(raw.dezenasSorteadasOrdemSorteio), lottery.groups));
+  } else {
+    candidates.push([normalizeNumbers(raw.dezenasSorteadasOrdemSorteio ?? raw.listaDezenas)]);
   }
 
-  return [normalizeNumbers(raw.dezenasSorteadasOrdemSorteio ?? raw.listaDezenas)].filter((group) => group.length > 0);
+  const validGroups = candidates.find((candidate) => matchesExpectedGroupSizes(candidate, expectedSizes));
+
+  if (validGroups) {
+    return validGroups;
+  }
+
+  warnCaixa("extractNumberGroups:unexpected-count", {
+    lottery: lottery.slug,
+    rawDrawNumber: raw.numero ?? null,
+    expectedSizes,
+    candidateSizes: candidates.map((candidate) => candidate.map((group) => group.length)),
+  });
+
+  return [];
 }
 
 async function fetchWithTimeout(url: string): Promise<Response> {

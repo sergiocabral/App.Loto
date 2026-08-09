@@ -95,10 +95,13 @@ export async function POST(request: Request) {
   const url = new URL(request.url);
   const queryDataId = url.searchParams.get("data.id") ?? url.searchParams.get("id");
   const payload = await readWebhookPayload(request);
-  const dataId = payload.dataId ?? queryDataId;
+  // O Mercado Pago assina o data.id da query string, e é sobre ele que devemos agir.
+  // Só caímos para o id do corpo quando a query não traz nenhum — nunca deixamos a assinatura
+  // validar um id e o fetchPayment usar outro (evita agir sobre pagamento não autenticado).
+  const dataId = queryDataId ?? payload.dataId;
 
   const signatureValid = verifyWebhookSignature({
-    dataId: queryDataId ?? dataId,
+    dataId,
     requestId: request.headers.get("x-request-id"),
     signatureHeader: request.headers.get("x-signature"),
   });
