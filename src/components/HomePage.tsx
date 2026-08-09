@@ -779,13 +779,25 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     let cancelled = false;
 
     void fetchAccessStatus().then((status) => {
-      if (!cancelled) {
-        setAccessStatus(status);
+      if (cancelled) {
+        return;
+      }
+
+      setAccessStatus(status);
+
+      // Impressão do canto do hero-card, medida com o status já confirmado pelo servidor:
+      // serve de denominador para a conversão (viu CTA -> clicou -> checkout).
+      if (status.licensed) {
+        trackEvent(ANALYTICS_EVENTS.accessStatusShown, { plan: status.plan });
+      } else {
+        trackEvent(ANALYTICS_EVENTS.premiumCtaShown);
       }
     });
 
     try {
       const url = new URL(window.location.href);
+      let urlChanged = false;
+
       const acesso = url.searchParams.get("acesso");
 
       if (acesso === "ativado" || acesso === "invalido") {
@@ -794,6 +806,19 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
         }
 
         url.searchParams.delete("acesso");
+        urlChanged = true;
+      }
+
+      // Retorno das back_urls do Mercado Pago (/?compra=sucesso|pendente|falha).
+      const compra = url.searchParams.get("compra");
+
+      if (compra === "sucesso" || compra === "pendente" || compra === "falha") {
+        trackEvent(ANALYTICS_EVENTS.checkoutReturned, { result: compra });
+        url.searchParams.delete("compra");
+        urlChanged = true;
+      }
+
+      if (urlChanged) {
         window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
       }
     } catch {
@@ -1607,7 +1632,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       <section className="hero-card">
         <AccessStatusBadge
           status={accessStatus}
-          onUpgrade={() => setPaywallSource("cta")}
+          onUpgrade={() => {
+            trackEvent(ANALYTICS_EVENTS.premiumCtaClicked);
+            setPaywallSource("cta");
+          }}
           onLogout={handleAccessLogout}
         />
         <div>
