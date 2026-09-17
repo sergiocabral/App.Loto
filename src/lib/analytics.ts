@@ -62,9 +62,16 @@ export const ANALYTICS_EVENTS = {
 type AnalyticsPrimitive = string | number | boolean | null;
 export type AnalyticsEventData = Record<string, AnalyticsPrimitive | undefined>;
 
+export type UmamiSessionInfo = {
+  cache?: string;
+  website?: string;
+};
+
 declare global {
   interface Window {
     umami?: {
+      getSession?: () => UmamiSessionInfo | undefined;
+      identify?: (data: Record<string, AnalyticsPrimitive>) => unknown;
       track?: (eventName: string, data?: Record<string, AnalyticsPrimitive>) => unknown;
     };
   }
@@ -97,13 +104,41 @@ function sanitizeEventData(data?: AnalyticsEventData): Record<string, AnalyticsP
   return Object.fromEntries(entries);
 }
 
-export function trackEvent(eventName: string, data?: AnalyticsEventData): boolean {
-  if (typeof window === "undefined") {
-    return false;
+export function getAnalyticsWebsiteId(): string | null {
+  return process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID?.trim() || null;
+}
+
+/**
+ * Devolve o `window.umami` somente quando ele pertence ao website deste app. O proxy de produção injeta
+ * um segundo script do Umami (website global); se ele assumir o `window.umami`, os eventos seriam
+ * contabilizados no website errado — nesse caso é melhor descartá-los.
+ */
+export function getOwnUmami(): NonNullable<Window["umami"]> | null {
+  if (typeof window === "undefined" || !window.umami) {
+    return null;
   }
 
-  const name = eventName.trim().slice(0, 50);
   const umami = window.umami;
+  const expectedWebsiteId = getAnalyticsWebsiteId();
+
+  if (expectedWebsiteId && typeof umami.getSession === "function") {
+    try {
+      const website = umami.getSession()?.website;
+
+      if (website && website !== expectedWebsiteId) {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return umami;
+}
+
+export function trackEvent(eventName: string, data?: AnalyticsEventData): boolean {
+  const name = eventName.trim().slice(0, 50);
+  const umami = getOwnUmami();
 
   if (!name || typeof umami?.track !== "function") {
     return false;
@@ -123,4 +158,72 @@ export function trackEvent(eventName: string, data?: AnalyticsEventData): boolea
     // Analytics must never affect the app flow.
     return false;
   }
+}
+
+/**
+ * Grava dados da sessão no Umami (sem distinct id, para não trocar o id da sessão). Atenção: o identify
+ * do Umami descarta o token de sessão até a resposta chegar, então não deve rodar com o gravador de
+ * replay ativo — ver UmamiSession.
+ */
+export async function identifySession(data: AnalyticsEventData): Promise<boolean> {
+  const umami = getOwnUmami();
+  const sanitizedData = sanitizeEventData(data);
+
+  if (!sanitizedData || typeof umami?.identify !== "function") {
+    return false;
+  }
+
+  try {
+    await umami.identify(sanitizedData);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type DebouncedTracker = {
+  cancel: () => void;
+  flush: () => void;
+  track: (data?: AnalyticsEventData) => void;
+};
+
+/** Agrupa rajadas (sliders, digitação) num único evento com os dados mais recentes. */
+export function createDebouncedTracker(eventName: string, delayMs = 800): DebouncedTracker {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pendingData: AnalyticsEventData | undefined;
+
+  const send = () => {
+    timer = undefined;
+    const data = pendingData;
+    pendingData = undefined;
+    trackEvent(eventName, data);
+  };
+
+  return {
+    cancel() {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+
+      timer = undefined;
+      pendingData = undefined;
+    },
+    flush() {
+      if (timer === undefined) {
+        return;
+      }
+
+      clearTimeout(timer);
+      send();
+    },
+    track(data) {
+      pendingData = data;
+
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+
+      timer = setTimeout(send, delayMs);
+    },
+  };
 }

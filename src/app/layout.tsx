@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { AccessOriginTracker } from "@/components/AccessOriginTracker";
 import { getOfficialSiteUrl } from "@/lib/siteUrl";
+import { getUmamiBootstrapScript, UMAMI_BEFORE_SEND_HANDLER } from "@/lib/umamiBootstrap";
 import "./globals.css";
 
 const officialSiteUrl = getOfficialSiteUrl();
@@ -50,27 +50,44 @@ export const metadata: Metadata = {
   },
 };
 
-const umamiScriptUrl = process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL;
-const umamiWebsiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
+const umamiScriptUrl = process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL?.trim();
+const umamiWebsiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID?.trim();
+// Só rastreia no domínio oficial: evita que dev/localhost com o .env de produção polua o Umami.
+const umamiDomains = [officialSiteUrl.hostname, `www.${officialSiteUrl.hostname}`].join(",");
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const isUmamiEnabled = Boolean(umamiScriptUrl && umamiWebsiteId);
+
   return (
     <html lang="pt-BR">
+      <head>
+        {isUmamiEnabled ? (
+          <>
+            {/*
+              Scripts no <head> do HTML do servidor (e não via next/script): scripts `defer` executam na ordem do
+              documento, então este tracker roda antes do script do website global que o proxy injeta no fim do
+              <body> e fica com o `window.umami` — requisito para eventos, identify e replay caírem neste website.
+            */}
+            <script dangerouslySetInnerHTML={{ __html: getUmamiBootstrapScript() }} id="umami-bootstrap" />
+            <script
+              data-before-send={UMAMI_BEFORE_SEND_HANDLER}
+              data-domains={umamiDomains}
+              data-performance="true"
+              data-website-id={umamiWebsiteId}
+              defer
+              id="umami-tracker"
+              src={umamiScriptUrl}
+            />
+          </>
+        ) : null}
+      </head>
       <body>
         {children}
         <AccessOriginTracker />
-        {umamiScriptUrl && umamiWebsiteId ? (
-          <Script
-            defer
-            src={umamiScriptUrl}
-            data-website-id={umamiWebsiteId}
-            strategy="afterInteractive"
-          />
-        ) : null}
       </body>
     </html>
   );
