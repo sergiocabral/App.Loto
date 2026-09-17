@@ -108,7 +108,8 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
               lifetime: { priceBRL: plans.lifetime.priceBRL },
               pass30: { priceBRL: plans.pass30.priceBRL },
             }}
-            source="raw"
+            source="rawPage"
+            variant="page"
           />
           <Link className="raw-page-link" href="/">
             Voltar para o Luckygames

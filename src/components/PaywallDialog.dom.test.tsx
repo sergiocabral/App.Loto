@@ -40,28 +40,76 @@ describe("PaywallDialog", () => {
     expect(screen.getByText("Você usou as simulações grátis de hoje.")).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*12,00/)).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*60,00/)).toBeInTheDocument();
-    expect(trackEvent).toHaveBeenCalledWith("Abriu paywall", { source: "simulator" });
+    expect(trackEvent).toHaveBeenCalledWith("Abriu paywall", { source: "simulator", variant: "dialog" });
   });
 
-  it("closes on backdrop click and escape key", () => {
+  it("puts the e-mail and the access link button before the purchase options", () => {
+    render(<PaywallContent source="cta" />);
+
+    const input = screen.getByLabelText("Seu e-mail");
+    const linkButton = screen.getByRole("button", { name: "Receber link de acesso" });
+    const planButton = screen.getByRole("button", { name: /Passe de 30 dias/ });
+    const purchase = screen.getByRole("region", { name: "Ainda não tem acesso?" });
+
+    expect(input.compareDocumentPosition(linkButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(linkButton.compareDocumentPosition(planButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(purchase).toContainElement(planButton);
+    expect(purchase).not.toContainElement(linkButton);
+  });
+
+  it("closes on backdrop, close button and escape key, tracking how it was closed", () => {
     const onClose = vi.fn();
     render(<PaywallDialog onClose={onClose} open source="chat" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Fechar acesso completo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
     fireEvent.keyDown(window, { key: "Escape" });
 
-    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onClose).toHaveBeenCalledTimes(3);
+    expect(trackEvent).toHaveBeenCalledWith("Fechou paywall", { method: "backdrop", source: "chat" });
+    expect(trackEvent).toHaveBeenCalledWith("Fechou paywall", { method: "button", source: "chat" });
+    expect(trackEvent).toHaveBeenCalledWith("Fechou paywall", { method: "escape", source: "chat" });
   });
 
-  it("requires an e-mail before starting a checkout", async () => {
+  it("tracks the opening only once when the parent re-renders with a new onClose", () => {
+    const { rerender } = render(<PaywallDialog onClose={() => undefined} open source="cta" />);
+    const latestOnClose = vi.fn();
+
+    rerender(<PaywallDialog onClose={() => undefined} open source="cta" />);
+    rerender(<PaywallDialog onClose={latestOnClose} open source="cta" />);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(trackEvent.mock.calls.filter(([name]) => name === "Abriu paywall")).toHaveLength(1);
+    expect(latestOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("tracks the standalone page variant once", () => {
+    render(<PaywallContent source="rawPage" variant="page" />);
+
+    expect(screen.getByText("A lista completa de sorteios com download faz parte do acesso completo.")).toBeInTheDocument();
+    expect(trackEvent).toHaveBeenCalledTimes(1);
+    expect(trackEvent).toHaveBeenCalledWith("Abriu paywall", { source: "rawPage", variant: "page" });
+  });
+
+  it("requires an e-mail before starting a checkout and sends the user back to the field", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     render(<PaywallContent source="raw" />);
 
     fireEvent.click(screen.getByRole("button", { name: /Passe de 30 dias/ }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Informe seu e-mail");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Informe seu e-mail acima");
+    const input = screen.getByLabelText("Seu e-mail");
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveClass("is-attention");
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(trackEvent).toHaveBeenCalledWith("Paywall sem e-mail", { action: "checkout", source: "raw" });
+
+    fireEvent.change(input, { target: { value: "b" } });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute("aria-invalid");
   });
 
   it("starts the checkout and redirects to the Mercado Pago init point", async () => {
@@ -100,6 +148,32 @@ describe("PaywallDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /Passe de 30 dias/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Pagamentos indisponíveis no momento.");
+    expect(trackEvent).toHaveBeenCalledWith("Falhou checkout", { plan: "pass30", source: "chat", status: 503 });
+    expect(screen.getByRole("button", { name: /Passe de 30 dias/ })).toBeEnabled();
+  });
+
+  it("shows a generic error when the checkout request cannot be sent", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    render(<PaywallContent source="chat" />);
+
+    fireEvent.change(screen.getByLabelText("Seu e-mail"), { target: { value: "buyer@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Passe vitalício/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível iniciar o pagamento agora.");
+    expect(trackEvent).toHaveBeenCalledWith("Falhou checkout", { plan: "lifetime", source: "chat", status: "network" });
+  });
+
+  it("requires an e-mail before requesting an access link", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PaywallContent source="cta" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Receber link de acesso" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Informe seu e-mail para receber o link de acesso.");
+    expect(screen.getByLabelText("Seu e-mail")).toHaveFocus();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(trackEvent).toHaveBeenCalledWith("Paywall sem e-mail", { action: "link", source: "cta" });
   });
 
   it("requests an access link and shows the generic confirmation", async () => {
@@ -108,7 +182,7 @@ describe("PaywallDialog", () => {
     render(<PaywallContent source="chat" />);
 
     fireEvent.change(screen.getByLabelText("Seu e-mail"), { target: { value: "user@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Receber link de acesso por e-mail" }));
+    fireEvent.click(screen.getByRole("button", { name: "Receber link de acesso" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("receberá um link de acesso");
     expect(fetchMock).toHaveBeenCalledWith(
@@ -119,6 +193,18 @@ describe("PaywallDialog", () => {
       }),
     );
     expect(trackEvent).toHaveBeenCalledWith("Pediu link de acesso", { source: "chat" });
+    expect(trackEvent).toHaveBeenCalledWith("Pedido de link aceito", { source: "chat" });
+  });
+
+  it("shows an error when the access link request is rejected", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "rate limited" }, 429)));
+    render(<PaywallContent source="chat" />);
+
+    fireEvent.change(screen.getByLabelText("Seu e-mail"), { target: { value: "user@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receber link de acesso" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível enviar o link agora.");
+    expect(trackEvent).toHaveBeenCalledWith("Falhou pedido de link", { source: "chat", status: 429 });
   });
 
   it("shows an error when the access link request fails", async () => {
@@ -127,9 +213,10 @@ describe("PaywallDialog", () => {
     render(<PaywallContent source="chat" />);
 
     fireEvent.change(screen.getByLabelText("Seu e-mail"), { target: { value: "user@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Receber link de acesso por e-mail" }));
+    fireEvent.click(screen.getByRole("button", { name: "Receber link de acesso" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível enviar o link agora.");
+    expect(trackEvent).toHaveBeenCalledWith("Falhou pedido de link", { source: "chat", status: "network" });
   });
 
   it("renders nothing while closed", () => {
