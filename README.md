@@ -200,6 +200,7 @@ O `wrangler.jsonc` usa `keep_vars: true`, então variáveis e secrets configurad
 | `NEXT_PUBLIC_APP_VERSION` | Opcional em build time | Opcional em build time | Versão pública usada em saídas textuais. Padrão interno: `v1.3.x`. |
 | `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | Opcional em build time | Opcional em build time | URL pública do script Umami usado para analytics. |
 | `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | Opcional em build time | Opcional em build time | Identificador do site no Umami. |
+| `NEXT_PUBLIC_UMAMI_RECORDER_ENABLED` | Opcional em build time | Opcional em build time | Replay de sessão e heatmap do Umami. Ligado por padrão; `false` desliga só o gravador. |
 | `NEXT_PUBLIC_REMARK42_HOST` | Opcional em build time | Opcional em build time | Host público do Remark42. Padrão usado no app: `https://comments.cabral.dev`. |
 | `NEXT_PUBLIC_REMARK42_SITE_ID` | Opcional em build time | Opcional em build time | Site ID do Remark42. Padrão usado no app: `global`. |
 | `NEXT_PUBLIC_REMARK42_LOCALE` | Opcional em build time | Opcional em build time | Locale do Remark42. Padrão usado no app: `bp`. |
@@ -300,6 +301,7 @@ SYNC_CRON_SECRET=change-this-random-cron-secret
 NEXT_PUBLIC_APP_VERSION=v2.0.0
 NEXT_PUBLIC_UMAMI_SCRIPT_URL=
 NEXT_PUBLIC_UMAMI_WEBSITE_ID=
+NEXT_PUBLIC_UMAMI_RECORDER_ENABLED=true
 
 NEXT_PUBLIC_REMARK42_HOST=https://comments.cabral.dev
 NEXT_PUBLIC_REMARK42_SITE_ID=global
@@ -446,29 +448,72 @@ Para acionar pelo app, clique no título discreto **Resultados** acima da lista 
 
 ## Analytics com Umami
 
-Quando `NEXT_PUBLIC_UMAMI_SCRIPT_URL` e `NEXT_PUBLIC_UMAMI_WEBSITE_ID` estão definidos no build, o layout injeta automaticamente o script do Umami em todas as páginas.
+Quando `NEXT_PUBLIC_UMAMI_SCRIPT_URL` e `NEXT_PUBLIC_UMAMI_WEBSITE_ID` estão definidos no build, o layout renderiza o script do Umami no `<head>` de todas as páginas.
 
-Se qualquer uma das duas variáveis estiver vazia, o script não é carregado.
+Se qualquer uma das duas variáveis estiver vazia, nada do Umami é carregado.
 
-Além dos pageviews automáticos, o app envia eventos compatíveis com `window.umami.track(eventName, data)`, disponível no Umami 3.x. As chamadas são centralizadas e defensivas: se o script estiver bloqueado, ausente ou lento, a navegação e os botões continuam funcionando.
+### Como o script é carregado
+
+O proxy de produção (nginx-proxy-manager) injeta, antes de `</body>`, um segundo script do Umami para o website global `cabral.dev`. Só o primeiro script a executar fica com o `window.umami`. Por isso o tracker do app é um `<script defer>` no `<head>` do HTML do servidor (e não `next/script`): scripts `defer` executam na ordem do documento, e o do app sempre roda antes do injetado. Além disso, `trackEvent` descarta eventos se o `window.umami` pertencer a outro website, para nunca contabilizá-los no lugar errado.
+
+Antes do tracker, um script inline (`src/lib/umamiBootstrap.ts`):
+
+- corrige, via `data-before-send`, URLs no formato `/https://host/caminho` geradas pelo `script.js` customizado do servidor, para que pageviews batam com os caminhos do heatmap e do replay;
+- desliga o rastreamento dentro de iframes, como a pré-visualização do heatmap no painel do Umami;
+- trata o parâmetro de controle `?analytics=off` / `?analytics=on` (ver abaixo).
+
+O tracker também usa `data-domains` (domínio oficial e `www.`), então `localhost` e ambientes de desenvolvimento não enviam dados mesmo com o `.env` de produção, e `data-performance` (Web Vitals).
+
+### Replay de sessão e heatmap
+
+O componente `UmamiSession` carrega o `recorder.js` do Umami (rrweb), que grava o replay e os cliques e rolagens do heatmap:
+
+1. espera o tracker do app obter o token de sessão do Umami;
+2. grava o tipo de acesso na sessão (`umami.identify({ accessPlan: "free" | "pass30" | "lifetime" })`), o que permite segmentar sessões e replays por plano;
+3. só então carrega o `recorder.js`. O `identify` limpa o token até a resposta chegar, e os trechos gravados nesse intervalo seriam descartados.
+
+O que é configurado no painel do Umami (website → Settings → Replay), e não no app: ligar replay e heatmap, taxa de amostragem de cada um, nível de máscara e duração máxima da gravação. Com pouco tráfego, use 100% de amostragem.
+
+Privacidade no replay:
+
+- com a máscara `moderate`, todos os campos de formulário (inclusive o e-mail do paywall) aparecem mascarados;
+- o conteúdo das mensagens do chat tem a classe `rr-mask` e aparece como asteriscos;
+- o widget de comentários (Remark42) é um iframe de outro domínio e não é gravado.
+
+O heatmap exibe a página real num iframe do painel do Umami. Por isso o app não envia `X-Frame-Options: DENY`: ele envia `Content-Security-Policy: frame-ancestors 'self' <origem do Umami>` (`src/lib/securityHeaders.ts`). Em produção, porém, o nginx-proxy-manager substitui a CSP do app pela dele, e o site pode ser embutido por qualquer origem. É um risco de clickjacking aceito para este projeto.
+
+Para desligar só o gravador, defina `NEXT_PUBLIC_UMAMI_RECORDER_ENABLED=false` no build. Pageviews e eventos continuam.
+
+### Excluir o próprio navegador
+
+Abra qualquer página com `?analytics=off`, por exemplo `https://luckygames.tips/?analytics=off`. O app grava a flag nativa `umami.disabled` no `localStorage`, que todos os scripts do Umami respeitam (inclusive o global injetado pelo proxy), e remove o parâmetro da URL antes de qualquer envio. Use `?analytics=on` para voltar a ser rastreado.
+
+### Eventos
+
+Além dos pageviews automáticos, o app envia eventos com `window.umami.track(eventName, data)`, centralizados em `src/lib/analytics.ts` (`ANALYTICS_EVENTS`). As chamadas são defensivas: se o script estiver bloqueado, ausente ou lento, a navegação e os botões continuam funcionando. Ajustes em rajada (sliders, campos numéricos, botões ±1) são agrupados em um evento com o valor final.
 
 Eventos instrumentados:
 
 - seleção de loteria;
-- pesquisa por números, enviando apenas a quantidade pesquisada;
+- pesquisa por números (quantidade e origem: campo ou seleção) e números inválidos;
 - consulta por concurso, sem enviar o número digitado;
 - limpeza de filtro;
 - carregamento incremental de resultados;
-- seleção/cópia de sorteio;
-- geração pelo botão “Estou com sorte” e cópia de sugestão;
-- mudanças na análise rápida, período, faixa customizada e escopo da Dupla Sena;
+- seleção/cópia de sorteio e de sugestão, indicando se a cópia funcionou;
+- geração pelo botão “Estou com sorte”;
+- mudanças na análise rápida, período, faixa customizada e escopo da Dupla Sena, com contagens já do novo estado;
+- erros e estados vazios exibidos: falha de carregamento, concurso inválido ou inexistente, histórico vazio, filtro sem resultados;
+- página não encontrada (404 e loteria inexistente em `/raw`);
 - novo acesso com origem informada por `origin` na URL;
-- abertura da página de todos os sorteios;
+- abertura da página de todos os sorteios e download dos resultados;
 - início, pausa, conclusão e falha de sincronização;
-- abertura, fechamento, uso de sugestão, envio de pergunta, resposta recebida e falha do chat;
-- clique no link `idontneedit.org` das áreas de doação.
+- simulador: abertura, fechamento, parâmetros, início, parada, limite diário, cópias e conclusão (motivo, sugestões, acertos e vencedoras);
+- chat: abertura, fechamento, uso de sugestão, envio de pergunta, resposta recebida, falha e limite;
+- funil do acesso completo: impressão e clique do CTA, recurso bloqueado, abertura do paywall (modal ou página), fechamento sem ação (fundo, botão ou Esc), tentativa sem e-mail, checkout iniciado ou com falha, pedido de link aceito ou com falha, retorno do Mercado Pago, ativação, link inválido e saída do acesso (confirmada ou cancelada);
+- clique nos links externos da Caixa e `idontneedit.org`;
+- visualização da seção de comentários.
 
-Por privacidade, os eventos não enviam combinações sugeridas, números digitados pelo usuário nem texto livre do chat. São enviados apenas metadados como loteria, tipo de análise, contagens, estados da interação e, no evento de origem, o identificador público informado em `origin`.
+Por privacidade, os eventos não enviam combinações sugeridas, números digitados, e-mails nem texto livre do chat. São enviados apenas metadados como loteria, tipo de análise, contagens, estados da interação e, no evento de origem, o identificador público informado em `origin`.
 
 ### Origem de acesso por query string
 
@@ -688,5 +733,6 @@ npx wrangler deploy --dry-run
 - Erro de timeout, autenticação ou SSL: as variáveis chegaram ao runtime, mas a conexão com o PostgreSQL falhou.
 - Chat não aparece: confira `OPENAI_API_KEY` e `OPENAI_CHAT_MODEL` no runtime do servidor.
 - Widget de comentários não aparece: confira as variáveis `NEXT_PUBLIC_REMARK42_*` e se o host externo do Remark42 está acessível pelo navegador.
-- Analytics não aparece: confira se `NEXT_PUBLIC_UMAMI_SCRIPT_URL` e `NEXT_PUBLIC_UMAMI_WEBSITE_ID` estavam definidos antes do build.
+- Analytics não aparece: confira se `NEXT_PUBLIC_UMAMI_SCRIPT_URL` e `NEXT_PUBLIC_UMAMI_WEBSITE_ID` estavam definidos antes do build, se o acesso é pelo domínio oficial (`data-domains`) e se o navegador não está com `?analytics=off` ativo.
+- Replay ou heatmap vazios: confira no painel do Umami se replay e heatmap estão ligados e a taxa de amostragem. O `recorder.js` só carrega depois que o tracker do app obtém a sessão.
 - Redirect inesperado ou loop no Cloudflare: confira se `OFFICIAL_DOMAIN_NAME` contém somente domínio, sem protocolo, path ou porta, e limpe cache de redirects antigos no navegador/CDN se necessário.
