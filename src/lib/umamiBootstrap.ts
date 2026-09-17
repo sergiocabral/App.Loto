@@ -106,7 +106,9 @@ export function installUmamiBootstrap(win: BootstrapWindow): void {
     }
   };
 
-  (win as unknown as Record<string, unknown>)["luckygamesUmamiBeforeSend"] = (_type: string, payload: UmamiPayload) => {
+  let lastPageviewUrl: unknown = null;
+
+  (win as unknown as Record<string, unknown>)["luckygamesUmamiBeforeSend"] = (type: string, payload: UmamiPayload) => {
     if (framed) {
       return false;
     }
@@ -123,6 +125,17 @@ export function installUmamiBootstrap(win: BootstrapWindow): void {
 
     if (typeof nextPayload.referrer === "string") {
       nextPayload.referrer = normalizeUrl(nextPayload.referrer);
+    }
+
+    // Pageview = evento sem nome. Como a URL inicial do script customizado difere da real, o
+    // replaceState que o Next faz na hidratação parece uma navegação e gera um segundo pageview da
+    // mesma página (com ela mesma como referrer): esse é descartado.
+    if (type === "event" && !nextPayload.name && typeof nextPayload.url === "string") {
+      if (nextPayload.url === lastPageviewUrl && nextPayload.referrer === nextPayload.url) {
+        return false;
+      }
+
+      lastPageviewUrl = nextPayload.url;
     }
 
     return nextPayload;

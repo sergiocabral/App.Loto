@@ -77,6 +77,28 @@ describe("Umami bootstrap", () => {
     expect(beforeSend("identify", { data: { accessPlan: "free" } })).toEqual({ data: { accessPlan: "free" } });
   });
 
+  it("drops the duplicate pageview caused by Next's hydration replaceState, keeping real navigations", () => {
+    runSerializedBootstrap();
+    const beforeSend = getBeforeSend();
+    const home = "https://luckygames.tips/";
+
+    expect(beforeSend("event", { referrer: "https://google.com/", url: `${home}https://luckygames.tips/` })).toEqual({
+      referrer: "https://google.com/",
+      url: home,
+    });
+    // Mesma página, com a URL inicial (customizada) como referrer: pseudo-navegação da hidratação.
+    expect(beforeSend("event", { referrer: `${home}https://luckygames.tips/`, url: home })).toBe(false);
+    // Eventos nomeados na mesma página continuam passando.
+    expect(beforeSend("event", { name: "Abriu paywall", referrer: home, url: home })).toEqual({
+      name: "Abriu paywall",
+      referrer: home,
+      url: home,
+    });
+    // Navegação real para outra página e volta para a home.
+    expect(beforeSend("event", { referrer: home, url: `${home}raw/Quina` })).toEqual({ referrer: home, url: `${home}raw/Quina` });
+    expect(beforeSend("event", { referrer: `${home}raw/Quina`, url: home })).toEqual({ referrer: `${home}raw/Quina`, url: home });
+  });
+
   it("disables tracking and cancels sends when rendered inside an iframe", () => {
     const storage = new Map<string, string>();
     const fakeWindow = {
