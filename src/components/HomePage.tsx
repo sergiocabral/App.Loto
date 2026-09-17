@@ -8,6 +8,7 @@ import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { useDebouncedTracker } from "@/lib/useDebouncedTracker";
 import { DEFAULT_ACCESS_STATUS, formatPriceBRL, loadInitialAccessStatus, type AccessStatus } from "@/lib/client/accessStatus";
 import { createSequentialLoadQueue } from "@/lib/client/sequentialLoadQueue";
 import {
@@ -617,6 +618,25 @@ function getAnalysisAnalyticsData(
   };
 }
 
+type PendingAnalysisEvent = { kind: "period" | "scope" } | { kind: "range"; selectedCount: number };
+
+type ResultStateKind = "drawNotFound" | "filterEmpty" | "invalidDrawNumber" | "loadFailed" | "noResults";
+
+// Estados de erro/vazio só são contabilizados se continuarem na tela por este tempo: evita contar
+// renders de transição (ex.: troca de loteria antes do carregamento começar).
+const RESULT_STATE_TRACKING_DELAY_MS = 700;
+
+function isValidDrawNumberInput(value: string): boolean {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return true;
+  }
+
+  const drawNumber = Number.parseInt(trimmed, 10);
+  return Number.isFinite(drawNumber) && drawNumber >= 1;
+}
+
 function getGroupedNumbersClipboardText(groups: string[][]): string {
   if (groups.length <= 1) {
     return (groups[0] ?? []).join(" ");
@@ -774,6 +794,9 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   const syncStopRef = useRef(false);
   const syncSessionRef = useRef(0);
   const selectionClickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingAnalysisEventRef = useRef<PendingAnalysisEvent | null>(null);
+  const [analysisEventRevision, setAnalysisEventRevision] = useState(0);
+  const analysisRangeTracker = useDebouncedTracker(ANALYTICS_EVENTS.updatedAnalysisRange);
 
   useEffect(() => {
     let cancelled = false;
@@ -802,9 +825,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       const acesso = url.searchParams.get("acesso");
 
       if (acesso === "ativado" || acesso === "invalido") {
-        if (acesso === "ativado") {
-          trackEvent(ANALYTICS_EVENTS.accessActivated);
-        }
+        trackEvent(acesso === "ativado" ? ANALYTICS_EVENTS.accessActivated : ANALYTICS_EVENTS.accessLinkInvalid);
 
         url.searchParams.delete("acesso");
         urlChanged = true;
@@ -833,17 +854,21 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
 
   const handleAccessLogout = useCallback(async () => {
     if (typeof window !== "undefined" && !window.confirm("Sair do acesso completo neste dispositivo?")) {
+      trackEvent(ANALYTICS_EVENTS.accessLogoutCancelled);
       return;
     }
 
+    let ok = false;
+
     try {
-      await fetch("/api/access/logout", { method: "POST", cache: "no-store" });
+      const response = await fetch("/api/access/logout", { method: "POST", cache: "no-store" });
+      ok = response.ok;
     } catch {
       // Mesmo se a chamada falhar, refletimos a saída na interface; o cookie expira sozinho.
     }
 
     setAccessStatus(DEFAULT_ACCESS_STATUS);
-    trackEvent(ANALYTICS_EVENTS.accessLoggedOut);
+    trackEvent(ANALYTICS_EVENTS.accessLoggedOut, { ok });
   }, []);
 
   const isSyncing = syncInfo.running;
@@ -887,6 +912,67 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       ),
     [analysisPeriod, analysisSourceDraws, duplaSenaAnalysisScope, effectiveCustomAnalysisRange, selectedLottery],
   );
+  // Eventos da análise saem depois que o novo estado é aplicado, para que contagens e rótulos já
+  // descrevam o período, a faixa ou o escopo escolhido (e não a seleção anterior).
+  useEffect(() => {
+    const pendingEvent = pendingAnalysisEventRef.current;
+
+    if (!pendingEvent) {
+      return;
+    }
+
+    pendingAnalysisEventRef.current = null;
+
+    if (!selectedLottery) {
+      return;
+    }
+
+    const data = getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope);
+
+    if (pendingEvent.kind === "range") {
+      analysisRangeTracker.track({ ...data, selectedCount: pendingEvent.selectedCount });
+      return;
+    }
+
+    trackEvent(pendingEvent.kind === "period" ? ANALYTICS_EVENTS.updatedAnalysisPeriod : ANALYTICS_EVENTS.updatedAnalysisScope, data);
+  }, [analysisData, analysisEventRevision, analysisPeriod, analysisRangeTracker, analysisView, duplaSenaAnalysisScope, selectedLottery]);
+
+  const resultStateKind: ResultStateKind | null = (() => {
+    if (!selectedLottery || status === "loading") {
+      return null;
+    }
+
+    if (status === "error") {
+      return isValidDrawNumberInput(activeDrawNumber) ? "loadFailed" : "invalidDrawNumber";
+    }
+
+    if (draws.length === 0) {
+      return activeDrawNumber.trim() ? "drawNotFound" : "noResults";
+    }
+
+    return numberFilter.length && filteredDraws.length === 0 ? "filterEmpty" : null;
+  })();
+
+  useEffect(() => {
+    if (!selectedLottery || !resultStateKind) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const isError = resultStateKind === "loadFailed" || resultStateKind === "invalidDrawNumber";
+
+      trackEvent(isError ? ANALYTICS_EVENTS.errorShown : ANALYTICS_EVENTS.emptyStateShown, {
+        ...getLotteryAnalyticsData(selectedLottery),
+        hasNumberFilter: numberFilterKey !== "",
+        kind: resultStateKind,
+      });
+    }, RESULT_STATE_TRACKING_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeDrawNumber, numberFilterKey, resultStateKind, selectedLottery]);
+
   const legacyHref = useMemo(() => {
     if (!selectedLottery) {
       return "#";
@@ -1029,6 +1115,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       if (!parsedNumbers.length) {
         setNumberFilter([]);
         setStatusMessage("Informe números válidos para filtrar.");
+        trackEvent(ANALYTICS_EVENTS.errorShown, { ...getLotteryAnalyticsData(selectedLottery), kind: "invalidNumbers" });
         return;
       }
 
@@ -1040,6 +1127,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       trackEvent(ANALYTICS_EVENTS.searchedNumbers, {
         ...getLotteryAnalyticsData(selectedLottery),
         count: parsedNumbers.length,
+        source: "input",
       });
       return;
     }
@@ -1390,14 +1478,14 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     }
   }
 
+  function queueAnalysisEvent(event: PendingAnalysisEvent) {
+    pendingAnalysisEventRef.current = event;
+    setAnalysisEventRevision((revision) => revision + 1);
+  }
+
   function changeAnalysisPeriod(period: AnalysisPeriod) {
     setAnalysisPeriod(period);
-    if (selectedLottery) {
-      trackEvent(
-        ANALYTICS_EVENTS.updatedAnalysisPeriod,
-        getAnalysisAnalyticsData(selectedLottery, analysisView, period, analysisData, duplaSenaAnalysisScope),
-      );
-    }
+    queueAnalysisEvent({ kind: "period" });
   }
 
   function changeCustomAnalysisRange(nextRange: AnalysisDrawRange) {
@@ -1422,13 +1510,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     })();
 
     setCustomAnalysisRange(trackedRange);
-
-    if (selectedLottery) {
-      trackEvent(ANALYTICS_EVENTS.updatedAnalysisRange, {
-        ...getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope),
-        selectedCount: Math.max(1, trackedRange.end - trackedRange.start + 1),
-      });
-    }
+    queueAnalysisEvent({ kind: "range", selectedCount: Math.max(1, trackedRange.end - trackedRange.start + 1) });
   }
 
   function changeAnalysisView(view: AnalysisView) {
@@ -1454,12 +1536,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
 
   function changeDuplaSenaAnalysisScope(scope: DuplaSenaAnalysisScope) {
     setDuplaSenaAnalysisScope(scope);
-    if (selectedLottery) {
-      trackEvent(
-        ANALYTICS_EVENTS.updatedAnalysisScope,
-        getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, scope),
-      );
-    }
+    queueAnalysisEvent({ kind: "scope" });
   }
 
   function generateLuckySuggestion() {
@@ -1516,9 +1593,10 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
     setStatusMessage("Sugestões limpas.");
   }
 
-  async function copySelectionToClipboard(text: string, successMessage: string) {
+  async function copySelectionToClipboard(text: string, successMessage: string): Promise<boolean> {
     const copied = await copyTextToClipboard(text);
     setStatusMessage(copied ? successMessage : "Seleção feita, mas o navegador bloqueou a cópia automática.");
+    return copied;
   }
 
   function selectDrawAndCopy(draw: Draw) {
@@ -1529,14 +1607,18 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       }
 
       setSelectedDraw(draw);
-      void copySelectionToClipboard(getDrawClipboardText(draw), `Números do concurso ${draw.drawNumber} copiados.`);
-      if (selectedLottery) {
-        trackEvent(ANALYTICS_EVENTS.copyDraw, {
-          ...getLotteryAnalyticsData(selectedLottery),
-          drawNumber: draw.drawNumber,
-          grouped: getDisplayGroups(draw).length > 1,
-        });
-      }
+      const lottery = selectedLottery;
+
+      void copySelectionToClipboard(getDrawClipboardText(draw), `Números do concurso ${draw.drawNumber} copiados.`).then((copied) => {
+        if (lottery) {
+          trackEvent(ANALYTICS_EVENTS.copyDraw, {
+            ...getLotteryAnalyticsData(lottery),
+            drawNumber: draw.drawNumber,
+            grouped: getDisplayGroups(draw).length > 1,
+            ok: copied,
+          });
+        }
+      });
     });
   }
 
@@ -1550,14 +1632,20 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       }
 
       setSelectedSuggestedGameKey(gameKey);
-      void copySelectionToClipboard(game.numbers.join(" "), "Sugestão copiada.");
-      if (selectedLottery) {
-        trackEvent(ANALYTICS_EVENTS.copySuggestion, {
-          ...getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope),
-          suggestionSize: game.numbers.length,
-          variantIndex: game.variantIndex,
-        });
-      }
+      const analyticsData = selectedLottery
+        ? getAnalysisAnalyticsData(selectedLottery, analysisView, analysisPeriod, analysisData, duplaSenaAnalysisScope)
+        : null;
+
+      void copySelectionToClipboard(game.numbers.join(" "), "Sugestão copiada.").then((copied) => {
+        if (analyticsData) {
+          trackEvent(ANALYTICS_EVENTS.copySuggestion, {
+            ...analyticsData,
+            ok: copied,
+            suggestionSize: game.numbers.length,
+            variantIndex: game.variantIndex,
+          });
+        }
+      });
     });
   }
 
@@ -1646,7 +1734,12 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
           </Link>
           <p className="hero-copy">
             Resultados das{" "}
-            <a href="https://loterias.caixa.gov.br" rel="noreferrer" target="_blank">
+            <a
+              href="https://loterias.caixa.gov.br"
+              onClick={() => trackEvent(ANALYTICS_EVENTS.externalLinkClicked, { placement: "hero", target: "caixa" })}
+              rel="noreferrer"
+              target="_blank"
+            >
               Loterias da Caixa
             </a>
             , estatísticas simples e sugestões para consultar com calma. O serviço apenas facilita a leitura dos sorteios públicos.
@@ -1973,8 +2066,35 @@ function SelectedNumbersToolbar({
 }
 
 function Remark42Comments() {
+  const sectionRef = useRef<HTMLElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<Remark42Instance | null>(null);
+
+  // O widget roda num iframe de outro domínio (invisível para replay/heatmap): mede ao menos se a
+  // seção de comentários chegou a ser vista.
+  useEffect(() => {
+    const section = sectionRef.current;
+
+    if (!section || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          trackEvent(ANALYTICS_EVENTS.commentsViewed);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.35 },
+    );
+
+    observer.observe(section);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (!REMARK42_HOST || !REMARK42_SITE_ID) {
@@ -2040,7 +2160,7 @@ function Remark42Comments() {
   }, []);
 
   return (
-    <section className="comments-section" aria-labelledby="comments-title">
+    <section className="comments-section" aria-labelledby="comments-title" ref={sectionRef}>
       <div className="comments-heading">
         <span className="eyebrow">Comunidade</span>
         <h2 id="comments-title">Bate-papo dos jogadores</h2>

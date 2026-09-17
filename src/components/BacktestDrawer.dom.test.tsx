@@ -93,6 +93,8 @@ describe("BacktestDrawer", () => {
 
     await Promise.resolve();
     expect(writeText.mock.calls[0][0]).toContain("Simulador de sorteios anteriores");
+    expect(trackEvent).not.toHaveBeenCalledWith("Mudou tamanho sugestão simulador", expect.anything());
+    vi.advanceTimersByTime(1000);
     expect(trackEvent).toHaveBeenCalledWith("Mudou velocidade simulador", expect.objectContaining({ speed: 4 }));
     expect(trackEvent).toHaveBeenCalledWith("Alternou retrocesso simulador", expect.objectContaining({ autoAdvanceCutoff: false }));
     expect(trackEvent).toHaveBeenCalledWith("Mudou tamanho sugestão simulador", expect.objectContaining({ suggestionNumberCount: 8 }));
@@ -114,10 +116,18 @@ describe("BacktestDrawer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ajustar" }));
     expect(screen.getByLabelText("Quantidade exata de concursos anteriores")).toHaveValue(2);
+    expect(trackEvent).toHaveBeenCalledWith("Mudou período simulador", expect.objectContaining({ period: "ajustar", periodCount: 2 }));
+    vi.advanceTimersByTime(1000);
+    expect(trackEvent).not.toHaveBeenCalledWith("Ajustou período simulador", expect.anything());
+
     fireEvent.click(screen.getByRole("button", { name: "Reduzir período em 1 concurso" }));
     expect(screen.getByLabelText("Quantidade exata de concursos anteriores")).toHaveValue(1);
     fireEvent.change(screen.getByLabelText("Quantidade exata de concursos anteriores"), { target: { value: "99" } });
     expect(screen.getByLabelText("Quantidade exata de concursos anteriores")).toHaveValue(2);
+    vi.advanceTimersByTime(1000);
+    expect(trackEvent.mock.calls.filter(([name]) => name === "Ajustou período simulador")).toEqual([
+      ["Ajustou período simulador", expect.objectContaining({ period: "ajustar", periodCount: 2 })],
+    ]);
     fireEvent.change(screen.getByLabelText("Tipo de Análise"), { target: { value: "delayed" } });
     fireEvent.change(screen.getByLabelText("Concurso alvo"), { target: { value: "4" } });
 
@@ -141,6 +151,10 @@ describe("BacktestDrawer", () => {
 
     expect(screen.getByText("Todos os concursos disponíveis foram processados.")).toBeInTheDocument();
     expect(screen.getAllByText(/sugestão$/).length).toBeGreaterThan(0);
+    expect(trackEvent).toHaveBeenCalledWith(
+      "Finalizou simulação",
+      expect.objectContaining({ reason: "allProcessed", simulatedSuggestions: expect.any(Number), winners: expect.any(Number) }),
+    );
 
     const groupButtons = screen.getAllByRole("button", { name: /Concurso [34]/ });
     fireEvent.click(groupButtons[0]);

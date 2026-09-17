@@ -17,6 +17,7 @@ import {
   type RecencyScoreMode,
 } from "@/lib/analysis";
 import { ANALYTICS_EVENTS, type AnalyticsEventData, trackEvent } from "@/lib/analytics";
+import { useDebouncedTracker } from "@/lib/useDebouncedTracker";
 import type { Draw } from "@/lib/types";
 
 type BacktestDrawerProps = {
@@ -163,6 +164,16 @@ function clampPeriodCount(value: number, maximum: number): number {
   const normalizedMaximum = Math.max(1, maximum);
   const roundedValue = Number.isFinite(value) ? Math.round(value) : 1;
   return Math.min(Math.max(roundedValue, 1), normalizedMaximum);
+}
+
+function trackSimulationFinished(lottery: LotteryDefinition, reason: string, results: SimulationSuggestion[]): void {
+  trackEvent(ANALYTICS_EVENTS.simulatorFinished, {
+    bestHitCount: results.reduce((best, suggestion) => Math.max(best, suggestion.hitCount), 0),
+    lottery: lottery.slug,
+    reason,
+    simulatedSuggestions: results.length,
+    winners: results.filter((suggestion) => suggestion.winner).length,
+  });
 }
 
 function getCustomRangeCount(range: AnalysisDrawRange): number {
@@ -441,6 +452,9 @@ export function BacktestDrawer({
   const [closedSimulationGroups, setClosedSimulationGroups] = useState<Set<string>>(() => new Set());
   const [openSimulationGroups, setOpenSimulationGroups] = useState<Set<string>>(() => new Set());
   const effectiveSuggestionNumberCount = clampSuggestionNumberCount(suggestionNumberCount, minimumSuggestionNumberCount);
+  // Sliders, campos numéricos e botões ±1 geram rajadas: um evento por ajuste, com o valor final.
+  const rangeChangeTracker = useDebouncedTracker(ANALYTICS_EVENTS.simulatorRangeChanged);
+  const suggestionSizeTracker = useDebouncedTracker(ANALYTICS_EVENTS.simulatorSuggestionSizeChanged);
 
   const handleClose = useCallback(() => {
     setSimulationRunning(false);
@@ -589,6 +603,7 @@ export function BacktestDrawer({
         setSimulationStatusMessage(
           autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sem dados suficientes para gerar análise neste alvo.",
         );
+        trackSimulationFinished(lottery, autoAdvanceCutoff ? "allProcessed" : "noAnalysisData", simulationResults);
         return;
       }
 
@@ -634,6 +649,7 @@ export function BacktestDrawer({
 
       setSimulationRunning(false);
       setSimulationStatusMessage(autoAdvanceCutoff ? "Todos os concursos disponíveis foram processados." : "Sugestões diferentes esgotadas para este alvo.");
+      trackSimulationFinished(lottery, autoAdvanceCutoff ? "allProcessed" : "suggestionsExhausted", simulationResults);
     }, SIMULATION_SPEED_DELAYS[simulationSpeed]);
 
     return () => {
@@ -684,12 +700,16 @@ export function BacktestDrawer({
     );
   }
 
-  function handleCustomPeriodCountChange(value: number) {
+  function handleCustomPeriodCountChange(value: number, shouldTrack = true) {
     const nextCount = clampPeriodCount(value, availableAnalysisDrawCount);
     setPeriodPreset("custom");
     setCustomPeriodCount(nextCount);
-    trackEvent(
-      ANALYTICS_EVENTS.simulatorRangeChanged,
+
+    if (!shouldTrack) {
+      return;
+    }
+
+    rangeChangeTracker.track(
       getSimulatorAnalyticsData({
         period: "ajustar",
         periodCount: nextCount,
@@ -703,7 +723,8 @@ export function BacktestDrawer({
       ANALYTICS_EVENTS.simulatorPeriodChanged,
       getSimulatorAnalyticsData({
         period: value === "custom" ? "ajustar" : value,
-        periodCount: value === "custom" ? effectiveCustomPeriodCount : Math.min(value, Math.max(1, availableAnalysisDrawCount)),
+        // "Ajustar" começa com todos os concursos disponíveis (ver BacktestAnalysisParameters).
+        periodCount: value === "custom" ? Math.max(1, availableAnalysisDrawCount) : Math.min(value, Math.max(1, availableAnalysisDrawCount)),
       }),
     );
   }
@@ -752,8 +773,7 @@ export function BacktestDrawer({
   function handleSuggestionNumberCountChange(value: number) {
     const nextCount = clampSuggestionNumberCount(value, minimumSuggestionNumberCount);
     setSuggestionNumberCount(nextCount);
-    trackEvent(
-      ANALYTICS_EVENTS.simulatorSuggestionSizeChanged,
+    suggestionSizeTracker.track(
       getSimulatorAnalyticsData({
         suggestionNumberCount: nextCount,
       }),
@@ -1015,7 +1035,7 @@ type BacktestAnalysisParametersProps = {
   customPeriodCount: number;
   disabled: boolean;
   onAnalysisViewChange: (view: AnalysisView) => void;
-  onCustomPeriodCountChange: (count: number) => void;
+  onCustomPeriodCountChange: (count: number, shouldTrack?: boolean) => void;
   onPeriodPresetChange: (period: SimulatorPeriodPreset) => void;
   periodPreset: SimulatorPeriodPreset;
 };
@@ -1042,7 +1062,8 @@ function BacktestAnalysisParameters({
       return;
     }
 
-    onCustomPeriodCountChange(maximum);
+    // O evento de período já registra a troca para "Ajustar"; não conta como ajuste manual da faixa.
+    onCustomPeriodCountChange(maximum, false);
   }
 
   return (

@@ -1,5 +1,7 @@
 export const ANALYTICS_EVENTS = {
   accessActivated: "Ativou acesso",
+  accessLinkInvalid: "Link de acesso inválido",
+  accessLogoutCancelled: "Cancelou saída do acesso",
   accessLoggedOut: "Saiu do acesso",
   accessStatusShown: "Exibiu status de acesso",
   chatAnswerReceived: "Recebeu resposta chat",
@@ -11,16 +13,21 @@ export const ANALYTICS_EVENTS = {
   chatSuggestionUsed: "Usou sugestão chat",
   checkoutReturned: "Retornou do checkout",
   clearedFilter: "Limpou filtro",
+  commentsViewed: "Viu comentários",
   copyDraw: "Copiou sorteio",
   copySuggestion: "Copiou sugestão",
   donationLinkClicked: "Clicou idontneedit.org",
   downloadResults: "Download resultados",
+  emptyStateShown: "Exibiu estado vazio",
+  errorShown: "Exibiu erro",
+  externalLinkClicked: "Clicou link externo",
   generatedSuggestion: "Gerou sugestão",
   loadMoreDraws: "Carregou mais resultados",
   lotterySelected: "Selecionou loteria",
   luckyButtonClicked: "Clicou Estou com sorte",
   newAccess: "Novo acesso",
   openRawResults: "Abriu todos sorteios",
+  pageNotFound: "Página não encontrada",
   paywallCheckoutFailed: "Falhou checkout",
   paywallCheckoutStarted: "Iniciou checkout",
   paywallClosed: "Fechou paywall",
@@ -40,6 +47,7 @@ export const ANALYTICS_EVENTS = {
   simulatorCopyReport: "Copiou relatório simulador",
   simulatorCopySuggestion: "Copiou sugestão simulador",
   simulatorCutoffChanged: "Mudou corte simulador",
+  simulatorFinished: "Finalizou simulação",
   simulatorGroupToggled: "Alternou concurso simulador",
   simulatorLimitReached: "Atingiu limite simulador",
   simulatorOpened: "Abriu simulador",
@@ -188,7 +196,11 @@ export type DebouncedTracker = {
 };
 
 /** Agrupa rajadas (sliders, digitação) num único evento com os dados mais recentes. */
-export function createDebouncedTracker(eventName: string, delayMs = 800): DebouncedTracker {
+export function createDebouncedTracker(
+  eventName: string,
+  delayMs = 800,
+  sendEvent: (eventName: string, data?: AnalyticsEventData) => unknown = trackEvent,
+): DebouncedTracker {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pendingData: AnalyticsEventData | undefined;
 
@@ -196,7 +208,7 @@ export function createDebouncedTracker(eventName: string, delayMs = 800): Deboun
     timer = undefined;
     const data = pendingData;
     pendingData = undefined;
-    trackEvent(eventName, data);
+    sendEvent(eventName, data);
   };
 
   return {

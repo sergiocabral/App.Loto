@@ -90,7 +90,12 @@ beforeEach(() => {
 
 afterEach(() => {
   document.getElementById("remark42-embed-script")?.remove();
+  delete window.umami;
 });
+
+function trackedEvents(track: ReturnType<typeof vi.fn>, name: string) {
+  return track.mock.calls.filter(([eventName]) => eventName === name).map(([, data]) => data);
+}
 
 describe("HomePage", () => {
   it("mantém a seleção mais recente, faz prefetch e reaproveita o cache", async () => {
@@ -327,5 +332,71 @@ describe("HomePage", () => {
 
     await user.click(screen.getByRole("link", { name: "Voltar para o início sem loteria selecionada" }));
     expect(screen.getByRole("region", { name: "Selecione uma loteria" })).toBeInTheDocument();
+  });
+
+  it("rastreia análise com dados atualizados, estados vazios, erros e saída cancelada", async () => {
+    const track = vi.fn();
+    window.umami = { track };
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const lottery = getLotteryFromUrl(input);
+
+      if (lottery === "Quina") {
+        return Promise.resolve(jsonResponse({ error: "serviço indisponível" }, 503));
+      }
+
+      return Promise.resolve(jsonResponse({ draws: drawsFor(lottery, 30) }));
+    });
+    vi.stubGlobal(
+      "fetch",
+      withAccessStatus(fetchMock, {
+        ...ACCESS_STATUS_ANONYMOUS,
+        chat: { limit: 100, used: 0 },
+        expiresAt: null,
+        licensed: true,
+        plan: "lifetime",
+      }),
+    );
+    const user = userEvent.setup();
+
+    await renderHomePage();
+    await user.click(screen.getByRole("button", { name: /^Mega Sena/ }));
+    expect(await screen.findByText("#30")).toBeInTheDocument();
+
+    await user.click(within(screen.getByLabelText("Período analisado")).getByRole("button", { name: "10" }));
+    await waitFor(() =>
+      expect(trackedEvents(track, "Mudou período análise")).toEqual([
+        expect.objectContaining({ drawCount: 10, period: 10, periodLabel: "Últimos 10 concursos" }),
+      ]),
+    );
+
+    const search = screen.getByLabelText("Números para encontrar");
+    await user.type(search, "99");
+    await user.click(screen.getByRole("button", { name: "Pesquisar" }));
+    expect(trackedEvents(track, "Exibiu erro")).toEqual([expect.objectContaining({ kind: "invalidNumbers", lottery: "MegaSena" })]);
+
+    await user.clear(search);
+    await user.type(search, "01 60");
+    await user.click(screen.getByRole("button", { name: "Pesquisar" }));
+    expect(await screen.findByText("Nenhum concurso encontrado")).toBeInTheDocument();
+    expect(trackedEvents(track, "Pesquisou números")).toContainEqual(expect.objectContaining({ count: 2, source: "input" }));
+    await waitFor(
+      () =>
+        expect(trackedEvents(track, "Exibiu estado vazio")).toEqual([
+          expect.objectContaining({ hasNumberFilter: true, kind: "filterEmpty", lottery: "MegaSena" }),
+        ]),
+      { timeout: 2000 },
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Quina/ }));
+    expect(await screen.findByText("Falha ao carregar")).toBeInTheDocument();
+    await waitFor(
+      () => expect(trackedEvents(track, "Exibiu erro")).toContainEqual(expect.objectContaining({ kind: "loadFailed", lottery: "Quina" })),
+      { timeout: 2000 },
+    );
+
+    await user.click(await screen.findByRole("button", { name: /Sair do acesso/ }));
+    expect(trackedEvents(track, "Cancelou saída do acesso")).toHaveLength(1);
+    expect(trackedEvents(track, "Saiu do acesso")).toHaveLength(0);
   });
 });

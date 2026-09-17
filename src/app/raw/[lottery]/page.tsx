@@ -2,7 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getLottery } from "@/data/lotteries";
+import { NotFoundTracker } from "@/components/NotFoundTracker";
 import { PaywallContent } from "@/components/PaywallDialog";
+import { RawDownloadLink } from "@/components/RawDownloadLink";
 import { ACCESS_COOKIE_NAME } from "@/lib/server/accessCookie";
 import { getPassPlans } from "@/lib/server/billing";
 import { getEntitlementFromCookieValue } from "@/lib/server/licensing";
@@ -72,6 +74,7 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
             <Image alt="Luckygames" className="brand-icon" height={56} priority src="/gohorse.png" width={56} />
             <span>Luckygames</span>
           </Link>
+          <NotFoundTracker kind="lottery" />
           <h1>Jogo não encontrado</h1>
           <p>Volte para a consulta principal e selecione uma loteria disponível.</p>
           <Link className="raw-page-link" href="/">
@@ -147,17 +150,13 @@ export default async function RawLotteryPage({ params, searchParams }: RawPagePr
                 {hasValidDraw ? (draw ? "1 concurso" : "0 concursos") : `${totalDraws} concurso${totalDraws === 1 ? "" : "s"}`}
               </span>
             </div>
-            <a
-              className="raw-page-link raw-page-link-download"
-              data-umami-event="Download resultados"
-              data-umami-event-has-draw-number={String(hasValidDraw)}
-              data-umami-event-lottery={lottery.slug}
-              data-umami-event-total-draws={String(totalDraws)}
-              download={legacyDownloadName}
+            <RawDownloadLink
+              downloadName={legacyDownloadName}
+              hasDrawNumber={hasValidDraw}
               href={legacyApiUrl}
-            >
-              Download
-            </a>
+              lottery={lottery.slug}
+              totalDraws={totalDraws}
+            />
           </div>
         </header>
 

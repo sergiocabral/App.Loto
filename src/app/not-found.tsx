@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { NotFoundTracker } from "@/components/NotFoundTracker";
 
 export default function NotFound() {
   return (
     <main className="not-found-shell">
+      <NotFoundTracker kind="page" />
       <section className="not-found-card" aria-labelledby="not-found-title">
         <Link aria-label="Voltar para o início" className="brand-home not-found-brand" href="/">
           <Image alt="Luckygames" className="brand-icon" height={72} priority src="/gohorse.png" width={72} />
