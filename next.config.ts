@@ -1,24 +1,8 @@
 import type { NextConfig } from "next";
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+import { buildSecurityHeaders } from "./src/lib/securityHeaders";
 
-const securityHeaders = [
-  {
-    key: "X-Content-Type-Options",
-    value: "nosniff",
-  },
-  {
-    key: "X-Frame-Options",
-    value: "DENY",
-  },
-  {
-    key: "Referrer-Policy",
-    value: "strict-origin-when-cross-origin",
-  },
-  {
-    key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=()",
-  },
-];
+const securityHeaders = buildSecurityHeaders();
 
 const nextConfig: NextConfig = {
   // Gera .next/standalone (server.js + apenas as dependências realmente usadas),

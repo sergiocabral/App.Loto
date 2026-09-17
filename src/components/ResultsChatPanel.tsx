@@ -634,7 +634,8 @@ function ResultsChatPanelSession({
           {messages.map((message) => (
             <article className={`chat-message ${message.role}`} key={message.id}>
               <span>{message.role === "assistant" ? "Chat GPT" : "Você"}</span>
-              <div className="chat-message-content">
+              {/* rr-mask: o replay do Umami mostra o texto das mensagens como asteriscos (podem conter dados pessoais). */}
+              <div className="chat-message-content rr-mask">
                 <MarkdownMessage content={message.content} />
               </div>
             </article>

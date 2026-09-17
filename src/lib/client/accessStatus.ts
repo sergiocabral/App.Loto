@@ -11,6 +11,12 @@ export type AccessStatus = {
   plans: AccessPlanPrices;
 };
 
+export type AccessStatusResult = {
+  /** false quando o servidor não respondeu: o status é só o padrão anônimo. */
+  known: boolean;
+  status: AccessStatus;
+};
+
 export const DEFAULT_ACCESS_STATUS: AccessStatus = {
   chat: { limit: 3, used: 0 },
   licensed: false,
@@ -24,12 +30,12 @@ function toPositiveNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-export async function fetchAccessStatus(): Promise<AccessStatus> {
+export async function fetchAccessStatusResult(): Promise<AccessStatusResult> {
   try {
     const response = await fetch("/api/access/status", { cache: "no-store" });
 
     if (!response.ok) {
-      return DEFAULT_ACCESS_STATUS;
+      return { known: false, status: DEFAULT_ACCESS_STATUS };
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
@@ -39,25 +45,43 @@ export async function fetchAccessStatus(): Promise<AccessStatus> {
     const plan = payload.plan === "pass30" || payload.plan === "lifetime" ? payload.plan : undefined;
 
     return {
-      chat: {
-        limit: toPositiveNumber(chat.limit, DEFAULT_ACCESS_STATUS.chat.limit),
-        used: typeof chat.used === "number" && Number.isFinite(chat.used) && chat.used >= 0 ? chat.used : 0,
-      },
-      expiresAt: typeof payload.expiresAt === "string" ? payload.expiresAt : null,
-      licensed,
-      ...(plan ? { plan } : {}),
-      plans: {
-        lifetime: {
-          priceBRL: toPositiveNumber(plans.lifetime?.priceBRL, DEFAULT_ACCESS_STATUS.plans.lifetime.priceBRL),
+      known: true,
+      status: {
+        chat: {
+          limit: toPositiveNumber(chat.limit, DEFAULT_ACCESS_STATUS.chat.limit),
+          used: typeof chat.used === "number" && Number.isFinite(chat.used) && chat.used >= 0 ? chat.used : 0,
         },
-        pass30: {
-          priceBRL: toPositiveNumber(plans.pass30?.priceBRL, DEFAULT_ACCESS_STATUS.plans.pass30.priceBRL),
+        expiresAt: typeof payload.expiresAt === "string" ? payload.expiresAt : null,
+        licensed,
+        ...(plan ? { plan } : {}),
+        plans: {
+          lifetime: {
+            priceBRL: toPositiveNumber(plans.lifetime?.priceBRL, DEFAULT_ACCESS_STATUS.plans.lifetime.priceBRL),
+          },
+          pass30: {
+            priceBRL: toPositiveNumber(plans.pass30?.priceBRL, DEFAULT_ACCESS_STATUS.plans.pass30.priceBRL),
+          },
         },
       },
     };
   } catch {
-    return DEFAULT_ACCESS_STATUS;
+    return { known: false, status: DEFAULT_ACCESS_STATUS };
   }
+}
+
+export async function fetchAccessStatus(): Promise<AccessStatus> {
+  return (await fetchAccessStatusResult()).status;
+}
+
+let initialAccessStatus: Promise<AccessStatusResult> | null = null;
+
+/**
+ * Status de acesso do carregamento atual da página. A home e o UmamiSession precisam dele ao mesmo
+ * tempo; compartilhar a promessa evita duas requisições iguais a cada visita.
+ */
+export function loadInitialAccessStatus(): Promise<AccessStatusResult> {
+  initialAccessStatus ??= fetchAccessStatusResult();
+  return initialAccessStatus;
 }
 
 export function formatPriceBRL(value: number): string {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ACCESS_STATUS, fetchAccessStatus, formatPriceBRL } from "@/lib/client/accessStatus";
+import { DEFAULT_ACCESS_STATUS, fetchAccessStatus, fetchAccessStatusResult, formatPriceBRL } from "@/lib/client/accessStatus";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -50,6 +50,30 @@ describe("access status client", () => {
       licensed: false,
       plans: DEFAULT_ACCESS_STATUS.plans,
     });
+  });
+
+  it("reports whether the status came from the server", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ licensed: false })));
+    await expect(fetchAccessStatusResult()).resolves.toMatchObject({ known: true, status: { licensed: false } });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("oops", { status: 503 })));
+    await expect(fetchAccessStatusResult()).resolves.toEqual({ known: false, status: DEFAULT_ACCESS_STATUS });
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    await expect(fetchAccessStatusResult()).resolves.toEqual({ known: false, status: DEFAULT_ACCESS_STATUS });
+  });
+
+  it("shares a single initial status request between callers", async () => {
+    vi.resetModules();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ licensed: true, plan: "pass30" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { loadInitialAccessStatus } = await import("@/lib/client/accessStatus");
+
+    const [first, second] = await Promise.all([loadInitialAccessStatus(), loadInitialAccessStatus()]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+    expect(first).toMatchObject({ known: true, status: { licensed: true, plan: "pass30" } });
   });
 
   it("formats prices in BRL", () => {

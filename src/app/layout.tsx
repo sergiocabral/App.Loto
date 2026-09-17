@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AccessOriginTracker } from "@/components/AccessOriginTracker";
+import { UmamiSession } from "@/components/UmamiSession";
 import { getOfficialSiteUrl } from "@/lib/siteUrl";
 import { getUmamiBootstrapScript, UMAMI_BEFORE_SEND_HANDLER } from "@/lib/umamiBootstrap";
 import "./globals.css";
@@ -54,18 +55,18 @@ const umamiScriptUrl = process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL?.trim();
 const umamiWebsiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID?.trim();
 // Só rastreia no domínio oficial: evita que dev/localhost com o .env de produção polua o Umami.
 const umamiDomains = [officialSiteUrl.hostname, `www.${officialSiteUrl.hostname}`].join(",");
+// Replay e heatmap (recorder.js) ficam ligados por padrão; "false" desliga sem afetar os eventos.
+const isUmamiRecorderEnabled = process.env.NEXT_PUBLIC_UMAMI_RECORDER_ENABLED?.trim().toLowerCase() !== "false";
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const isUmamiEnabled = Boolean(umamiScriptUrl && umamiWebsiteId);
-
   return (
     <html lang="pt-BR">
       <head>
-        {isUmamiEnabled ? (
+        {umamiScriptUrl && umamiWebsiteId ? (
           <>
             {/*
               Scripts no <head> do HTML do servidor (e não via next/script): scripts `defer` executam na ordem do
@@ -88,6 +89,9 @@ export default function RootLayout({
       <body>
         {children}
         <AccessOriginTracker />
+        {umamiScriptUrl && umamiWebsiteId ? (
+          <UmamiSession recorderEnabled={isUmamiRecorderEnabled} scriptUrl={umamiScriptUrl} websiteId={umamiWebsiteId} />
+        ) : null}
       </body>
     </html>
   );

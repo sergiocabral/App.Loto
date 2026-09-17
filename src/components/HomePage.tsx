@@ -8,7 +8,7 @@ import { ResultsChatPanel } from "@/components/ResultsChatPanel";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LOTTERIES, getLottery, type LotteryDefinition } from "@/data/lotteries";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { DEFAULT_ACCESS_STATUS, fetchAccessStatus, formatPriceBRL, type AccessStatus } from "@/lib/client/accessStatus";
+import { DEFAULT_ACCESS_STATUS, formatPriceBRL, loadInitialAccessStatus, type AccessStatus } from "@/lib/client/accessStatus";
 import { createSequentialLoadQueue } from "@/lib/client/sequentialLoadQueue";
 import {
   ANALYSIS_PERIOD_OPTIONS,
@@ -778,7 +778,7 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
   useEffect(() => {
     let cancelled = false;
 
-    void fetchAccessStatus().then((status) => {
+    void loadInitialAccessStatus().then(({ known, status }) => {
       if (cancelled) {
         return;
       }
@@ -786,11 +786,12 @@ export function HomePage({ initialLotterySlug, initialDrawNumber, isChatEnabled 
       setAccessStatus(status);
 
       // Impressão do canto do hero-card, medida com o status já confirmado pelo servidor:
-      // serve de denominador para a conversão (viu CTA -> clicou -> checkout).
+      // serve de denominador para a conversão (viu CTA -> clicou -> checkout). Quando o status não
+      // pôde ser obtido, o CTA aparece mesmo assim, mas a impressão é marcada para não inflar o funil.
       if (status.licensed) {
         trackEvent(ANALYTICS_EVENTS.accessStatusShown, { plan: status.plan });
       } else {
-        trackEvent(ANALYTICS_EVENTS.premiumCtaShown);
+        trackEvent(ANALYTICS_EVENTS.premiumCtaShown, known ? undefined : { statusKnown: false });
       }
     });
 
